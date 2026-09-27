@@ -98,7 +98,7 @@ function onSend() {
             class="max-w-[85%] rounded-2xl px-4 py-2.5 text-[15px] leading-7"
             :class="msg.role === 'user'
               ? 'whitespace-pre-wrap rounded-br-md bg-primary-soft text-ink'
-              : 'rounded-bl-md border border-line bg-white text-ink'"
+              : 'text-ink'"
           >
             <img
               v-if="msg.imageUrl"

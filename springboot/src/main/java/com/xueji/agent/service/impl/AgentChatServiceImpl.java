@@ -55,29 +55,36 @@ public class AgentChatServiceImpl implements AgentChatService {
 
         String turnId = "t_" + java.util.UUID.randomUUID().toString().substring(0, 8);
 
-        // 用户消息先落事实源（回合中途崩溃也不丢用户输入）；附图链接记入 payload
+        // 带图先走前置流水线（OCR 识别 → 格式化），结果随消息落库并拼入 prompt
+        boolean hasImage = imageUrl != null && !imageUrl.isBlank();
+        String questionText = null;
+        if (hasImage) {
+            try {
+                questionText = ocrTextFormatter.format(ocrTool.recognizeText(imageUrl));
+            } catch (Exception e) {
+                log.error("OCR 前置流水线失败, imageUrl={}", imageUrl, e);
+            }
+        }
+
+        // 用户消息先落事实源（回合中途崩溃也不丢用户输入）；附图链接与题目识别文本记入 payload（保存题目时取用）
         Message userMessage = new Message()
                 .setConversationId(conversationId)
                 .setRole("user")
                 .setMsgType("text")
                 .setContent(content)
                 .setCreatedAt(LocalDateTime.now());
-        if (imageUrl != null && !imageUrl.isBlank()) {
-            userMessage.setPayload(cn.hutool.json.JSONUtil.createObj().set("imageUrl", imageUrl).toString());
+        if (hasImage) {
+            cn.hutool.json.JSONObject payload = cn.hutool.json.JSONUtil.createObj().set("imageUrl", imageUrl);
+            if (questionText != null && !questionText.isBlank()) {
+                payload.set("questionText", questionText);
+            }
+            userMessage.setPayload(payload.toString());
         }
         messageMapper.insert(userMessage);
 
-        // DeepSeek 平台 API 初期为纯文本（PRD §11 不引入多模态）：
-        // 带图走前置流水线 —— OCR 识别 → OcrTextFormatter 整理格式 → 拼入 prompt 交给 LLM 推理
-        boolean hasImage = imageUrl != null && !imageUrl.isBlank();
+        // DeepSeek 平台 API 初期为纯文本（PRD §11 不引入多模态）：题目文本以文字形式拼入 prompt
         String promptContent = content;
         if (hasImage) {
-            String questionText = null;
-            try {
-                questionText = ocrTextFormatter.format(ocrTool.recognizeText(imageUrl));
-            } catch (Exception e) {
-                log.error("OCR 前置流水线失败, imageUrl={}", imageUrl, e);
-            }
             if (questionText == null || questionText.isBlank()) {
                 promptContent = content + "\n\n[系统提示：题目图片识别失败，请提示用户检查图片是否清晰可读并重新上传，不要猜测题目内容]";
             } else {
@@ -96,6 +103,8 @@ public class AgentChatServiceImpl implements AgentChatService {
                 .user(promptContent)
                 // 会话 ID 经上下文传给 MessageChatMemoryAdvisor，自动注入历史并持久化本轮对话
                 .advisors(advisorSpec -> advisorSpec.param(ChatMemory.CONVERSATION_ID, String.valueOf(conversationId)))
+                // userId / conversationId 经工具上下文传给保存题目等工具（工具自身不感知会话）
+                .toolContext(java.util.Map.of("userId", userId, "conversationId", conversationId))
                 .stream()
                 .chatResponse()
                 // 空文本 chunk 过滤（工具调用 chunk 的防御性处理）

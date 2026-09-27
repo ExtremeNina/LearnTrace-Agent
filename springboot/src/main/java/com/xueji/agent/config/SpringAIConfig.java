@@ -2,6 +2,8 @@ package com.xueji.agent.config;
 
 import com.xueji.agent.ai.memory.RedisChatMemoryRepository;
 import com.xueji.agent.ai.tool.OcrTool;
+import com.xueji.agent.ai.tool.QuestionSaveTool;
+import com.xueji.agent.service.QuestionService;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
 import org.springframework.ai.chat.client.advisor.api.Advisor;
@@ -75,12 +77,22 @@ public class SpringAIConfig {
         return new OcrTool(ocrAccessKey, ocrSecretKey, ocrEndpoint);
     }
 
+    /**
+     * 保存题目工具：注册为默认工具，用户表达保存意图时由模型调用（userId 经 ToolContext 传入）
+     */
+    @Bean
+    public QuestionSaveTool questionSaveTool(QuestionService questionService) {
+        return new QuestionSaveTool(questionService);
+    }
+
     @Bean
     public ChatClient chatClient(ChatClient.Builder chatClientBuilder,
                                  Advisor messageChatMemoryAdvisor,
-                                 Advisor loggerAdvisor) {
+                                 Advisor loggerAdvisor,
+                                 QuestionSaveTool questionSaveTool) {
         return chatClientBuilder
                 .defaultAdvisors(messageChatMemoryAdvisor, loggerAdvisor)
+                .defaultTools(questionSaveTool)
                 .build();
     }
 }
