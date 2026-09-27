@@ -1,12 +1,20 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { House, History, CircleHelp, Settings } from 'lucide-vue-next'
-import { useRoute } from 'vue-router'
+import { House, History, CircleHelp, Settings, LogIn } from 'lucide-vue-next'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../../stores/auth'
 
 const route = useRoute()
+const router = useRouter()
 const auth = useAuthStore()
 const showSettings = ref(false)
+
+/** 未登录时从弹窗直达登录页（先清除失效 token，避免路由守卫拦截） */
+function goLogin() {
+  showSettings.value = false
+  auth.logout()
+  router.push('/login')
+}
 
 async function toggleSettings() {
   showSettings.value = !showSettings.value
@@ -63,8 +71,16 @@ function closeSettings() {
       <div class="fixed inset-0 z-40" @click="closeSettings" />
       <div class="absolute bottom-16 left-16 z-50 w-64 rounded-2xl border border-line bg-white p-4 shadow-lg">
         <p class="text-[16px] font-medium text-ink">
-          {{ auth.user?.nickname || auth.user?.username || '加载中…' }}
+          {{ auth.user?.nickname || auth.user?.username || (auth.userLoadFailed ? '未登录' : '加载中…') }}
         </p>
+        <button
+          v-if="auth.userLoadFailed"
+          class="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-2 text-[14px] text-white hover:opacity-90"
+          @click="goLogin"
+        >
+          <LogIn :size="16" />
+          登录
+        </button>
         <p v-if="auth.user" class="mt-0.5 text-[12px] text-ink-2">@{{ auth.user.username }}</p>
         <div class="my-3 h-px bg-line" />
         <div class="flex items-center justify-between rounded-xl px-3 py-2 text-[14px] text-ink hover:bg-panel">

@@ -8,6 +8,8 @@ const TOKEN_KEY = 'xj_token'
 export const useAuthStore = defineStore('auth', () => {
   const token = ref<string>(localStorage.getItem(TOKEN_KEY) ?? '')
   const user = ref<UserInfo | null>(null)
+  /** 用户信息拉取失败（未登录 / 登录失效 / 网络错误），用于弹窗区分"加载中"与"未登录" */
+  const userLoadFailed = ref(false)
   const isLoggedIn = computed(() => token.value !== '')
 
   async function login(username: string, password: string) {
@@ -27,7 +29,12 @@ export const useAuthStore = defineStore('auth', () => {
     if (user.value !== null) {
       return
     }
-    user.value = await authApi.getInfo()
+    try {
+      user.value = await authApi.getInfo()
+      userLoadFailed.value = false
+    } catch {
+      userLoadFailed.value = true
+    }
   }
 
   function setToken(newToken: string) {
@@ -38,8 +45,9 @@ export const useAuthStore = defineStore('auth', () => {
   function logout() {
     token.value = ''
     user.value = null
+    userLoadFailed.value = false
     localStorage.removeItem(TOKEN_KEY)
   }
 
-  return { token, user, isLoggedIn, login, register, loadUser, setToken, logout }
+  return { token, user, userLoadFailed, isLoggedIn, login, register, loadUser, setToken, logout }
 })
