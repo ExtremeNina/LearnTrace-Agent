@@ -1,13 +1,28 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import { House, History, CircleHelp, Settings } from 'lucide-vue-next'
 import { useRoute } from 'vue-router'
+import { useAuthStore } from '../../stores/auth'
 
 const route = useRoute()
+const auth = useAuthStore()
+const showSettings = ref(false)
+
+async function toggleSettings() {
+  showSettings.value = !showSettings.value
+  if (showSettings.value) {
+    await auth.loadUser()
+  }
+}
+
+function closeSettings() {
+  showSettings.value = false
+}
 </script>
 
 <template>
   <!-- 最左全局图标栏（PRD §5：桌面端显示，移动端隐藏并入抽屉） -->
-  <nav class="panel-gradient w-14 shrink-0 flex-col items-center justify-between py-4 md:flex">
+  <nav class="panel-gradient relative w-14 shrink-0 flex-col items-center justify-between py-4 md:flex">
     <div class="flex flex-col items-center gap-2">
       <RouterLink
         to="/"
@@ -34,11 +49,39 @@ const route = useRoute()
         <CircleHelp :size="20" />
       </button>
       <button
-        class="flex h-10 w-10 items-center justify-center rounded-xl text-ink hover:bg-line/60"
+        class="flex h-10 w-10 items-center justify-center rounded-xl transition-colors"
+        :class="showSettings ? 'bg-line/70 text-ink' : 'text-ink hover:bg-line/60'"
         title="设置"
+        @click="toggleSettings"
       >
         <Settings :size="20" />
       </button>
     </div>
+
+    <!-- 设置弹窗：展示当前用户信息 -->
+    <template v-if="showSettings">
+      <div class="fixed inset-0 z-40" @click="closeSettings" />
+      <div class="absolute bottom-16 left-16 z-50 w-64 rounded-2xl border border-line bg-white p-4 shadow-lg">
+        <p class="text-[16px] font-medium text-ink">
+          {{ auth.user?.nickname || auth.user?.username || '加载中…' }}
+        </p>
+        <p v-if="auth.user" class="mt-0.5 text-[12px] text-ink-2">@{{ auth.user.username }}</p>
+        <div class="my-3 h-px bg-line" />
+        <div class="flex items-center justify-between rounded-xl px-3 py-2 text-[14px] text-ink hover:bg-panel">
+          <span class="flex items-center gap-2.5">
+            <Settings :size="16" class="text-ink-2" />
+            设置
+          </span>
+          <span class="text-[12px] text-ink-2">Ctrl+,</span>
+        </div>
+        <div
+          v-if="auth.user"
+          class="flex items-center justify-between rounded-xl px-3 py-2 text-[14px] text-ink-2"
+        >
+          <span>用户 ID</span>
+          <span class="text-[12px]">{{ auth.user.id }}</span>
+        </div>
+      </div>
+    </template>
   </nav>
 </template>
