@@ -23,8 +23,12 @@ public class SaTokenConfigure implements WebMvcConfigurer {
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
-        registry.addInterceptor(new SaInterceptor(handler -> StpUtil.checkLogin()))
-                .addPathPatterns("/**")
+        registry.addInterceptor(new SaInterceptor(handler -> {
+            // CORS 预检请求（OPTIONS）不携带 token，跳过登录校验，否则浏览器跨域必然失败
+            if (!"OPTIONS".equalsIgnoreCase(cn.dev33.satoken.context.SaHolder.getRequest().getMethod())) {
+                StpUtil.checkLogin();
+            }
+        })).addPathPatterns("/**")
                 .excludePathPatterns(EXCLUDE_PATHS);
     }
 }
