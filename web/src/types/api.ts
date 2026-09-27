@@ -48,3 +48,21 @@ export interface MessageInfo {
   payload: string | null
   createdAt: string
 }
+
+/** 拍照题目记录（对应后端 domain/entity/QuestionRecord） */
+export interface QuestionRecordInfo {
+  id: number
+  userId: number
+  imageOssKey: string
+  ocrText: string | null
+  questionText: string | null
+  userAnswer: string | null
+  correctAnswer: string | null
+  analysis: string | null
+  isWrong: number | null
+  aiStatus: string
+  recordStatus: string
+  userNote: string | null
+  createdAt: string
+  updatedAt: string
+}
