@@ -50,5 +50,12 @@ ali-oss:
   bucketName: ${OSS_BUCKET:jj-fruit-store}
   domain: ${OSS_DOMAIN:}
 
+# 阿里云 OCR：与 OSS 使用同一账号密钥（同一环境变量）
+aliyun:
+  ocr:
+    access-key: ${OSS_ACCESS_KEY:}
+    secret-key: ${OSS_SECRET_KEY:}
+    endpoint: ${OCR_ENDPOINT:ocr-api.cn-hangzhou.aliyuncs.com}
+
 server:
   port: 9090

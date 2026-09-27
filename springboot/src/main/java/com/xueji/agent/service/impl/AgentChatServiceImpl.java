@@ -1,6 +1,7 @@
 package com.xueji.agent.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.xueji.agent.ai.prompt.AgentPrompts;
 import com.xueji.agent.domain.entity.Conversation;
 import com.xueji.agent.domain.entity.Message;
 import com.xueji.agent.domain.vo.ChatEvent;
@@ -67,7 +68,12 @@ public class AgentChatServiceImpl implements AgentChatService {
         StringBuilder answer = new StringBuilder();
         long[] savedMessageId = new long[1];
 
+        // 按场景选择系统提示词：带图走解题流程（配合 OCR 工具），否则用基础人设
+        boolean hasImage = imageUrl != null && !imageUrl.isBlank();
+        String systemPrompt = hasImage ? AgentPrompts.QUESTION_PROMPT : AgentPrompts.BASE_PROMPT;
+
         Flux<ChatEvent> body = chatClient.prompt()
+                .system(systemPrompt)
                 .user(promptContent)
                 // 会话 ID 经上下文传给 MessageChatMemoryAdvisor，自动注入历史并持久化本轮对话
                 .advisors(advisorSpec -> advisorSpec.param(ChatMemory.CONVERSATION_ID, String.valueOf(conversationId)))
