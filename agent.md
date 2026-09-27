@@ -3,7 +3,9 @@
 AI 个人学习工作台：学习资产（网课 / 题目 / 笔记）+ 知识点页 + Human-in-the-loop 的 Agent 对话。
 技术栈：Vue 3 + TypeScript + Tailwind 响应式前端（桌面与手机端都要可用，移动端 Sidebar 折叠为抽屉）；Spring Boot 3 + MyBatis-Plus + MySQL + Redis + RabbitMQ 后端。AI 框架使用 Spring AI，LLM 为 DeepSeek，OCR 接入阿里云第三方 API。
 
-进度以 git 提交为准。当前：代码未搭建（上一版实现已遗弃，数据库 13 张表已建成），第一任务是切片一（会话骨架）。切片顺序固定：一会话骨架 → 二题目记录 → 三网课。
+进度以 git 提交为准。当前：切片一（会话骨架）已完成——注册登录、会话增删改查、Spring AI 流式对话（WebSocket）、Redis 记忆、对话附图（OSS 上传 /upload/image）、三套系统提示词与阿里云 OCR 工具均已提交；下一任务是切片二（题目记录）。切片顺序固定：一会话骨架 → 二题目记录 → 三网课。
+
+已知遗留问题：对话图片上传曾因 OSS 配置不可用（bucket `jj-fruit-store` 实际位于武汉 region，而 endpoint 默认杭州；AK/SK 环境变量后端进程读不到）。2026-09-27 已处理：改为 git 忽略的本地配置文件 `springboot/application-local.properties`（经 application.yml 的 `spring.config.import: optional:file:./application-local.properties` 引入，含 OSS endpoint/accessKey/secretKey/bucketName 与 OCR 密钥，endpoint 已指向武汉 region），任何方式启动后端均可读到；`AliUploadUtils` 保留 `@PostConstruct` 启动期密钥校验。仍未修复：`uploadChatImage` 只捕获 IOException，OSSException 落到全局兜底处理器；前端 `Agent.vue` 未渲染 `agent.error`，上传失败无界面反馈。另：Redis db1 与其他项目共用且 sa-token 键前缀相同（`sa-token:`），他项目 token 可通过本系统鉴权，建议将 `token-name` 改为独有值隔离。
 
 ## 工单流程节奏（implement-spec / 多工单任务）
 
