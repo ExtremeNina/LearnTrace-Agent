@@ -18,7 +18,8 @@ import org.springframework.data.redis.core.StringRedisTemplate;
  * Spring AI 装配：LLM 调用统一经 ChatClient（PRD §11，业务代码不直接调 LLM API）。
  * 记忆链路：RedisChatMemoryRepository（Redis 存储）→ MessageWindowChatMemory（滑窗）
  * → MessageChatMemoryAdvisor（自动读写记忆，随 ChatClient 全局生效）。
- * 工具链路：OcrTool（阿里云 OCR）注册为默认工具，模型按需调用。
+ * 工具链路：OCR 已改为前置流水线（业务代码先识别 + OcrTextFormatter 整理，再进推理），
+ * ChatClient 不再注册 AI Tool。
  */
 @Configuration
 public class SpringAIConfig {
@@ -67,7 +68,7 @@ public class SpringAIConfig {
     }
 
     /**
-     * OCR 工具：题目识别（AI Tool，模型按需调用）
+     * OCR 识别端：业务代码在推理前直接调用（前置流水线）
      */
     @Bean
     public OcrTool ocrTool() {
@@ -77,11 +78,9 @@ public class SpringAIConfig {
     @Bean
     public ChatClient chatClient(ChatClient.Builder chatClientBuilder,
                                  Advisor messageChatMemoryAdvisor,
-                                 Advisor loggerAdvisor,
-                                 OcrTool ocrTool) {
+                                 Advisor loggerAdvisor) {
         return chatClientBuilder
                 .defaultAdvisors(messageChatMemoryAdvisor, loggerAdvisor)
-                .defaultTools(ocrTool)
                 .build();
     }
 }

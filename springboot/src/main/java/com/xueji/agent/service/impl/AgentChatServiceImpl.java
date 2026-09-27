@@ -2,6 +2,8 @@ package com.xueji.agent.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.xueji.agent.ai.prompt.AgentPrompts;
+import com.xueji.agent.ai.tool.OcrTextFormatter;
+import com.xueji.agent.ai.tool.OcrTool;
 import com.xueji.agent.domain.entity.Conversation;
 import com.xueji.agent.domain.entity.Message;
 import com.xueji.agent.domain.vo.ChatEvent;
@@ -38,6 +40,12 @@ public class AgentChatServiceImpl implements AgentChatService {
     @Resource
     private MessageMapper messageMapper;
 
+    @Resource
+    private OcrTool ocrTool;
+
+    @Resource
+    private OcrTextFormatter ocrTextFormatter;
+
     @Override
     public Flux<ChatEvent> chat(Long userId, Long conversationId, String content, String imageUrl) {
         Conversation conversation = conversationMapper.selectById(conversationId);
@@ -59,17 +67,28 @@ public class AgentChatServiceImpl implements AgentChatService {
         }
         messageMapper.insert(userMessage);
 
-        // DeepSeek 平台 API 初期为纯文本（PRD §11 不引入多模态）：图片以链接形式附在 prompt 中
+        // DeepSeek 平台 API 初期为纯文本（PRD §11 不引入多模态）：
+        // 带图走前置流水线 —— OCR 识别 → OcrTextFormatter 整理格式 → 拼入 prompt 交给 LLM 推理
+        boolean hasImage = imageUrl != null && !imageUrl.isBlank();
         String promptContent = content;
-        if (imageUrl != null && !imageUrl.isBlank()) {
-            promptContent = content + "\n\n[用户附带了一张图片，链接: " + imageUrl + "]";
+        if (hasImage) {
+            String questionText = null;
+            try {
+                questionText = ocrTextFormatter.format(ocrTool.recognizeText(imageUrl));
+            } catch (Exception e) {
+                log.error("OCR 前置流水线失败, imageUrl={}", imageUrl, e);
+            }
+            if (questionText == null || questionText.isBlank()) {
+                promptContent = content + "\n\n[系统提示：题目图片识别失败，请提示用户检查图片是否清晰可读并重新上传，不要猜测题目内容]";
+            } else {
+                promptContent = content + "\n\n[题目图片识别文本（已整理）]\n" + questionText;
+            }
         }
 
         StringBuilder answer = new StringBuilder();
         long[] savedMessageId = new long[1];
 
-        // 按场景选择系统提示词：带图走解题流程（配合 OCR 工具），否则用基础人设
-        boolean hasImage = imageUrl != null && !imageUrl.isBlank();
+        // 按场景选择系统提示词：带图走解题流程，否则用基础人设
         String systemPrompt = hasImage ? AgentPrompts.QUESTION_PROMPT : AgentPrompts.BASE_PROMPT;
 
         Flux<ChatEvent> body = chatClient.prompt()
