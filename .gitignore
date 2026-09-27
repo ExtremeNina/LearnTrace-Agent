@@ -1,0 +1,22 @@
+# ---- Java / 后端 ----
+springboot/target/
+*.class
+*.jar
+!**/maven-wrapper.jar
+*.log
+hs_err_pid*
+
+# ---- Node / 前端 ----
+web/node_modules/
+web/dist/
+
+# ---- IDE ----
+.idea/
+*.iml
+.vscode/
+.settings/
+
+# ---- 系统与本地文件 ----
+.DS_Store
+Thumbs.db
+*.local
