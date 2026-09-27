@@ -18,6 +18,11 @@ async function openConversation(id: number) {
   router.push('/')
 }
 
+function startNew() {
+  agent.startNew()
+  router.push('/')
+}
+
 async function removeConversation(id: number) {
   await agent.removeConversation(id)
 }
@@ -36,7 +41,7 @@ async function removeConversation(id: number) {
       <RouterLink
         to="/"
         class="flex items-center gap-3 rounded-2xl px-3.5 py-2.5 text-[15px] text-ink hover:bg-line/50"
-        @click="$emit('navigate')"
+        @click="startNew(); $emit('navigate')"
       >
         <SquarePen :size="18" class="text-ink-2" />
         新对话

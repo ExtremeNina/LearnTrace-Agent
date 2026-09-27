@@ -51,6 +51,15 @@ export const useAgentStore = defineStore('agent', () => {
   }
 
   /**
+   * 开启新对话：重置会话状态，下一条消息会创建新会话
+   */
+  function startNew() {
+    activeId.value = null
+    messages.value = []
+    error.value = ''
+  }
+
+  /**
    * 发送一条用户消息：无活动会话时先创建；经 WS 发起回合
    */
   async function send(text: string) {
@@ -130,6 +139,7 @@ export const useAgentStore = defineStore('agent', () => {
     createConversation,
     openConversation,
     removeConversation,
+    startNew,
     send,
     stop,
     handleEvent,
