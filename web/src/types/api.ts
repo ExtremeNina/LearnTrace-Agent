@@ -66,3 +66,12 @@ export interface QuestionRecordInfo {
   createdAt: string
   updatedAt: string
 }
+
+/** 通用分页结果（对应后端 PageVO） */
+export interface PageInfo<T> {
+  list: T[]
+  total: number
+  page: number
+  size: number
+  pages: number
+}
