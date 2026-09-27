@@ -1,0 +1,29 @@
+@import "tailwindcss";
+
+/* PRD §5 视觉规范：Light 主题 + 桌面端 AI 工作台（参照 ChatGPT 桌面版） */
+@theme {
+  --color-ink: #0d0d0d;         /* 主文字 */
+  --color-ink-2: #6b7280;       /* 次要文字 */
+  --color-panel: #f9f9f9;       /* Sidebar / 图标栏背景 */
+  --color-line: #e5e7eb;        /* 边框 / 分隔线 */
+  --color-primary: #2563eb;     /* 强调色 */
+  --color-primary-soft: #eff6ff; /* 选中 / 悬停浅底 */
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+/* Sidebar 暖色渐变（参照 ChatGPT 桌面版侧栏：米白 → 白 → 淡蜜桃） */
+.panel-gradient {
+  background: linear-gradient(165deg, #fbf6ee 0%, #ffffff 42%, #fdf2ea 100%);
+}
+
+body {
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
