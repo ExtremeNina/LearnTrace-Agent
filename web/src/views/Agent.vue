@@ -2,6 +2,7 @@
 import { nextTick, onMounted, ref, watch } from 'vue'
 import { ArrowUp, Plus, Square, X } from 'lucide-vue-next'
 import { useAgentStore } from '../stores/agent'
+import { renderMarkdown } from '../utils/markdown'
 
 /**
  * Agent 主区（PRD §3.1 / §5）：消息流 + 底部输入框，支持附图（截图预览位），流式渲染
@@ -68,9 +69,9 @@ function onSend() {
       <div v-else class="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-6">
         <div v-for="(msg, i) in agent.messages" :key="i" class="flex" :class="msg.role === 'user' ? 'justify-end' : 'justify-start'">
           <div
-            class="max-w-[85%] whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-[15px] leading-7"
+            class="max-w-[85%] rounded-2xl px-4 py-2.5 text-[15px] leading-7"
             :class="msg.role === 'user'
-              ? 'rounded-br-md bg-primary-soft text-ink'
+              ? 'whitespace-pre-wrap rounded-br-md bg-primary-soft text-ink'
               : 'rounded-bl-md border border-line bg-white text-ink'"
           >
             <img
@@ -79,7 +80,12 @@ function onSend() {
               alt="附图"
               class="mb-2 max-h-48 rounded-xl border border-line"
             />
-            {{ msg.content }}<span v-if="msg.streaming" class="animate-pulse text-primary">▍</span>
+            <!-- 助手消息：Markdown + 公式渲染；用户消息：纯文本 -->
+            <template v-if="msg.role === 'assistant'">
+              <div class="markdown-body" v-html="renderMarkdown(msg.content)"></div>
+            </template>
+            <template v-else>{{ msg.content }}</template>
+            <span v-if="msg.streaming" class="animate-pulse text-primary">▍</span>
           </div>
         </div>
       </div>
