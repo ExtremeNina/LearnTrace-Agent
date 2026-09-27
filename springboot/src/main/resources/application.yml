@@ -1,0 +1,54 @@
+spring:
+  application:
+    name: xueji-agent
+  ai:
+    openai:
+      # DeepSeek 提供 OpenAI 兼容端点，统一经 Spring AI 接入（PRD §11）
+      api-key: ***REMOVED***
+      base-url: https://api.deepseek.com
+      chat:
+        options:
+          model: deepseek-chat
+          temperature: 0.7
+  data:
+    redis:
+      database: 1
+      host: 127.0.0.1
+      port: 6379
+      password: ''
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+  datasource:
+    url: jdbc:mysql://localhost:3306/xueji?useUnicode=true&serverTimezone=Asia/Shanghai&characterEncoding=utf-8&zeroDateTimeBehavior=convertToNull&autoReconnect=true&allowMultiQueries=true&useSSL=true
+    username: root
+    password: 123456
+    type: com.alibaba.druid.pool.DruidDataSource
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+sa-token:
+  token-name: sa-token
+  active-timeout: -1
+  is-concurrent: true
+  is-share: false
+  is-log: false
+  token-style: uuid
+
+mybatis-plus:
+  mapper-locations: classpath:mapper/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+    cache-enabled: false
+    jdbc-type-for-null: 'null'
+
+# 阿里云 OSS（切片三视频/图片上传用，密钥后置填写）
+ali-oss:
+  endpoint: 'oss-cn-hangzhou.aliyuncs.com'
+  accessKey: ''
+  secretKey: ''
+  bucketName: 'xueji'
+  domain: ''
+
+server:
+  port: 9090
