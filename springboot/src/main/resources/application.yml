@@ -1,6 +1,9 @@
 spring:
   application:
     name: xueji-agent
+  # 本地私密配置（git 忽略，密钥不进 git；存在时优先于环境变量）
+  config:
+    import: optional:file:./application-local.properties
   ai:
     openai:
       # DeepSeek 提供 OpenAI 兼容端点，统一经 Spring AI 接入（PRD §11）

@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.multipart.MultipartFile;
 import com.xueji.agent.exception.UploadException;
+import jakarta.annotation.PostConstruct;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -41,6 +42,18 @@ public class AliUploadUtils {
 
     @Value("${ali-oss.bucketName}")
     private String bucketName;
+
+    /**
+     * 启动期校验 OSS 配置：密钥缺失时直接启动失败，避免每次上传请求都报"服务异常"
+     */
+    @PostConstruct
+    public void checkConfig() {
+        if (accessKey == null || accessKey.isBlank() || secretKey == null || secretKey.isBlank()) {
+            throw new IllegalStateException(
+                    "阿里云 OSS 密钥未配置（OSS_ACCESS_KEY / OSS_SECRET_KEY 为空）："
+                            + "请确认用户级环境变量已设置；若变量是后端启动后才添加的，需重启 IDE 让子进程重新继承");
+        }
+    }
 
     public String uploadFile(final MultipartFile file, final String path, final String newFileName, final boolean isImage) {
         OSS ossClient = new OSSClientBuilder()
