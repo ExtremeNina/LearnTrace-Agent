@@ -1,8 +1,8 @@
 package com.xueji.agent.ai.tool;
 
 import com.aliyun.ocr_api20210707.Client;
-import com.aliyun.ocr_api20210707.models.RecognizeGeneralRequest;
-import com.aliyun.ocr_api20210707.models.RecognizeGeneralResponse;
+import com.aliyun.ocr_api20210707.models.RecognizeAllTextRequest;
+import com.aliyun.ocr_api20210707.models.RecognizeAllTextResponse;
 import com.aliyun.teaopenapi.models.Config;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.tool.annotation.Tool;
@@ -33,11 +33,12 @@ public class OcrTool {
     public String recognizeText(
             @ToolParam(description = "图片的公网访问 URL，需为 http/https 链接") String imageUrl) {
         try {
-            RecognizeGeneralRequest request = new RecognizeGeneralRequest().setUrl(imageUrl);
-            RecognizeGeneralResponse response = client.recognizeGeneral(request);
-            // body.data 为 JSON 字符串，识别文本在 text 字段
-            String data = response.getBody().getData();
-            String text = cn.hutool.json.JSONUtil.parseObj(data).getStr("text", "");
+            // OCR 统一识别接口，type=General 为通用文字识别（基础版）
+            RecognizeAllTextRequest request = new RecognizeAllTextRequest()
+                    .setType("General")
+                    .setUrl(imageUrl);
+            RecognizeAllTextResponse response = client.recognizeAllText(request);
+            String text = response.getBody().getData().getContent();
             if (text == null || text.isBlank()) {
                 return "OCR 未能识别出图片中的文字";
             }
