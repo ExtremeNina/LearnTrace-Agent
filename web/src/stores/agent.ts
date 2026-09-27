@@ -16,9 +16,14 @@ export interface ChatMsg {
   content: string
   imageUrl?: string
   streaming?: boolean
+  /** 解答类回答（跟在带图消息后），底部展示"保存到拍照记录"引导 */
+  fromQuestion?: boolean
 }
 
 export const useAgentStore = defineStore('agent', () => {
+  /** 本地记住当前会话：刷新页面后恢复到同一会话 */
+  const ACTIVE_KEY = 'xj_active_conversation'
+
   const conversations = ref<ConversationInfo[]>([])
   const activeId = ref<number | null>(null)
   const messages = ref<ChatMsg[]>([])
@@ -28,6 +33,14 @@ export const useAgentStore = defineStore('agent', () => {
   const pendingImage = ref('')
   const error = ref('')
 
+  function rememberActive(id: number | null) {
+    if (id === null) {
+      localStorage.removeItem(ACTIVE_KEY)
+    } else {
+      localStorage.setItem(ACTIVE_KEY, String(id))
+    }
+  }
+
   async function loadConversations() {
     conversations.value = await conversationApi.listConversations()
   }
@@ -36,6 +49,7 @@ export const useAgentStore = defineStore('agent', () => {
     const conversation = await conversationApi.createConversation(title)
     conversations.value.unshift(conversation)
     activeId.value = conversation.id
+    rememberActive(conversation.id)
     messages.value = []
     return conversation
   }
@@ -43,12 +57,25 @@ export const useAgentStore = defineStore('agent', () => {
   async function openConversation(id: number) {
     const list = await conversationApi.listMessages(id)
     activeId.value = id
-    messages.value = list.map((m) => ({
-      id: m.id,
-      role: m.role as 'user' | 'assistant',
-      content: m.content,
-      imageUrl: parsePayloadImageUrl(m.payload),
-    }))
+    rememberActive(id)
+    let prevImageUrl: string | undefined
+    messages.value = list.map((m): ChatMsg => {
+      const role = m.role as 'user' | 'assistant'
+      const item: ChatMsg = {
+        id: m.id,
+        role,
+        content: m.content,
+        imageUrl: parsePayloadImageUrl(m.payload),
+      }
+      if (role === 'user') {
+        prevImageUrl = item.imageUrl
+      } else if (prevImageUrl) {
+        // 历史消息：跟在带图消息后的助手回复视为解答类回答
+        item.fromQuestion = true
+        prevImageUrl = undefined
+      }
+      return item
+    })
   }
 
   function parsePayloadImageUrl(payload: string | null): string | undefined {
@@ -68,6 +95,7 @@ export const useAgentStore = defineStore('agent', () => {
     conversations.value = conversations.value.filter((c) => c.id !== id)
     if (activeId.value === id) {
       activeId.value = null
+      rememberActive(null)
       messages.value = []
     }
   }
@@ -77,9 +105,25 @@ export const useAgentStore = defineStore('agent', () => {
    */
   function startNew() {
     activeId.value = null
+    rememberActive(null)
     messages.value = []
     error.value = ''
     pendingImage.value = ''
+  }
+
+  /**
+   * 刷新后恢复上次会话：本地记录的会话仍存在则重新加载，否则静默回到新对话
+   */
+  async function restoreLastConversation() {
+    const saved = localStorage.getItem(ACTIVE_KEY)
+    if (!saved) {
+      return
+    }
+    try {
+      await openConversation(Number(saved))
+    } catch {
+      rememberActive(null)
+    }
   }
 
   /**
@@ -114,7 +158,7 @@ export const useAgentStore = defineStore('agent', () => {
     }
     const imageUrl = pendingImage.value || undefined
     messages.value.push({ role: 'user', content: text, imageUrl })
-    messages.value.push({ role: 'assistant', content: '', streaming: true })
+    messages.value.push({ role: 'assistant', content: '', streaming: true, fromQuestion: !!imageUrl })
     streaming.value = true
     pendingImage.value = ''
     agentSocket.sendMessage({
@@ -191,6 +235,7 @@ export const useAgentStore = defineStore('agent', () => {
     openConversation,
     removeConversation,
     startNew,
+    restoreLastConversation,
     uploadPendingImage,
     clearPendingImage,
     send,

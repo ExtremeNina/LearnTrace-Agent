@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { nextTick, onMounted, ref, watch } from 'vue'
-import { ArrowUp, Plus, Square, X } from 'lucide-vue-next'
+import { ArrowUp, Check, Copy, Plus, RefreshCw, Share2, Sparkles, Square, ThumbsDown, ThumbsUp, Volume2, X } from 'lucide-vue-next'
 import { useAgentStore } from '../stores/agent'
 import { renderMarkdown } from '../utils/markdown'
 
@@ -11,9 +11,27 @@ const agent = useAgentStore()
 const draft = ref('')
 const scrollBox = ref<HTMLElement | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
+/** 刚完成复制的消息下标（短暂显示对勾反馈） */
+const copiedIndex = ref<number | null>(null)
 
-onMounted(() => {
+async function copyMessage(index: number, content: string) {
+  try {
+    await navigator.clipboard.writeText(content)
+    copiedIndex.value = index
+    setTimeout(() => {
+      if (copiedIndex.value === index) {
+        copiedIndex.value = null
+      }
+    }, 1500)
+  } catch {
+    // 剪贴板不可用（非安全上下文等）时静默忽略
+  }
+}
+
+onMounted(async () => {
   agent.ensureSocketConnected()
+  // 刷新后恢复到上次的会话（本地无记录或会话已删除则保持新对话）
+  await agent.restoreLastConversation()
 })
 
 watch(
@@ -67,7 +85,15 @@ function onSend() {
       </div>
 
       <div v-else class="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-6">
-        <div v-for="(msg, i) in agent.messages" :key="i" class="flex" :class="msg.role === 'user' ? 'justify-end' : 'justify-start'">
+        <div v-for="(msg, i) in agent.messages" :key="i" class="flex gap-2" :class="msg.role === 'user' ? 'justify-end' : 'justify-start'">
+          <!-- AI 标识小图标：仅助手消息显示 -->
+          <div
+            v-if="msg.role === 'assistant'"
+            class="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary-soft text-primary"
+            title="学迹 AI"
+          >
+            <Sparkles :size="14" />
+          </div>
           <div
             class="max-w-[85%] rounded-2xl px-4 py-2.5 text-[15px] leading-7"
             :class="msg.role === 'user'
@@ -83,6 +109,41 @@ function onSend() {
             <!-- 助手消息：Markdown + 公式渲染；用户消息：纯文本 -->
             <template v-if="msg.role === 'assistant'">
               <div class="markdown-body" v-html="renderMarkdown(msg.content)"></div>
+
+              <!-- 动作条：复制可用，其余为占位 -->
+              <div v-if="!msg.streaming" class="mt-2.5 flex items-center gap-0.5 text-ink-2">
+                <button
+                  class="flex h-7 w-7 items-center justify-center rounded-md hover:bg-line/60 hover:text-ink"
+                  :title="copiedIndex === i ? '已复制' : '复制'"
+                  @click="copyMessage(i, msg.content)"
+                >
+                  <Check v-if="copiedIndex === i" :size="15" class="text-primary" />
+                  <Copy v-else :size="15" />
+                </button>
+                <button class="flex h-7 w-7 items-center justify-center rounded-md hover:bg-line/60 hover:text-ink" title="重新生成（开发中）">
+                  <RefreshCw :size="15" />
+                </button>
+                <button class="flex h-7 w-7 items-center justify-center rounded-md hover:bg-line/60 hover:text-ink" title="有帮助（开发中）">
+                  <ThumbsUp :size="15" />
+                </button>
+                <button class="flex h-7 w-7 items-center justify-center rounded-md hover:bg-line/60 hover:text-ink" title="没帮助（开发中）">
+                  <ThumbsDown :size="15" />
+                </button>
+                <button class="flex h-7 w-7 items-center justify-center rounded-md hover:bg-line/60 hover:text-ink" title="朗读（开发中）">
+                  <Volume2 :size="15" />
+                </button>
+                <button class="flex h-7 w-7 items-center justify-center rounded-md hover:bg-line/60 hover:text-ink" title="分享（开发中）">
+                  <Share2 :size="15" />
+                </button>
+              </div>
+
+              <!-- 解答类回答：保存引导 -->
+              <p
+                v-if="msg.fromQuestion && !msg.streaming"
+                class="mt-2.5 rounded-xl bg-panel px-3 py-2 text-[13px] leading-5 text-ink-2"
+              >
+                这道题如果值得整理，回复「保存」，我会把它收进你的拍照记录，方便考前集中复习。
+              </p>
             </template>
             <template v-else>{{ msg.content }}</template>
             <span v-if="msg.streaming" class="animate-pulse text-primary">▍</span>
