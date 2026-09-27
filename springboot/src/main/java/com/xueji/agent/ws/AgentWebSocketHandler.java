@@ -74,7 +74,8 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
         }
 
         FluxGuard guard = new FluxGuard();
-        Disposable disposable = agentChatService.chat(userId, conversationId, content)
+        String imageUrl = node.path("imageUrl").asText("");
+        Disposable disposable = agentChatService.chat(userId, conversationId, content, imageUrl)
                 .doFinally(sig -> {
                     // 服务端事件流已包含 STOP，这里只做守卫清理
                     activeTurns.remove(conversationId);

@@ -42,13 +42,13 @@ mybatis-plus:
     cache-enabled: false
     jdbc-type-for-null: 'null'
 
-# 阿里云 OSS（切片三视频/图片上传用，密钥后置填写）
+# 阿里云 OSS：密钥通过环境变量注入，禁止提交到 git（PRD §21）
 ali-oss:
-  endpoint: 'oss-cn-hangzhou.aliyuncs.com'
-  accessKey: ''
-  secretKey: ''
-  bucketName: 'xueji'
-  domain: ''
+  endpoint: ${OSS_ENDPOINT:oss-cn-hangzhou.aliyuncs.com}
+  accessKey: ${OSS_ACCESS_KEY:}
+  secretKey: ${OSS_SECRET_KEY:}
+  bucketName: ${OSS_BUCKET:jj-fruit-store}
+  domain: ${OSS_DOMAIN:}
 
 server:
   port: 9090

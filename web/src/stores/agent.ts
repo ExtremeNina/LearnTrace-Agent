@@ -1,18 +1,20 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import * as conversationApi from '../api/conversation'
+import { uploadImage } from '../api/upload'
 import type { ConversationInfo } from '../types/api'
 import type { ServerMessage } from '../types/ws'
 import * as agentSocket from '../ws/agentSocket'
 import { useAuthStore } from './auth'
 
 /**
- * 对话区一条消息（streaming = 助手回复生成中）
+ * 对话区一条消息（streaming = 助手回复生成中；imageUrl = 用户消息附图）
  */
 export interface ChatMsg {
   id?: number
   role: 'user' | 'assistant'
   content: string
+  imageUrl?: string
   streaming?: boolean
 }
 
@@ -21,6 +23,9 @@ export const useAgentStore = defineStore('agent', () => {
   const activeId = ref<number | null>(null)
   const messages = ref<ChatMsg[]>([])
   const streaming = ref(false)
+  const uploading = ref(false)
+  /** 输入框上方待发送的图片（已上传到 OSS 的 URL），对应截图的预览位 */
+  const pendingImage = ref('')
   const error = ref('')
 
   async function loadConversations() {
@@ -38,7 +43,24 @@ export const useAgentStore = defineStore('agent', () => {
   async function openConversation(id: number) {
     const list = await conversationApi.listMessages(id)
     activeId.value = id
-    messages.value = list.map((m) => ({ id: m.id, role: m.role as 'user' | 'assistant', content: m.content }))
+    messages.value = list.map((m) => ({
+      id: m.id,
+      role: m.role as 'user' | 'assistant',
+      content: m.content,
+      imageUrl: parsePayloadImageUrl(m.payload),
+    }))
+  }
+
+  function parsePayloadImageUrl(payload: string | null): string | undefined {
+    if (!payload) {
+      return undefined
+    }
+    try {
+      const obj = JSON.parse(payload)
+      return typeof obj.imageUrl === 'string' ? obj.imageUrl : undefined
+    } catch {
+      return undefined
+    }
   }
 
   async function removeConversation(id: number) {
@@ -57,10 +79,30 @@ export const useAgentStore = defineStore('agent', () => {
     activeId.value = null
     messages.value = []
     error.value = ''
+    pendingImage.value = ''
   }
 
   /**
-   * 发送一条用户消息：无活动会话时先创建；经 WS 发起回合
+   * 上传图片（+ 按钮），成功后进入待发送预览位
+   */
+  async function uploadPendingImage(file: File) {
+    uploading.value = true
+    error.value = ''
+    try {
+      pendingImage.value = await uploadImage(file)
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : '图片上传失败'
+    } finally {
+      uploading.value = false
+    }
+  }
+
+  function clearPendingImage() {
+    pendingImage.value = ''
+  }
+
+  /**
+   * 发送一条用户消息：无活动会话时先创建；经 WS 发起回合（可附图）
    */
   async function send(text: string) {
     if (streaming.value) {
@@ -70,10 +112,17 @@ export const useAgentStore = defineStore('agent', () => {
     if (activeId.value === null) {
       await createConversation()
     }
-    messages.value.push({ role: 'user', content: text })
+    const imageUrl = pendingImage.value || undefined
+    messages.value.push({ role: 'user', content: text, imageUrl })
     messages.value.push({ role: 'assistant', content: '', streaming: true })
     streaming.value = true
-    agentSocket.sendMessage({ type: 'chat.send', conversationId: activeId.value!, content: text })
+    pendingImage.value = ''
+    agentSocket.sendMessage({
+      type: 'chat.send',
+      conversationId: activeId.value!,
+      content: text,
+      imageUrl,
+    })
   }
 
   function stop() {
@@ -134,12 +183,16 @@ export const useAgentStore = defineStore('agent', () => {
     activeId,
     messages,
     streaming,
+    uploading,
+    pendingImage,
     error,
     loadConversations,
     createConversation,
     openConversation,
     removeConversation,
     startNew,
+    uploadPendingImage,
+    clearPendingImage,
     send,
     stop,
     handleEvent,

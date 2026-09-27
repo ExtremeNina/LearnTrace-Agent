@@ -16,6 +16,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
 import java.util.Objects;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -68,6 +69,52 @@ public class AliUploadUtils {
         } finally {
             ossClient.shutdown();
         }
+    }
+
+    /** 对话图片允许的扩展名 */
+    private static final List<String> ALLOWED_IMAGE_EXT = List.of("jpg", "jpeg", "png", "gif", "webp", "bmp");
+
+    /**
+     * 对话图片上传：校验格式，按真实类型设置 Content-Type，返回完整访问 URL
+     */
+    public String uploadChatImage(final MultipartFile file, final String path) {
+        String ext = extractFileExtension(file.getOriginalFilename());
+        if (ext == null || !ALLOWED_IMAGE_EXT.contains(ext)) {
+            throw new UploadException("不支持的图片格式，仅支持 jpg / jpeg / png / gif / webp / bmp");
+        }
+        String fileName = UUID.randomUUID() + "." + ext;
+        String filePath = path + "/" + fileName;
+        OSS ossClient = new OSSClientBuilder().build(endpoint, accessKey, secretKey);
+        try (InputStream inputStream = file.getInputStream()) {
+            ObjectMetadata metadata = new ObjectMetadata();
+            metadata.setContentType(getContentTypeFromFileName(fileName));
+            metadata.setContentLength(file.getSize());
+            ossClient.putObject(bucketName, filePath, inputStream, metadata);
+        } catch (IOException e) {
+            log.error("图片上传到阿里云失败: {}", e.getMessage(), e);
+            throw new UploadException();
+        } finally {
+            ossClient.shutdown();
+        }
+        return buildPublicUrl(filePath);
+    }
+
+    /**
+     * 拼接对象公网访问 URL（endpoint 兼容带/不带协议两种写法）
+     */
+    private String buildPublicUrl(String filePath) {
+        String host = endpoint.replaceAll("^https?://", "");
+        return "https://" + bucketName + "." + host + "/" + filePath;
+    }
+
+    /**
+     * 从文件名提取小写扩展名（无扩展名返回 null）
+     */
+    private String extractFileExtension(String fileName) {
+        if (fileName == null || !fileName.contains(".")) {
+            return null;
+        }
+        return fileName.substring(fileName.lastIndexOf('.') + 1).toLowerCase();
     }
 
 //    public String uploadBase64(final String base64, String path) throws IOException {

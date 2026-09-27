@@ -5,6 +5,7 @@ export interface ClientMessage {
   type: 'chat.send' | 'chat.stop'
   conversationId: number
   content?: string
+  imageUrl?: string
 }
 
 export interface ServerMessage {

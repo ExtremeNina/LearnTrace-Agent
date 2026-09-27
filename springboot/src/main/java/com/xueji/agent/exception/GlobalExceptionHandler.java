@@ -24,6 +24,11 @@ public class GlobalExceptionHandler {
         return Result.error(e.getCode(), e.getMessage());
     }
 
+    @ExceptionHandler(UploadException.class)
+    public Result<Void> handleUpload(UploadException e) {
+        return Result.error(e.getCode(), e.getMessage());
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public Result<Void> handleValidation(MethodArgumentNotValidException e) {
         return Result.error(400, e.getBindingResult().getAllErrors().get(0).getDefaultMessage());

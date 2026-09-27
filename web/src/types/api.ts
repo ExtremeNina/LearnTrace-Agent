@@ -45,5 +45,6 @@ export interface MessageInfo {
   role: 'user' | 'assistant' | 'tool'
   msgType: string
   content: string
+  payload: string | null
   createdAt: string
 }

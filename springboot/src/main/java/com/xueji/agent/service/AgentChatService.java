@@ -10,7 +10,8 @@ public interface AgentChatService {
 
     /**
      * 发起一个回合：持久化用户消息 → 带历史上下文流式调用 LLM → 持久化回复。
-     * 事件序列：DELTA*（+ COMPLETE）+ STOP（任何路径都以 STOP 结尾）
+     * 事件序列：DELTA*（+ COMPLETE）+ STOP（任何路径都以 STOP 结尾）。
+     * imageUrl 非空时随 prompt 一并发给模型，并记入消息 payload
      */
-    Flux<ChatEvent> chat(Long userId, Long conversationId, String content);
+    Flux<ChatEvent> chat(Long userId, Long conversationId, String content, String imageUrl);
 }

@@ -1,14 +1,15 @@
 <script setup lang="ts">
 import { nextTick, onMounted, ref, watch } from 'vue'
-import { ArrowUp, Plus, Square } from 'lucide-vue-next'
+import { ArrowUp, Plus, Square, X } from 'lucide-vue-next'
 import { useAgentStore } from '../stores/agent'
 
 /**
- * Agent 主区（PRD §3.1 / §5）：消息流 + 底部输入框，流式渲染
+ * Agent 主区（PRD §3.1 / §5）：消息流 + 底部输入框，支持附图（截图预览位），流式渲染
  */
 const agent = useAgentStore()
 const draft = ref('')
 const scrollBox = ref<HTMLElement | null>(null)
+const fileInput = ref<HTMLInputElement | null>(null)
 
 onMounted(() => {
   agent.ensureSocketConnected()
@@ -23,13 +24,27 @@ watch(
   }
 )
 
+function onPickImage() {
+  fileInput.value?.click()
+}
+
+async function onFileChange(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (file) {
+    await agent.uploadPendingImage(file)
+  }
+}
+
 function onSend() {
   const text = draft.value.trim()
-  if (text === '' || agent.streaming) {
+  if ((text === '' && !agent.pendingImage) || agent.streaming || agent.uploading) {
     return
   }
+  const content = text || '请看这张图片'
   draft.value = ''
-  agent.send(text)
+  agent.send(content)
 }
 </script>
 
@@ -58,6 +73,12 @@ function onSend() {
               ? 'rounded-br-md bg-primary-soft text-ink'
               : 'rounded-bl-md border border-line bg-white text-ink'"
           >
+            <img
+              v-if="msg.imageUrl"
+              :src="msg.imageUrl"
+              alt="附图"
+              class="mb-2 max-h-48 rounded-xl border border-line"
+            />
             {{ msg.content }}<span v-if="msg.streaming" class="animate-pulse text-primary">▍</span>
           </div>
         </div>
@@ -68,6 +89,21 @@ function onSend() {
     <div class="shrink-0 px-4 pb-6">
       <div class="mx-auto w-full max-w-3xl">
         <div class="rounded-[24px] border border-line bg-white px-4 py-3.5 shadow-sm focus-within:border-ink-2/50">
+          <!-- 待发送图片预览位（截图中的图片位置） -->
+          <div v-if="agent.pendingImage" class="mb-3 flex">
+            <div class="relative">
+              <img :src="agent.pendingImage" alt="待发送图片" class="h-20 w-20 rounded-xl border border-line object-cover" />
+              <button
+                class="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-ink text-white"
+                title="移除图片"
+                @click="agent.clearPendingImage()"
+              >
+                <X :size="12" />
+              </button>
+            </div>
+          </div>
+          <p v-if="agent.uploading" class="mb-3 text-[13px] text-ink-2">图片上传中…</p>
+
           <textarea
             v-model="draft"
             rows="2"
@@ -79,7 +115,10 @@ function onSend() {
             <div class="flex items-center gap-3">
               <button
                 class="flex h-8 w-8 items-center justify-center rounded-full text-ink hover:bg-line/60"
-                title="添加附件"
+                :class="agent.uploading ? 'animate-pulse text-ink-2' : ''"
+                title="添加图片"
+                :disabled="agent.uploading"
+                @click="onPickImage"
               >
                 <Plus :size="20" />
               </button>
@@ -88,7 +127,7 @@ function onSend() {
             <button
               v-if="!agent.streaming"
               class="flex h-9 w-9 items-center justify-center rounded-full bg-ink text-white transition-opacity hover:opacity-80 disabled:opacity-25"
-              :disabled="draft.trim() === ''"
+              :disabled="(draft.trim() === '' && !agent.pendingImage) || agent.uploading"
               @click="onSend"
             >
               <ArrowUp :size="18" />
@@ -105,5 +144,14 @@ function onSend() {
         </div>
       </div>
     </div>
+
+    <!-- 隐藏的图片选择器 -->
+    <input
+      ref="fileInput"
+      type="file"
+      accept="image/jpeg,image/png,image/gif,image/webp,image/bmp"
+      class="hidden"
+      @change="onFileChange"
+    />
   </div>
 </template>

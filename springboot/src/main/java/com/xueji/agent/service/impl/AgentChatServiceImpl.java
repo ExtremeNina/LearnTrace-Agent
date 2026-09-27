@@ -38,7 +38,7 @@ public class AgentChatServiceImpl implements AgentChatService {
     private MessageMapper messageMapper;
 
     @Override
-    public Flux<ChatEvent> chat(Long userId, Long conversationId, String content) {
+    public Flux<ChatEvent> chat(Long userId, Long conversationId, String content, String imageUrl) {
         Conversation conversation = conversationMapper.selectById(conversationId);
         if (conversation == null || !conversation.getUserId().equals(userId)) {
             throw new BusinessException(404, "会话不存在");
@@ -46,20 +46,29 @@ public class AgentChatServiceImpl implements AgentChatService {
 
         String turnId = "t_" + java.util.UUID.randomUUID().toString().substring(0, 8);
 
-        // 用户消息先落事实源（回合中途崩溃也不丢用户输入）
+        // 用户消息先落事实源（回合中途崩溃也不丢用户输入）；附图链接记入 payload
         Message userMessage = new Message()
                 .setConversationId(conversationId)
                 .setRole("user")
                 .setMsgType("text")
                 .setContent(content)
                 .setCreatedAt(LocalDateTime.now());
+        if (imageUrl != null && !imageUrl.isBlank()) {
+            userMessage.setPayload(cn.hutool.json.JSONUtil.createObj().set("imageUrl", imageUrl).toString());
+        }
         messageMapper.insert(userMessage);
+
+        // DeepSeek 平台 API 初期为纯文本（PRD §11 不引入多模态）：图片以链接形式附在 prompt 中
+        String promptContent = content;
+        if (imageUrl != null && !imageUrl.isBlank()) {
+            promptContent = content + "\n\n[用户附带了一张图片，链接: " + imageUrl + "]";
+        }
 
         StringBuilder answer = new StringBuilder();
         long[] savedMessageId = new long[1];
 
         Flux<ChatEvent> body = chatClient.prompt()
-                .user(content)
+                .user(promptContent)
                 // 会话 ID 经上下文传给 MessageChatMemoryAdvisor，自动注入历史并持久化本轮对话
                 .advisors(advisorSpec -> advisorSpec.param(ChatMemory.CONVERSATION_ID, String.valueOf(conversationId)))
                 .stream()
