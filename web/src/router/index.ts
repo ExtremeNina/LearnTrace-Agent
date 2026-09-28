@@ -25,6 +25,7 @@ const router = createRouter({
         { path: 'history', name: 'history', component: () => import('../views/History.vue') },
         // 切片二 / 三占位
         { path: 'courses', name: 'courses', component: () => import('../views/Courses.vue') },
+        { path: 'courses/:id', name: 'courseDetail', component: () => import('../views/CourseDetail.vue') },
         { path: 'questions', name: 'questions', component: () => import('../views/Questions.vue') },
         { path: 'notes', name: 'notes', component: () => import('../views/Notes.vue') },
       ],
