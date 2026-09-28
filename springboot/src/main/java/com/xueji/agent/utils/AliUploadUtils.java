@@ -87,6 +87,56 @@ public class AliUploadUtils {
     /** 对话图片允许的扩展名 */
     private static final List<String> ALLOWED_IMAGE_EXT = List.of("jpg", "jpeg", "png", "gif", "webp", "bmp");
 
+    /** 网课视频允许的扩展名 */
+    private static final List<String> ALLOWED_VIDEO_EXT = List.of("mp4", "mov", "mkv", "avi", "webm", "m4v");
+
+    /**
+     * 网课视频上传：校验格式，返回完整访问 URL
+     */
+    public String uploadVideo(final MultipartFile file, final String path) {
+        String ext = extractFileExtension(file.getOriginalFilename());
+        if (ext == null || !ALLOWED_VIDEO_EXT.contains(ext)) {
+            throw new UploadException("不支持的视频格式，仅支持 mp4 / mov / mkv / avi / webm / m4v");
+        }
+        try (InputStream inputStream = file.getInputStream()) {
+            String filePath = path + "/video." + ext;
+            ObjectMetadata metadata = new ObjectMetadata();
+            metadata.setContentType(getContentTypeFromFileName(filePath));
+            metadata.setContentLength(file.getSize());
+            putObject(filePath, inputStream, metadata);
+            return buildPublicUrl(filePath);
+        } catch (IOException e) {
+            log.error("视频上传到阿里云失败: {}", e.getMessage(), e);
+            throw new UploadException();
+        }
+    }
+
+    /**
+     * 本地文件上传（流水线产物：音频 / 抽帧图片），返回完整访问 URL
+     */
+    public String uploadLocalFile(final java.nio.file.Path file, final String keyPath) {
+        try (InputStream inputStream = java.nio.file.Files.newInputStream(file)) {
+            ObjectMetadata metadata = new ObjectMetadata();
+            metadata.setContentType(getContentTypeFromFileName(keyPath));
+            metadata.setContentLength(java.nio.file.Files.size(file));
+            putObject(keyPath, inputStream, metadata);
+            return buildPublicUrl(keyPath);
+        } catch (IOException e) {
+            log.error("本地文件上传到阿里云失败: {} -> {}", file, keyPath, e);
+            throw new UploadException();
+        }
+    }
+
+    private void putObject(String filePath, InputStream inputStream, ObjectMetadata metadata) {
+        OSS ossClient = new OSSClientBuilder().build(endpoint, accessKey, secretKey);
+        try {
+            ossClient.putObject(bucketName, filePath, inputStream, metadata);
+        } finally {
+            ossClient.shutdown();
+        }
+    }
+
+
     /**
      * 对话图片上传：校验格式，按真实类型设置 Content-Type，返回完整访问 URL
      */

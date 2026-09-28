@@ -19,10 +19,20 @@ spring:
       host: 127.0.0.1
       port: 6379
       password: ''
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:guest}
+    password: ${RABBITMQ_PASS:guest}
+    listener:
+      simple:
+        acknowledge-mode: manual
+        prefetch: 1
   servlet:
     multipart:
-      max-file-size: 10MB
-      max-request-size: 10MB
+      # PRD §21：视频上限 500MB（图片大小由业务层另行校验）
+      max-file-size: 500MB
+      max-request-size: 520MB
   datasource:
     url: jdbc:mysql://localhost:3306/xueji?useUnicode=true&serverTimezone=Asia/Shanghai&characterEncoding=utf-8&zeroDateTimeBehavior=convertToNull&autoReconnect=true&allowMultiQueries=true&useSSL=true
     username: root
