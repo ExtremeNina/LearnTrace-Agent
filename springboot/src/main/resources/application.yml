@@ -60,5 +60,11 @@ aliyun:
     secret-key: ${OSS_SECRET_KEY:}
     endpoint: ${OCR_ENDPOINT:ocr-api.cn-hangzhou.aliyuncs.com}
 
+# 百度 PaddleOCR（AI Studio 星河社区，PaddleOCR-VL 异步任务服务）
+paddle-ocr:
+  api-base: ${PADDLE_OCR_BASE:https://paddleocr.aistudio-app.com/api/v2/ocr}
+  token: ${PADDLE_OCR_TOKEN:}
+  model: ${PADDLE_OCR_MODEL:PaddleOCR-VL-1.6}
+
 server:
   port: 9090

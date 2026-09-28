@@ -1,7 +1,9 @@
 package com.xueji.agent.config;
 
 import com.xueji.agent.ai.memory.RedisChatMemoryRepository;
+import com.xueji.agent.ai.tool.AliyunOcrTool;
 import com.xueji.agent.ai.tool.OcrTool;
+import com.xueji.agent.ai.tool.PaddleOcrTool;
 import com.xueji.agent.ai.tool.QuestionSaveTool;
 import com.xueji.agent.service.QuestionService;
 import org.springframework.ai.chat.client.ChatClient;
@@ -41,6 +43,15 @@ public class SpringAIConfig {
     @Value("${aliyun.ocr.endpoint:ocr-api.cn-hangzhou.aliyuncs.com}")
     private String ocrEndpoint;
 
+    @Value("${paddle-ocr.api-base:https://paddleocr.aistudio-app.com/api/v2/ocr}")
+    private String paddleApiBase;
+
+    @Value("${paddle-ocr.token:}")
+    private String paddleToken;
+
+    @Value("${paddle-ocr.model:PaddleOCR-VL-1.6}")
+    private String paddleModel;
+
     @Bean
     public ChatMemoryRepository redisChatMemoryRepository(StringRedisTemplate stringRedisTemplate) {
         return new RedisChatMemoryRepository(stringRedisTemplate);
@@ -70,11 +81,20 @@ public class SpringAIConfig {
     }
 
     /**
-     * OCR 识别端：业务代码在推理前直接调用（前置流水线）
+     * OCR 识别端（前置流水线使用）：当前选用百度 PaddleOCR（PaddleOCR-VL，
+     * 输出结构化 Markdown，复杂版面 / 试卷还原好）。
      */
     @Bean
     public OcrTool ocrTool() {
-        return new OcrTool(ocrAccessKey, ocrSecretKey, ocrEndpoint);
+        return new PaddleOcrTool(paddleApiBase, paddleToken, paddleModel);
+    }
+
+    /**
+     * 阿里云读光 OCR 备选实现（快速纯文本），可通过切换 Bean 启用
+     */
+    @Bean
+    public OcrTool aliyunOcrTool() {
+        return new AliyunOcrTool(ocrAccessKey, ocrSecretKey, ocrEndpoint);
     }
 
     /**
