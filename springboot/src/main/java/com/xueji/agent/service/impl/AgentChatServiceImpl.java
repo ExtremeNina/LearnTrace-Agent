@@ -11,6 +11,7 @@ import com.xueji.agent.exception.BusinessException;
 import com.xueji.agent.mapper.ConversationMapper;
 import com.xueji.agent.mapper.MessageMapper;
 import com.xueji.agent.service.AgentChatService;
+import com.xueji.agent.service.ConversationService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -39,6 +40,9 @@ public class AgentChatServiceImpl implements AgentChatService {
 
     @Resource
     private MessageMapper messageMapper;
+
+    @Resource
+    private ConversationService conversationService;
 
     @Resource
     private OcrTool ocrTool;
@@ -81,6 +85,9 @@ public class AgentChatServiceImpl implements AgentChatService {
             userMessage.setPayload(payload.toString());
         }
         messageMapper.insert(userMessage);
+
+        // 会话仍是默认标题时，用首条用户消息生成可区分的标题（重名自动加序号）
+        conversationService.applyTitleFromFirstMessage(userId, conversationId, content);
 
         // DeepSeek 平台 API 初期为纯文本（PRD §11 不引入多模态）：题目文本以文字形式拼入 prompt
         String promptContent = content;

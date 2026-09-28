@@ -34,4 +34,9 @@ public interface ConversationService {
      * 删除会话及其消息（不删除学习资产）
      */
     void delete(Long userId, Long conversationId);
+
+    /**
+     * 会话仍为默认标题时，用首条用户消息生成标题（截断 + 与用户其他会话去重）
+     */
+    void applyTitleFromFirstMessage(Long userId, Long conversationId, String firstMessage);
 }

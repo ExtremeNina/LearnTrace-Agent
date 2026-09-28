@@ -18,6 +18,9 @@ public class ConversationServiceImpl implements ConversationService {
 
     private static final String DEFAULT_TITLE = "新对话";
 
+    /** 自动标题最大长度 */
+    private static final int MAX_TITLE_LEN = 20;
+
     @Resource
     private ConversationMapper conversationMapper;
 
@@ -80,5 +83,47 @@ public class ConversationServiceImpl implements ConversationService {
             throw new BusinessException(404, "会话不存在");
         }
         return conversation;
+    }
+
+    @Override
+    public void applyTitleFromFirstMessage(Long userId, Long conversationId, String firstMessage) {
+        Conversation conversation = conversationMapper.selectById(conversationId);
+        if (conversation == null || !conversation.getUserId().equals(userId)) {
+            return;
+        }
+        // 已有正式标题（非默认）的会话不再重命名
+        if (!DEFAULT_TITLE.equals(conversation.getTitle())) {
+            return;
+        }
+        String base = deriveTitle(firstMessage);
+        if (base.isBlank()) {
+            return;
+        }
+        // 与该用户其他会话的标题去重：重名追加序号（2）（3）…
+        List<Conversation> others = conversationMapper.selectList(new QueryWrapper<Conversation>()
+                .eq("user_id", userId)
+                .ne("id", conversationId));
+        java.util.Set<String> usedTitles = new java.util.HashSet<>();
+        for (Conversation other : others) {
+            usedTitles.add(other.getTitle());
+        }
+        String candidate = base;
+        int seq = 2;
+        while (usedTitles.contains(candidate)) {
+            candidate = base + "（" + seq + "）";
+            seq++;
+        }
+        rename(userId, conversationId, candidate);
+    }
+
+    /**
+     * 从首条消息提取标题：压平空白，截断到 20 字并加省略号
+     */
+    private String deriveTitle(String firstMessage) {
+        String text = firstMessage == null ? "" : firstMessage.replaceAll("\\s+", " ").trim();
+        if (text.length() > MAX_TITLE_LEN) {
+            text = text.substring(0, MAX_TITLE_LEN) + "…";
+        }
+        return text;
     }
 }

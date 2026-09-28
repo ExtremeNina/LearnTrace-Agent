@@ -134,4 +134,63 @@ class ConversationServiceImplTest {
         assertThat(chatMemory).isNotNull();
         assertThat(mock(ChatMemory.class)).isNotSameAs(chatMemory);
     }
+
+    // ---- 自动标题 ----
+
+    @Test
+    void titleShouldBeDerivedFromFirstMessageWhenDefault() {
+        Conversation conversation = ownedConversation().setTitle("新对话");
+        when(conversationMapper.selectById(CONV_ID)).thenReturn(conversation);
+        when(conversationMapper.selectList(any())).thenReturn(List.of());
+
+        service.applyTitleFromFirstMessage(USER_ID, CONV_ID, "帮我解一下这道导数题");
+
+        ArgumentCaptor<Conversation> captor = ArgumentCaptor.forClass(Conversation.class);
+        verify(conversationMapper).updateById(captor.capture());
+        assertThat(captor.getValue().getTitle()).isEqualTo("帮我解一下这道导数题");
+    }
+
+    @Test
+    void titleShouldTruncateLongMessage() {
+        when(conversationMapper.selectById(CONV_ID)).thenReturn(ownedConversation().setTitle("新对话"));
+        when(conversationMapper.selectList(any())).thenReturn(List.of());
+
+        service.applyTitleFromFirstMessage(USER_ID, CONV_ID, "这是一条特别长的消息内容远远超过二十个字的限制所以需要被截断处理");
+
+        ArgumentCaptor<Conversation> captor = ArgumentCaptor.forClass(Conversation.class);
+        verify(conversationMapper).updateById(captor.capture());
+        assertThat(captor.getValue().getTitle()).hasSize(21).endsWith("…");
+    }
+
+    @Test
+    void titleShouldAppendSeqSuffixWhenDuplicated() {
+        when(conversationMapper.selectById(CONV_ID)).thenReturn(ownedConversation().setTitle("新对话"));
+        Conversation other = new Conversation().setId(99L).setUserId(USER_ID).setTitle("帮我解一下这道导数题");
+        when(conversationMapper.selectList(any())).thenReturn(List.of(other));
+
+        service.applyTitleFromFirstMessage(USER_ID, CONV_ID, "帮我解一下这道导数题");
+
+        ArgumentCaptor<Conversation> captor = ArgumentCaptor.forClass(Conversation.class);
+        verify(conversationMapper).updateById(captor.capture());
+        assertThat(captor.getValue().getTitle()).isEqualTo("帮我解一下这道导数题（2）");
+    }
+
+    @Test
+    void titleShouldSkipWhenAlreadyRenamed() {
+        Conversation renamed = ownedConversation().setTitle("正式标题");
+        when(conversationMapper.selectById(CONV_ID)).thenReturn(renamed);
+
+        service.applyTitleFromFirstMessage(USER_ID, CONV_ID, "随便说点什么");
+
+        verify(conversationMapper, never()).updateById(any());
+    }
+
+    @Test
+    void titleShouldSkipWhenMessageBlank() {
+        when(conversationMapper.selectById(CONV_ID)).thenReturn(ownedConversation());
+
+        service.applyTitleFromFirstMessage(USER_ID, CONV_ID, "   ");
+
+        verify(conversationMapper, never()).updateById(any());
+    }
 }
