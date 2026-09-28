@@ -66,5 +66,14 @@ paddle-ocr:
   token: ${PADDLE_OCR_TOKEN:}
   model: ${PADDLE_OCR_MODEL:PaddleOCR-VL-1.6}
 
+# 阿里云百炼 Qwen-Audio 语音转写（网课流水线音频通道）
+qwen:
+  asr:
+    api-key: ${QWEN_ASR_API_KEY:}
+    base-url: ${QWEN_ASR_BASE_URL:https://ws-swm6f3vt0izc1plg.cn-beijing.maas.aliyuncs.com}
+    model: ${QWEN_ASR_MODEL:qwen-audio-3.1-asr-flash}
+    format: ${QWEN_ASR_FORMAT:wav}
+    sample-rate: ${QWEN_ASR_SAMPLE_RATE:16000}
+
 server:
   port: 9090

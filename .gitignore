@@ -21,3 +21,7 @@ web/dist/
 Thumbs.db
 *.local
 springboot/application-local.properties
+
+# ---- 含密钥的第三方 API 说明文件（禁止入库）----
+百度ocr.txt
+Qwen-Audio-3.1-ASR-Flash*.txt

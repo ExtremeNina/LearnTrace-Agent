@@ -4,6 +4,7 @@ import com.xueji.agent.ai.memory.RedisChatMemoryRepository;
 import com.xueji.agent.ai.tool.AliyunOcrTool;
 import com.xueji.agent.ai.tool.OcrTool;
 import com.xueji.agent.ai.tool.PaddleOcrTool;
+import com.xueji.agent.ai.tool.QwenAsrTool;
 import com.xueji.agent.ai.tool.QuestionSaveTool;
 import com.xueji.agent.service.QuestionService;
 import org.springframework.ai.chat.client.ChatClient;
@@ -52,6 +53,21 @@ public class SpringAIConfig {
     @Value("${paddle-ocr.model:PaddleOCR-VL-1.6}")
     private String paddleModel;
 
+    @Value("${qwen.asr.api-key:}")
+    private String qwenAsrApiKey;
+
+    @Value("${qwen.asr.base-url:https://ws-swm6f3vt0izc1plg.cn-beijing.maas.aliyuncs.com}")
+    private String qwenAsrBaseUrl;
+
+    @Value("${qwen.asr.model:qwen-audio-3.1-asr-flash}")
+    private String qwenAsrModel;
+
+    @Value("${qwen.asr.format:wav}")
+    private String qwenAsrFormat;
+
+    @Value("${qwen.asr.sample-rate:16000}")
+    private String qwenAsrSampleRate;
+
     @Bean
     public ChatMemoryRepository redisChatMemoryRepository(StringRedisTemplate stringRedisTemplate) {
         return new RedisChatMemoryRepository(stringRedisTemplate);
@@ -95,6 +111,14 @@ public class SpringAIConfig {
     @Bean
     public OcrTool aliyunOcrTool() {
         return new AliyunOcrTool(ocrAccessKey, ocrSecretKey, ocrEndpoint);
+    }
+
+    /**
+     * 语音转写工具：Qwen-Audio ASR-Flash（网课流水线音频通道，前置流水线调用）
+     */
+    @Bean
+    public QwenAsrTool qwenAsrTool() {
+        return new QwenAsrTool(qwenAsrBaseUrl, qwenAsrApiKey, qwenAsrModel, qwenAsrFormat, qwenAsrSampleRate);
     }
 
     /**
