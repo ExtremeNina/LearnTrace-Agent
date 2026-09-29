@@ -243,11 +243,14 @@ function startEdit() {
   if (!selectedDetail.value) {
     return
   }
-  if (editorRef.value) {
-    editorRef.value.innerHTML = editedHtmlByNote.get(selectedDetail.value.id) || detailToHtml(selectedDetail.value)
-    editorRef.value.focus()
-  }
+  // 先切编辑态让编辑器挂载，再在 nextTick 中灌入内容（此时 editorRef 才存在）
   editing.value = true
+  nextTick(() => {
+    if (editorRef.value) {
+      editorRef.value.innerHTML = editedHtmlByNote.get(selectedDetail.value!.id) || detailToHtml(selectedDetail.value!)
+      editorRef.value.focus()
+    }
+  })
 }
 
 async function saveEdit() {
