@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { nextTick, ref } from 'vue'
+import { nextTick, onMounted, ref } from 'vue'
 import { Download, PencilLine, ArrowLeft, CircleCheck, Bold, Italic, Underline, Paintbrush, Highlighter, Eraser, Save, X } from 'lucide-vue-next'
+import { useRoute } from 'vue-router'
 
 /**
  * 网课详情（PRD §4.1 资源详情页 + §3.2 时间戳同步观看）。
@@ -8,6 +9,16 @@ import { Download, PencilLine, ArrowLeft, CircleCheck, Bold, Italic, Underline, 
  * 时间戳点击 → 播放器 seek 对应秒数继续播放；编辑模式为富文本在线编辑（变相笔记）。
  */
 const videoRef = ref<HTMLVideoElement | null>(null)
+const route = useRoute()
+
+// 支持从笔记页时间戳跳转进入：/courses/1?t=08:24 → 加载后自动 seek
+onMounted(() => {
+  const t = route.query.t
+  if (t && videoRef.value) {
+    const seek = () => seekTo(String(t))
+    videoRef.value.addEventListener('loadedmetadata', seek, { once: true })
+  }
+})
 const activeTab = ref<'note' | 'chapters' | 'transcript'>('note')
 
 const course = {
