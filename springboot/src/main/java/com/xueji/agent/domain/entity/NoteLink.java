@@ -9,7 +9,7 @@ import lombok.experimental.Accessors;
 import java.time.LocalDateTime;
 
 /**
- * 知识联系（知识点页内跳转按钮：网课 / 题目 / 笔记）
+ * 知识联系（PRD §3.4）：笔记页内跳转按钮（网课 / 题目 / 其他笔记）
  */
 @Data
 @TableName("note_link")
@@ -31,6 +31,9 @@ public class NoteLink {
 
     /** 展示标题 */
     private String title;
+
+    /** 跳转时间（秒，仅网课知识联系使用） */
+    private Integer tsSec;
 
     private LocalDateTime createdAt;
 

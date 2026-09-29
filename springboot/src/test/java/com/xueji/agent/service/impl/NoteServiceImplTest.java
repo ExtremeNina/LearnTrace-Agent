@@ -1,0 +1,209 @@
+package com.xueji.agent.service.impl;
+
+import com.xueji.agent.domain.entity.Note;
+import com.xueji.agent.domain.entity.NoteLink;
+import com.xueji.agent.domain.vo.NoteTreeNodeVO;
+import com.xueji.agent.exception.BusinessException;
+import com.xueji.agent.mapper.CourseMapper;
+import com.xueji.agent.mapper.NoteLinkMapper;
+import com.xueji.agent.mapper.NoteMapper;
+import com.xueji.agent.mapper.QuestionRecordMapper;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+/**
+ * 笔记服务：分层树组装、5 层限制、环校验、知识联系
+ */
+@ExtendWith(MockitoExtension.class)
+class NoteServiceImplTest {
+
+    private static final Long USER_ID = 5L;
+
+    @Mock
+    private NoteMapper noteMapper;
+
+    @Mock
+    private NoteLinkMapper noteLinkMapper;
+
+    @Mock
+    private CourseMapper courseMapper;
+
+    @Mock
+    private QuestionRecordMapper questionRecordMapper;
+
+    @InjectMocks
+    private NoteServiceImpl service;
+
+    private Note node(long id, String title, int nodeType, Long parent) {
+        return new Note()
+                .setId(id)
+                .setUserId(USER_ID)
+                .setTitle(title)
+                .setNodeType(nodeType)
+                .setParentId(parent)
+                .setDeleted(0);
+    }
+
+    // ---- buildTree ----
+
+    @Test
+    void buildTreeShouldNestGroupsAndNotes() {
+        List<Note> all = List.of(
+                node(5, "数学", 1, null),
+                node(6, "大一上", 1, 5L),
+                node(7, "高等数学", 1, 6L),
+                node(11, "罗尔定理", 0, 7L),
+                node(1, "AI 笔记", 0, null));
+
+        List<NoteTreeNodeVO> tree = NoteServiceImpl.buildTree(all);
+
+        assertThat(tree).hasSize(2); // 数学 + 根目录的 AI 笔记
+        NoteTreeNodeVO math = tree.get(0).getTitle().equals("数学") ? tree.get(0) : tree.get(1);
+        assertThat(math.getChildren()).hasSize(1); // 大一上
+        NoteTreeNodeVO up1 = math.getChildren().get(0);
+        assertThat(up1.getChildren()).hasSize(1); // 高等数学
+        assertThat(up1.getChildren().get(0).getChildren()).hasSize(1); // 罗尔定理
+        assertThat(up1.getChildren().get(0).getChildren().get(0).getTitle()).isEqualTo("罗尔定理");
+    }
+
+    @Test
+    void buildTreeShouldMoveOrphansToRoot() {
+        List<Note> all = List.of(
+                node(11, "孤儿笔记", 0, 999L), // 父分组不存在
+                node(1, "AI 笔记", 0, null));
+
+        List<NoteTreeNodeVO> tree = NoteServiceImpl.buildTree(all);
+
+        assertThat(tree).hasSize(2); // 孤儿不丢弃，挂根目录
+    }
+
+    // ---- 层级限制 ----
+
+    @Test
+    void createGroupBeyondFiveLevelsShouldReject() {
+        // 五级链：5→6→7→8→9（均已 5 层），在第 5 层分组下再建分组会超过 5 层
+        List<Note> chain = List.of(
+                node(5, "L1", 1, null), node(6, "L2", 1, 5L), node(7, "L3", 1, 6L),
+                node(8, "L4", 1, 7L), node(9, "L5", 1, 8L));
+        for (Note n : chain) {
+            lenient().when(noteMapper.selectById(n.getId())).thenReturn(n);
+        }
+        // 5 层分组的子层级 = 6 > 5，应拒绝
+        assertThatThrownBy(() -> service.createGroup(USER_ID, 9L, "L6"))
+                .isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    void createGroupAtFourthLevelShouldPass() {
+        List<Note> chain = List.of(
+                node(5, "L1", 1, null), node(6, "L2", 1, 5L), node(7, "L3", 1, 6L),
+                node(8, "L4", 1, 7L));
+        for (Note n : chain) {
+            lenient().when(noteMapper.selectById(n.getId())).thenReturn(n);
+        }
+
+        service.createGroup(USER_ID, 8L, "L5");
+
+        ArgumentCaptor<Note> captor = ArgumentCaptor.forClass(Note.class);
+        verify(noteMapper).insert(captor.capture());
+        assertThat(captor.getValue().getTitle()).isEqualTo("L5");
+        assertThat(captor.getValue().getParentId()).isEqualTo(8L);
+    }
+
+    // ---- 移动 ----
+
+    @Test
+    void moveIntoOwnDescendantShouldReject() {
+        // 数学(5) 移动到 大一上(6)——6 是 5 的子分组，形成环
+        Note math = node(5, "数学", 1, null);
+        Note up1 = node(6, "大一上", 1, 5L);
+        List<Note> all = new ArrayList<>(List.of(math, up1));
+        Map<Long, List<Note>> byParent = new HashMap<>();
+        byParent.put(5L, new ArrayList<>(List.of(up1)));
+
+        when(noteMapper.selectById(5L)).thenReturn(math);
+        when(noteMapper.selectById(6L)).thenReturn(up1);
+        lenient().when(noteMapper.selectList(any())).thenReturn(all);
+
+        assertThatThrownBy(() -> service.move(USER_ID, 5L, 6L))
+                .isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    void moveDeepSubtreeBeyondLimitShouldReject() {
+        // 把子树高度 2 的"高等数学"(9) 移到已位于第 4 层的分组(8) 下 → 4+2 > 5
+        Note l1 = node(5, "L1", 1, null);
+        Note l2 = node(6, "L2", 1, 5L);
+        Note l3 = node(7, "L3", 1, 6L);
+        Note target = node(8, "L4分组", 1, 7L);
+        Note mathGroup = node(9, "高等数学", 1, 6L);
+        Note child = node(11, "罗尔定理", 0, 9L);
+        List<Note> all = new ArrayList<>(List.of(l1, l2, l3, target, mathGroup, child));
+
+        when(noteMapper.selectById(9L)).thenReturn(mathGroup);
+        when(noteMapper.selectById(7L)).thenReturn(l3);
+        when(noteMapper.selectById(8L)).thenReturn(target);
+        when(noteMapper.selectById(6L)).thenReturn(l2);
+        when(noteMapper.selectById(5L)).thenReturn(l1);
+        when(noteMapper.selectList(any())).thenReturn(all);
+
+        assertThatThrownBy(() -> service.move(USER_ID, 9L, 8L))
+                .isInstanceOf(BusinessException.class);
+    }
+
+    // ---- 知识联系 ----
+
+    @Test
+    void addLinkShouldResolveCourseTitle() {
+        Note boolNote = node(14, "布尔逻辑与逻辑门", 0, 10L);
+        when(noteMapper.selectById(14L)).thenReturn(boolNote);
+        com.xueji.agent.domain.entity.Course course = new com.xueji.agent.domain.entity.Course()
+                .setId(14L).setTitle("计算机科学 第 3 讲：布尔逻辑与逻辑门");
+        when(courseMapper.selectById(14L)).thenReturn(course);
+
+        service.addLink(USER_ID, 14L, "course", 14L, 258);
+
+        ArgumentCaptor<NoteLink> captor = ArgumentCaptor.forClass(NoteLink.class);
+        verify(noteLinkMapper).insert(captor.capture());
+        assertThat(captor.getValue().getTitle()).isEqualTo("计算机科学 第 3 讲：布尔逻辑与逻辑门");
+        assertThat(captor.getValue().getTsSec()).isEqualTo(258);
+        assertThat(captor.getValue().getNoteId()).isEqualTo(14L);
+    }
+
+    @Test
+    void addLinkShouldRejectUnknownType() {
+        Note boolNote = node(14, "布尔逻辑与逻辑门", 0, 10L);
+        when(noteMapper.selectById(14L)).thenReturn(boolNote);
+
+        assertThatThrownBy(() -> service.addLink(USER_ID, 14L, "video", 1L, null))
+                .isInstanceOf(BusinessException.class);
+        verify(noteLinkMapper, never()).insert(any(NoteLink.class));
+    }
+
+    @Test
+    void removeLinkShouldCheckOwnership() {
+        NoteLink foreign = new NoteLink().setId(1L).setNoteId(14L).setUserId(999L);
+        when(noteLinkMapper.selectById(1L)).thenReturn(foreign);
+
+        assertThatThrownBy(() -> service.removeLink(USER_ID, 14L, 1L))
+                .isInstanceOf(BusinessException.class);
+        verify(noteLinkMapper, never()).deleteById(1L);
+    }
+}

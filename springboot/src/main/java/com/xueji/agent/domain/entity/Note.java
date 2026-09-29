@@ -35,6 +35,9 @@ public class Note {
     /** 来源：手动创建 / 网课 AI 笔记 / Agent 生成 */
     private Integer sourceType;
 
+    /** 节点类型：0笔记 1分组（OneNote 式分层） */
+    private Integer nodeType;
+
     private Long courseId;
 
     /** 逻辑删除：0 否 / 1 是 */
