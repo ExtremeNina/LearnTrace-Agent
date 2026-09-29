@@ -17,7 +17,7 @@ public interface CourseService {
      * 上传网课视频：保存到本地临时目录、创建课程记录（PENDING）、投递处理消息。
      * 返回创建的课程（视频 URL 在流水线阶段补全）
      */
-    Course upload(Long userId, MultipartFile file, String title);
+    Course upload(Long userId, MultipartFile file, String title, String expectations);
 
     /**
      * 用户的网课列表（按创建时间倒序）

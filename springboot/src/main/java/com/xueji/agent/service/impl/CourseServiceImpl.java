@@ -9,6 +9,8 @@ import com.xueji.agent.exception.BusinessException;
 import com.xueji.agent.mapper.CourseFrameMapper;
 import com.xueji.agent.mapper.CourseMapper;
 import com.xueji.agent.mapper.CourseTranscriptSegmentMapper;
+import com.xueji.agent.mapper.NoteMapper;
+import com.xueji.agent.domain.entity.Note;
 import com.xueji.agent.service.CourseService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -42,10 +44,13 @@ public class CourseServiceImpl implements CourseService {
     private CourseFrameMapper frameMapper;
 
     @Resource
+    private NoteMapper noteMapper;
+
+    @Resource
     private RabbitTemplate rabbitTemplate;
 
     @Override
-    public Course upload(Long userId, MultipartFile file, String title) {
+    public Course upload(Long userId, MultipartFile file, String title, String expectations) {
         if (file == null || file.isEmpty()) {
             throw new BusinessException("请选择要上传的视频文件");
         }
@@ -72,6 +77,7 @@ public class CourseServiceImpl implements CourseService {
         Course course = new Course()
                 .setUserId(userId)
                 .setTitle(derivedTitle)
+                .setExpectations(expectations == null || expectations.isBlank() ? null : expectations.trim())
                 .setStatus("PENDING")
                 .setCreatedAt(LocalDateTime.now())
                 .setUpdatedAt(LocalDateTime.now());
@@ -104,11 +110,17 @@ public class CourseServiceImpl implements CourseService {
         List<CourseFrame> frames = frameMapper.selectList(new QueryWrapper<CourseFrame>()
                 .eq("course_id", courseId)
                 .orderByAsc("time_sec"));
+        Note aiNote = noteMapper.selectOne(new QueryWrapper<Note>()
+                .eq("course_id", courseId)
+                .eq("source_type", 1)
+                .orderByDesc("id")
+                .last("LIMIT 1"));
 
         Map<String, Object> result = new HashMap<>();
         result.put("course", course);
         result.put("transcript", transcript);
         result.put("frames", frames);
+        result.put("note", aiNote);
         return result;
     }
 

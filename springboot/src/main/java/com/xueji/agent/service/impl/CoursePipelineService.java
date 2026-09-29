@@ -2,6 +2,7 @@ package com.xueji.agent.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.xueji.agent.ai.tool.AsrSegment;
+import com.xueji.agent.ai.NoteGenerationService;
 import com.xueji.agent.ai.tool.OcrTool;
 import com.xueji.agent.ai.tool.QwenAsrTool;
 import com.xueji.agent.domain.entity.Course;
@@ -63,6 +64,9 @@ public class CoursePipelineService {
 
     @Resource
     private OcrTool ocrTool;
+
+    @Resource
+    private NoteGenerationService noteGenerationService;
 
     @Resource(name = "courseExecutor")
     private ThreadPoolExecutor courseExecutor;
@@ -188,10 +192,25 @@ public class CoursePipelineService {
                         + (transcriptError != null ? "（转写：" + transcriptError + "）" : ""));
                 return;
             }
-            course.setStatus("SUCCESS").setDuration(durationSec).setErrorMsg(null).setUpdatedAt(LocalDateTime.now());
+
+            // 7. 流水线末端 LLM：生成 AI 笔记并入库（失败不影响课程状态，仅记录原因）
+            String noteError = null;
+            try {
+                List<CourseTranscriptSegment> transcriptRows = transcriptMapper.selectList(
+                        new QueryWrapper<CourseTranscriptSegment>().eq("course_id", courseId).orderByAsc("sort"));
+                noteGenerationService.generateAndSaveNote(course, transcriptRows, frames, durationSec);
+            } catch (Exception e) {
+                noteError = truncate(e.getMessage());
+                log.warn("AI 笔记生成失败（课程处理仍为成功）, courseId={}", courseId, e);
+            }
+
+            course.setStatus("SUCCESS")
+                    .setErrorMsg(noteError == null ? null : "网课处理完成，但 AI 笔记生成失败：" + noteError)
+                    .setUpdatedAt(LocalDateTime.now());
             courseMapper.updateById(course);
-            log.info("网课流水线完成, courseId={}, 时长={}s, 帧数={}, 转写句数={}, 转写字数={}",
-                    courseId, durationSec, frames.size(), asrSegments == null ? 0 : asrSegments.size(), transcriptChars);
+            log.info("网课流水线完成, courseId={}, 时长={}s, 帧数={}, 转写句数={}, 转写字数={}, 笔记失败={}",
+                    courseId, durationSec, frames.size(), asrSegments == null ? 0 : asrSegments.size(),
+                    transcriptChars, noteError != null);
         } catch (Exception e) {
             log.error("网课流水线异常, courseId={}", courseId, e);
             markFailed(course, "处理异常：" + truncate(e.getMessage()));
