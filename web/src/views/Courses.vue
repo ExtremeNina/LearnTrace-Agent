@@ -1,79 +1,91 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { Plus, AlertCircle, LoaderCircle, RotateCcw, Search } from 'lucide-vue-next'
+import { Plus, AlertCircle, LoaderCircle, RotateCcw, Search, X } from 'lucide-vue-next'
+import { listCourses, uploadCourse, retryCourse } from '../api/course'
+import type { CourseInfo } from '../api/course'
 
 /**
- * 网课记录列表（PRD §3.2）：视频库式竖向卡片网格。
- * TODO(切片三)：数据接入后端 /courses 接口，当前为假数据审阅版。
+ * 网课记录列表（PRD §3.2）：视频库式竖向卡片网格 + 上传弹窗（含"您希望的内容"）。
+ * 数据来自后端 /courses；处理中的课程定时轮询状态。
  */
-interface CourseItem {
-  id: number
-  title: string
-  duration: string
-  size: string
-  status: 'SUCCESS' | 'PROCESSING' | 'FAILED'
-  date: string
-  chapters?: number
-  progress?: number
-  stage?: string
-  error?: string
-}
-
 const router = useRouter()
+const courses = ref<CourseInfo[]>([])
 const keyword = ref('')
 const statusFilter = ref<'ALL' | 'SUCCESS' | 'PROCESSING' | 'FAILED'>('ALL')
 
-const courses = ref<CourseItem[]>([
-  {
-    id: 1,
-    title: '高等数学（上）第 12 讲：微分中值定理',
-    duration: '1:47:32',
-    size: '486MB',
-    status: 'SUCCESS',
-    date: '2026-09-26 20:15',
-    chapters: 8,
-  },
-  {
-    id: 2,
-    title: '线性代数 第 3 讲：矩阵的秩与线性方程组',
-    duration: '1:22:10',
-    size: '372MB',
-    status: 'PROCESSING',
-    progress: 65,
-    stage: '关键帧 OCR 识别中（28/43）',
-    date: '2026-09-28 09:02',
-  },
-  {
-    id: 3,
-    title: '概率论 第 1 讲：随机事件与概率',
-    duration: '0:58:44',
-    size: '291MB',
-    status: 'FAILED',
-    date: '2026-09-28 08:47',
-    error: '语音转写服务超时，可重试处理',
-  },
-  {
-    id: 4,
-    title: '高等数学（上）第 11 讲：函数的单调性与极值',
-    duration: '1:51:05',
-    size: '502MB',
-    status: 'SUCCESS',
-    date: '2026-09-28 08:12',
-    chapters: 9,
-  },
-  {
-    id: 5,
-    title: '计算机科学 第 1 讲：计算机早期历史',
-    duration: '11:53',
-    size: '37MB',
-    status: 'SUCCESS',
-    date: '2026-09-28 07:30',
-    chapters: 6,
-  },
-])
+// 上传弹窗
+const showUpload = ref(false)
+const uploadFile = ref<File | null>(null)
+const uploadTitle = ref('')
+const uploadExpectations = ref('')
+const uploading = ref(false)
+const uploadError = ref('')
+const fileInput = ref<HTMLInputElement | null>(null)
 
-/** 相对时间（假数据审阅用） */
+let pollTimer: number | null = null
+
+async function load() {
+  courses.value = await listCourses()
+  schedulePollIfNeeded()
+}
+
+function schedulePollIfNeeded() {
+  if (pollTimer !== null) {
+    window.clearTimeout(pollTimer)
+    pollTimer = null
+  }
+  const processing = courses.value.some((c) => c.status === 'PENDING' || c.status === 'PROCESSING')
+  if (processing) {
+    pollTimer = window.setTimeout(async () => {
+      await load()
+    }, 8000)
+  }
+}
+
+onMounted(load)
+onUnmounted(() => {
+  if (pollTimer !== null) {
+    window.clearTimeout(pollTimer)
+  }
+})
+
+function openUpload() {
+  uploadFile.value = null
+  uploadTitle.value = ''
+  uploadExpectations.value = ''
+  uploadError.value = ''
+  showUpload.value = true
+}
+
+function onFileChange(e: Event) {
+  const input = e.target as HTMLInputElement
+  uploadFile.value = input.files?.[0] ?? null
+}
+
+async function submitUpload() {
+  if (!uploadFile.value) {
+    uploadError.value = '请选择视频文件'
+    return
+  }
+  uploading.value = true
+  uploadError.value = ''
+  try {
+    await uploadCourse(uploadFile.value, uploadTitle.value, uploadExpectations.value)
+    showUpload.value = false
+    await load()
+  } catch (e) {
+    uploadError.value = e instanceof Error ? e.message : '上传失败，请重试'
+  } finally {
+    uploading.value = false
+  }
+}
+
+async function retry(c: CourseInfo) {
+  await retryCourse(c.id)
+  await load()
+}
+
 function relativeTime(date: string): string {
   const then = new Date(date.replace(' ', 'T')).getTime()
   const diff = Date.now() - then
@@ -88,10 +100,20 @@ function relativeTime(date: string): string {
   if (hours < 24) {
     return hours + ' 小时前'
   }
-  const days = Math.floor(hours / 24)
-  return days + ' 天前'
+  return Math.floor(hours / 24) + ' 天前'
 }
 
+function formatDuration(sec: number | null | undefined): string {
+  if (!sec) {
+    return '--:--'
+  }
+  const h = Math.floor(sec / 3600)
+  const m = Math.floor((sec % 3600) / 60)
+  const s = sec % 60
+  const mm = String(m).padStart(2, '0')
+  const ss = String(s).padStart(2, '0')
+  return h > 0 ? `${h}:${mm}:${ss}` : `${m}:${ss}`
+}
 
 const generatedCount = computed(() => courses.value.filter((c) => c.status === 'SUCCESS').length)
 
@@ -107,17 +129,10 @@ const filtered = computed(() =>
   })
 )
 
-function openCourse(c: CourseItem) {
+function openCourse(c: CourseInfo) {
   if (c.status === 'SUCCESS') {
     router.push(`/courses/${c.id}`)
   }
-}
-
-function retry(c: CourseItem) {
-  // TODO(切片三)：调 POST /courses/{id}/retry
-  c.status = 'PROCESSING'
-  c.progress = 5
-  c.stage = '排队等待处理'
 }
 </script>
 
@@ -132,13 +147,13 @@ function retry(c: CourseItem) {
             {{ courses.length }} 个网课 · {{ generatedCount }} 个已生成
           </span>
         </h1>
-        <button class="flex items-center gap-1.5 rounded-xl bg-primary px-3.5 py-2 text-[14px] text-white hover:opacity-90">
+        <button class="flex items-center gap-1.5 rounded-xl bg-primary px-3.5 py-2 text-[14px] text-white hover:opacity-90" @click="openUpload">
           <Plus :size="16" />
           上传视频
         </button>
       </div>
 
-      <!-- 过滤行：搜索 + 状态标签 -->
+      <!-- 过滤行 -->
       <div class="mt-5 flex flex-wrap items-center gap-3">
         <div class="relative">
           <Search :size="15" class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-2" />
@@ -176,42 +191,41 @@ function retry(c: CourseItem) {
           :class="c.status === 'SUCCESS' ? 'cursor-pointer hover:shadow-md' : 'opacity-95'"
           @click="openCourse(c)"
         >
-          <!-- 缩略图 -->
           <div class="relative aspect-video bg-gradient-to-br from-panel to-primary-soft">
-            <div class="flex h-full items-center justify-center">
+            <video
+              v-if="c.videoOssKey"
+              :src="c.videoOssKey"
+              preload="metadata"
+              muted
+              class="h-full w-full object-cover"
+            />
+            <div v-else class="flex h-full items-center justify-center">
               <span class="text-[26px] font-semibold text-ink-2/30">{{ c.title.slice(0, 2) }}</span>
             </div>
             <span class="absolute bottom-1.5 right-1.5 rounded-md bg-black/60 px-1.5 py-0.5 text-[11px] text-white">
-              {{ c.duration }}
+              {{ formatDuration(c.duration) }}
             </span>
           </div>
 
-          <!-- 信息区 -->
           <div class="px-3.5 py-3">
             <p class="line-clamp-2 min-h-[42px] text-[14px] leading-5 text-ink">{{ c.title }}</p>
 
-            <!-- 成功 -->
             <div v-if="c.status === 'SUCCESS'" class="mt-2.5 flex items-center justify-between text-[12px] text-ink-2">
               <span>本地上传</span>
-              <span>{{ relativeTime(c.date) }}</span>
+              <span>{{ relativeTime(c.updatedAt) }}</span>
             </div>
 
-            <!-- 处理中 -->
-            <div v-else-if="c.status === 'PROCESSING'" class="mt-2.5">
+            <div v-else-if="c.status === 'PROCESSING' || c.status === 'PENDING'" class="mt-2.5">
               <div class="flex items-center gap-1.5 text-[12px] text-amber-600">
                 <LoaderCircle :size="13" class="animate-spin" />
-                <span class="truncate">{{ c.stage }}</span>
-              </div>
-              <div class="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-line">
-                <div class="h-full rounded-full bg-amber-500" :style="{ width: c.progress + '%' }" />
+                <span class="truncate">{{ c.status === 'PENDING' ? '排队等待处理' : '流水线处理中' }}</span>
               </div>
             </div>
 
-            <!-- 失败 -->
             <div v-else class="mt-2.5">
               <div class="flex items-start gap-1.5 text-[12px] text-red-500">
                 <AlertCircle :size="13" class="mt-0.5 shrink-0" />
-                <span class="line-clamp-2">{{ c.error }}</span>
+                <span class="line-clamp-2">{{ c.errorMsg }}</span>
               </div>
               <button
                 class="mt-1.5 flex items-center gap-1 text-[12px] text-ink-2 hover:text-primary"
@@ -231,5 +245,64 @@ function retry(c: CourseItem) {
         <p class="mt-1 text-[12px] text-ink-2">调整筛选条件，或点击右上角上传新视频</p>
       </div>
     </div>
+
+    <!-- 上传弹窗 -->
+    <template v-if="showUpload">
+      <div class="fixed inset-0 z-40 bg-black/40" @click="showUpload = false" />
+      <div class="fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-line bg-white p-6 shadow-xl">
+        <div class="flex items-center justify-between">
+          <h2 class="text-[16px] font-semibold text-ink">上传网课</h2>
+          <button class="flex h-8 w-8 items-center justify-center rounded-lg text-ink-2 hover:bg-line/60" @click="showUpload = false">
+            <X :size="16" />
+          </button>
+        </div>
+
+        <div class="mt-4 flex flex-col gap-4">
+          <div>
+            <label class="mb-1 block text-[12px] text-ink-2">视频文件（mp4 / mov / mkv / avi / webm，≤500MB）</label>
+            <button
+              class="flex w-full items-center justify-between rounded-xl border border-line px-3 py-2.5 text-left text-[13px] hover:border-primary"
+              @click="fileInput?.click()"
+            >
+              <span class="truncate" :class="uploadFile ? 'text-ink' : 'text-ink-2'">
+                {{ uploadFile ? uploadFile.name : '选择视频文件' }}
+              </span>
+            </button>
+            <input ref="fileInput" type="file" accept="video/mp4,video/quicktime,video/x-matroska,video/x-msvideo,video/webm" class="hidden" @change="onFileChange" />
+          </div>
+
+          <div>
+            <label class="mb-1 block text-[12px] text-ink-2">标题（可选，默认取文件名）</label>
+            <input
+              v-model="uploadTitle"
+              type="text"
+              class="w-full rounded-xl border border-line px-3 py-2 text-[13px] outline-none focus:border-primary"
+              placeholder="例如：计算机科学 第 4 讲"
+            />
+          </div>
+
+          <div>
+            <label class="mb-1 block text-[12px] text-ink-2">您希望的内容（可选）</label>
+            <textarea
+              v-model="uploadExpectations"
+              rows="3"
+              class="w-full resize-none rounded-xl border border-line px-3 py-2 text-[13px] leading-6 outline-none focus:border-primary"
+              placeholder="告诉 AI 你希望这份笔记突出什么。例如：我不太理解 HashMap 的作用，笔记里请重点展开它的原理与使用场景"
+            />
+          </div>
+
+          <p v-if="uploadError" class="text-[12px] text-red-600">{{ uploadError }}</p>
+
+          <button
+            class="rounded-xl bg-primary py-2.5 text-[14px] text-white hover:opacity-90 disabled:opacity-50"
+            :disabled="uploading || !uploadFile"
+            @click="submitUpload"
+          >
+            {{ uploading ? '上传中（视频较大时请耐心等待）…' : '上传并开始处理' }}
+          </button>
+          <p class="text-center text-[12px] text-ink-2">上传后自动进入流水线：转写语音、识别画面关键帧、生成 AI 笔记</p>
+        </div>
+      </div>
+    </template>
   </div>
 </template>
