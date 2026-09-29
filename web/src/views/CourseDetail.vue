@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { Download, ArrowLeft, CircleCheck, AlertCircle, LoaderCircle } from 'lucide-vue-next'
+import { Download, ArrowLeft, CircleCheck, LoaderCircle } from 'lucide-vue-next'
 import { getCourseDetail } from '../api/course'
 import type { CourseDetailData } from '../api/course'
 import { renderMarkdown } from '../utils/markdown'
 
 /**
  * 网课详情（PRD §4.1 + §3.2 时间戳同步观看）：
- * 播放器（OSS 直链）+ AI 笔记 / 转写对照 / 关键帧识别 三标签，时间戳点击 seek。
+ * 笔记在左（宽）、视频在右（窄）；三标签：AI 笔记 / 转写对照 / 关键帧识别。
  */
 const route = useRoute()
 const courseId = Number(route.params.id)
@@ -35,18 +35,18 @@ onMounted(async () => {
   }
 })
 
+function parseTs(ts: string): number {
+  const parts = ts.split(':').map(Number)
+  return parts.length === 3
+    ? parts[0] * 3600 + parts[1] * 60 + parts[2]
+    : parts[0] * 60 + parts[1]
+}
+
 function seekTo(sec: number) {
   if (videoRef.value) {
     videoRef.value.currentTime = sec
     videoRef.value.play()
   }
-}
-
-function parseTs(ts: string): number {
-  const parts = ts.split(":").map(Number)
-  return parts.length === 3
-    ? parts[0] * 3600 + parts[1] * 60 + parts[2]
-    : parts[0] * 60 + parts[1]
 }
 
 function formatTs(sec: number): string {
@@ -65,9 +65,34 @@ function formatSize(bytes: number | null | undefined): string {
   return Math.round(bytes / 1024 / 1024) + 'MB'
 }
 
-const noteHtml = computed(() =>
-  data.value?.note ? renderMarkdown(data.value.note.content) : ''
-)
+/**
+ * 块级空行归一化：LLM 输出的标题 / 列表前常缺空行，
+ * 不补空行的话 Markdown 会把它们当普通段落渲染（# 与 - 直接显示、右边界参差）
+ */
+function normalizeBlocks(md: string): string {
+  return md
+    .replace(/(?<=\S)\n(#{1,6} )/g, '\n\n$1')
+    .replace(/(?<=\S)\n(- )/g, '\n\n$1')
+}
+
+/**
+ * 笔记渲染：归一化 → Markdown+KaTeX → [mm:ss] 时间戳转为可点击胶囊
+ */
+const noteHtml = computed(() => {
+  const note = data.value?.note
+  if (!note) {
+    return ''
+  }
+  return renderMarkdown(normalizeBlocks(note.content))
+    .replace(/\[(\d{1,2}:[0-5]\d(?::\d{2})?)\]/g, '<span class="ts-chip" data-ts="$1">$1</span>')
+})
+
+function onNoteClick(e: MouseEvent) {
+  const chip = (e.target as HTMLElement).closest('[data-ts]')
+  if (chip) {
+    seekTo(parseTs(chip.getAttribute('data-ts') || ''))
+  }
+}
 
 function onTabChange(tab: 'note' | 'transcript' | 'frames') {
   activeTab.value = tab
@@ -76,7 +101,7 @@ function onTabChange(tab: 'note' | 'transcript' | 'frames') {
 
 <template>
   <div class="h-full overflow-y-auto">
-    <div class="mx-auto max-w-5xl px-4 py-6">
+    <div class="mx-auto max-w-6xl px-4 py-6">
       <!-- 加载 / 错误 -->
       <div v-if="loading" class="flex h-64 items-center justify-center text-[14px] text-ink-2">加载中…</div>
       <div v-else-if="error" class="flex h-64 items-center justify-center text-[14px] text-red-500">{{ error }}</div>
@@ -109,9 +134,64 @@ function onTabChange(tab: 'note' | 'transcript' | 'frames') {
           </div>
         </div>
 
-        <div class="mt-5 flex flex-col gap-5 lg:flex-row">
-          <!-- 左：播放器 + 期望 -->
-          <div class="w-full shrink-0 lg:w-[46%]">
+        <div class="mt-5 flex flex-col-reverse gap-5 lg:h-[calc(100%-72px)] lg:flex-row">
+          <!-- 左：AI 笔记（主区，宽） -->
+          <div class="flex min-w-0 flex-1 flex-col">
+            <div class="flex shrink-0 gap-1 rounded-xl bg-panel p-1">
+              <button
+                v-for="tab in [
+                  { key: 'note', label: 'AI 笔记' },
+                  { key: 'transcript', label: '转写对照' },
+                  { key: 'frames', label: '关键帧识别' },
+                ]"
+                :key="tab.key"
+                class="flex-1 rounded-lg py-1.5 text-[14px] transition-colors"
+                :class="activeTab === tab.key ? 'bg-white font-medium text-ink shadow-sm' : 'text-ink-2 hover:text-ink'"
+                @click="onTabChange(tab.key as 'note' | 'transcript' | 'frames')"
+              >
+                {{ tab.label }}
+              </button>
+            </div>
+
+            <div class="mt-4 min-h-0 flex-1 overflow-y-auto lg:pr-2">
+              <!-- AI 笔记 -->
+              <div v-if="activeTab === 'note'" class="note-view rounded-2xl border border-line bg-white p-6 text-[14px] leading-7 text-ink" v-html="noteHtml" @click="onNoteClick" />
+
+              <!-- 转写对照 -->
+              <div v-else-if="activeTab === 'transcript'" class="flex flex-col gap-3 rounded-2xl border border-line bg-white p-6">
+                <div v-for="seg in data.transcript" :key="seg.id" class="flex gap-3 text-[14px] leading-7">
+                  <button class="shrink-0 pt-0.5 text-[12px] text-primary hover:underline" @click="seekTo(seg.startSec)">
+                    {{ formatTs(seg.startSec) }}
+                  </button>
+                  <p class="text-ink">{{ seg.text }}</p>
+                </div>
+                <p v-if="data.transcript.length === 0" class="text-[13px] text-ink-2">未获得语音转写结果</p>
+              </div>
+
+              <!-- 关键帧识别 -->
+              <div v-else class="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                <div v-for="frame in data.frames" :key="frame.id" class="overflow-hidden rounded-2xl border border-line bg-white">
+                  <button class="relative block w-full" @click="seekTo(frame.timeSec)">
+                    <img :src="frame.ossKey" :alt="'第 ' + frame.timeSec + 's 画面'" class="aspect-video w-full object-cover" />
+                    <span class="absolute bottom-1.5 left-1.5 rounded-md bg-black/60 px-1.5 py-0.5 text-[11px] text-white">
+                      {{ formatTs(frame.timeSec) }}
+                    </span>
+                  </button>
+                  <div class="px-3.5 py-3">
+                    <p class="line-clamp-4 whitespace-pre-wrap text-[13px] leading-6 text-ink">
+                      {{ frame.ocrStatus === 'SUCCESS' ? frame.ocrText : '（该帧识别失败）' }}
+                    </p>
+                  </div>
+                </div>
+                <p v-if="data.frames.length === 0" class="col-span-full rounded-2xl border border-dashed border-line py-10 text-center text-[13px] text-ink-2">
+                  未获得关键帧识别结果
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <!-- 右：视频 + 期望（右对齐） -->
+          <div class="w-full shrink-0 lg:ml-auto lg:w-[340px] xl:w-[380px]">
             <div class="lg:sticky lg:top-0 lg:pb-4">
               <video
                 v-if="data.course.videoOssKey"
@@ -142,69 +222,58 @@ function onTabChange(tab: 'note' | 'transcript' | 'frames') {
               </div>
             </div>
           </div>
-
-          <!-- 右：标签内容 -->
-          <div class="min-w-0 flex-1">
-            <div class="flex gap-1 rounded-xl bg-panel p-1">
-              <button
-                v-for="tab in [
-                  { key: 'note', label: 'AI 笔记' },
-                  { key: 'transcript', label: '转写对照' },
-                  { key: 'frames', label: '关键帧识别' },
-                ]"
-                :key="tab.key"
-                class="flex-1 rounded-lg py-1.5 text-[14px] transition-colors"
-                :class="activeTab === tab.key ? 'bg-white font-medium text-ink shadow-sm' : 'text-ink-2 hover:text-ink'"
-                @click="onTabChange(tab.key as 'note' | 'transcript' | 'frames')"
-              >
-                {{ tab.label }}
-              </button>
-            </div>
-
-            <!-- AI 笔记 -->
-            <div v-if="activeTab === 'note'" class="mt-4 rounded-2xl border border-line bg-white p-5">
-              <div v-if="data.note" class="note-view text-[14px] leading-7 text-ink" v-html="noteHtml" />
-              <div v-else class="flex flex-col items-center gap-2 py-10 text-center">
-                <AlertCircle :size="22" class="text-ink-2/60" />
-                <p class="text-[14px] text-ink-2">
-                  {{ data.course.status === 'SUCCESS' ? 'AI 笔记生成失败：' + (data.course.errorMsg || '未知原因') : 'AI 笔记将在流水线处理完成后生成' }}
-                </p>
-              </div>
-            </div>
-
-            <!-- 转写对照 -->
-            <div v-else-if="activeTab === 'transcript'" class="mt-4 flex flex-col gap-3 rounded-2xl border border-line bg-white p-5">
-              <div v-for="seg in data.transcript" :key="seg.id" class="flex gap-3 text-[14px] leading-7">
-                <button class="shrink-0 pt-0.5 text-[12px] text-primary hover:underline" @click="seekTo(seg.startSec)">
-                  {{ formatTs(seg.startSec) }}
-                </button>
-                <p class="text-ink">{{ seg.text }}</p>
-              </div>
-              <p v-if="data.transcript.length === 0" class="text-[13px] text-ink-2">未获得语音转写结果</p>
-            </div>
-
-            <!-- 关键帧识别 -->
-            <div v-else class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div v-for="frame in data.frames" :key="frame.id" class="overflow-hidden rounded-2xl border border-line bg-white">
-                <button class="relative block w-full" @click="seekTo(frame.timeSec)">
-                  <img :src="frame.ossKey" :alt="'第 ' + frame.timeSec + 's 画面'" class="aspect-video w-full object-cover" />
-                  <span class="absolute bottom-1.5 left-1.5 rounded-md bg-black/60 px-1.5 py-0.5 text-[11px] text-white">
-                    {{ formatTs(frame.timeSec) }}
-                  </span>
-                </button>
-                <div class="px-3.5 py-3">
-                  <p class="line-clamp-4 whitespace-pre-wrap text-[13px] leading-6 text-ink">
-                    {{ frame.ocrStatus === 'SUCCESS' ? frame.ocrText : '（该帧识别失败）' }}
-                  </p>
-                </div>
-              </div>
-              <p v-if="data.frames.length === 0" class="col-span-full rounded-2xl border border-dashed border-line py-10 text-center text-[13px] text-ink-2">
-                未获得关键帧识别结果
-              </p>
-            </div>
-          </div>
         </div>
       </template>
     </div>
   </div>
 </template>
+
+<style scoped>
+.note-view :deep(h1),
+.note-view :deep(h2),
+.note-view :deep(h3) {
+  font-weight: 600;
+  font-size: 15px;
+  margin: 1.25rem 0 0.5rem;
+}
+.note-view :deep(h1) {
+  font-size: 17px;
+}
+.note-view :deep(h1:first-child),
+.note-view :deep(h2:first-child),
+.note-view :deep(h3:first-child) {
+  margin-top: 0;
+}
+.note-view :deep(ul) {
+  list-style: disc;
+  padding-left: 1.4rem;
+  margin: 0.25rem 0 0.75rem;
+}
+.note-view :deep(ol) {
+  list-style: decimal;
+  padding-left: 1.4rem;
+  margin: 0.25rem 0 0.75rem;
+}
+.note-view :deep(li) {
+  margin: 0.25rem 0;
+}
+.note-view :deep(hr) {
+  margin: 1rem 0;
+  border-color: #e5e7eb;
+}
+.note-view :deep(.ts-chip) {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.25rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 0.375rem;
+  background: #eff6ff;
+  color: #2563eb;
+  font-size: 12px;
+  cursor: pointer;
+  vertical-align: middle;
+}
+.note-view :deep(.ts-chip:hover) {
+  text-decoration: underline;
+}
+</style>
