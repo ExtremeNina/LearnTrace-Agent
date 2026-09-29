@@ -191,7 +191,7 @@ function onTabChange(tab: 'note' | 'transcript' | 'frames') {
           </div>
 
           <!-- 右：视频 + 期望（右对齐） -->
-          <div class="w-full shrink-0 lg:ml-auto lg:w-[340px] xl:w-[380px]">
+          <div class="course-video-col w-full shrink-0">
             <div class="lg:sticky lg:top-0 lg:pb-4">
               <video
                 v-if="data.course.videoOssKey"
@@ -229,6 +229,13 @@ function onTabChange(tab: 'note' | 'transcript' | 'frames') {
 </template>
 
 <style scoped>
+@media (min-width: 64rem) {
+  .course-video-col {
+    width: 360px;
+    margin-left: auto;
+  }
+}
+
 .note-view :deep(h1),
 .note-view :deep(h2),
 .note-view :deep(h3) {
