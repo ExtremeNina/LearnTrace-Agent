@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { Download, ArrowLeft, CircleCheck, AlertCircle, LoaderCircle } from 'lucide-vue-next'
 import { getCourseDetail } from '../api/course'
@@ -65,27 +65,12 @@ function formatSize(bytes: number | null | undefined): string {
   return Math.round(bytes / 1024 / 1024) + 'MB'
 }
 
-const noteHtml = ref('')
-const noteLoadedFor = ref<number | null>(null)
-
-function ensureNoteHtml() {
-  const note = data.value?.note
-  if (note && noteLoadedFor.value !== note.id) {
-    noteHtml.value = renderMarkdown(note.content)
-    noteLoadedFor.value = note.id
-  }
-}
+const noteHtml = computed(() =>
+  data.value?.note ? renderMarkdown(data.value.note.content) : ''
+)
 
 function onTabChange(tab: 'note' | 'transcript' | 'frames') {
   activeTab.value = tab
-  if (tab === 'note') {
-    nextTickTick()
-  }
-}
-
-function nextTickTick() {
-  // ensureNoteHtml 在 tab 切换到笔记时执行（v-html 内容依赖）
-  ensureNoteHtml()
 }
 </script>
 
