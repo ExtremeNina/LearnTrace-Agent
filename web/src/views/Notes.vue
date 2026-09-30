@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import DOMPurify from 'dompurify'
 import {
   Bold, Italic, Underline, Paintbrush, Highlighter, Eraser, Save, X,
-  NotebookPen, Download, PencilLine, Sparkles,
+  NotebookPen, Download, PencilLine,
   ArrowLeft, FolderPlus, FolderInput, FolderTree,
 } from 'lucide-vue-next'
 import TreeNode from '../components/notes/TreeNode.vue'
@@ -561,10 +561,6 @@ const groupPathOptions = computed(() => {
             <p class="text-[12px] text-ink-2">{{ selectedNote.source }} · 更新于 {{ selectedNote.updatedAt }}</p>
           </div>
           <div class="ml-auto flex shrink-0 items-center gap-2">
-            <button class="flex items-center gap-1.5 rounded-xl border border-line px-3 py-1.5 text-[13px] text-ink hover:bg-panel">
-              <Sparkles :size="15" />
-              AI 润色
-            </button>
             <button
               class="flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-[13px] hover:bg-panel"
               :class="editing ? 'border-primary text-primary' : 'border-line text-ink'"
