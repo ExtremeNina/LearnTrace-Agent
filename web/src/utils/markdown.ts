@@ -20,9 +20,12 @@ export function renderMarkdown(source: string): string {
   if (!source) {
     return ''
   }
-  // 防御：历史消息中存在 "##标题" 粘连形式（# 后无空格），CommonMark 不识别为标题，
-  // 渲染前统一补空格，避免 # 号原样显示
-  const normalized = source.replace(/^(#{1,6})(?=\S)/gm, '$1 ')
+  // 防御：历史消息中的格式粘连（新输出已由提示词约束），渲染前统一规整：
+  // 1) 行首 "##标题" 补空格；2) 行中 "正文###标题" 断行；3) "…；-列表项" 粘连断行
+  const normalized = source
+    .replace(/^(#{1,6})(?=\S)/gm, '$1 ')
+    .replace(/(?<=\S)(#{1,6})(?=[^\s#])/g, '\n$1 ')
+    .replace(/(?<=[一-龥，。；：,;:])\s*-(?=\S)/g, '\n- ')
   const html = marked.parse(normalized, { async: false }) as string
   return DOMPurify.sanitize(html)
 }
