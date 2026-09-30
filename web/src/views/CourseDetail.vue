@@ -8,7 +8,7 @@ import { renderMarkdown } from '../utils/markdown'
 
 /**
  * 网课详情（PRD §4.1 + §3.2 时间戳同步观看）：
- * 笔记在左（宽）、视频在右（窄）；三标签：AI 笔记 / 转写对照 / 关键帧识别。
+ * 笔记在左（宽，整页左对齐不留白）、视频在右（宽列，方便观看）；三标签：AI 笔记 / 转写对照 / 关键帧识别。
  */
 const route = useRoute()
 const courseId = Number(route.params.id)
@@ -101,7 +101,7 @@ function onTabChange(tab: 'note' | 'transcript' | 'frames') {
 
 <template>
   <div class="h-full overflow-y-auto">
-    <div class="mx-auto max-w-6xl px-4 py-6">
+    <div class="px-4 py-6">
       <!-- 加载 / 错误 -->
       <div v-if="loading" class="flex h-64 items-center justify-center text-[14px] text-ink-2">加载中…</div>
       <div v-else-if="error" class="flex h-64 items-center justify-center text-[14px] text-red-500">{{ error }}</div>
@@ -231,7 +231,7 @@ function onTabChange(tab: 'note' | 'transcript' | 'frames') {
 <style scoped>
 @media (min-width: 64rem) {
   .course-video-col {
-    width: 360px;
+    width: 560px;
     margin-left: auto;
   }
 }
