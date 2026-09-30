@@ -325,6 +325,15 @@ function onNoteClick(e: MouseEvent) {
   }
 }
 
+function onMoveChange(e: Event) {
+  const v = (e.target as HTMLSelectElement).value
+  if (!selectedDetail.value) {
+    return
+  }
+  const pid = v === '0' ? null : Number(v.slice(1))
+  moveNote(selectedDetail.value.id, pid).then(loadTree)
+}
+
 function onTabChange(tab: 'note' | 'links') {
   activeTab.value = tab
 }
@@ -338,15 +347,15 @@ const linkError = ref('')
 const courseOptions = ref<CourseInfo[]>([])
 const noteOptions = computed(() => {
   const options: { id: number; title: string }[] = []
-  const walk = (nodes: NoteTreeNodeInfo[]) => {
+  const walk = (nodes: TreeNodeData[]) => {
     for (const n of nodes) {
-      if (n.type === 'note' && n.id !== selectedDetail.value?.id) {
-        options.push({ id: n.id, title: n.title })
+      if (n.type === 'note' && n.noteId !== undefined && n.noteId !== selectedDetail.value?.id) {
+        options.push({ id: n.noteId, title: n.name })
       }
       walk(n.children ?? [])
     }
   }
-  walk(tree.value as unknown as NoteTreeNodeInfo[])
+  walk(tree.value)
   return options
 })
 
@@ -404,11 +413,11 @@ onMounted(async () => {
 
 // ---- 移动到分组下拉选项 ----
 const groupPathOptions = computed(() => {
-  const options: { id: number; label: string; depth: number }[] = []
-  const walk = (nodes: NoteTreeNodeInfo[], depth: number, trail: string[]) => {
+  const options: { id: string; label: string; depth: number }[] = []
+  const walk = (nodes: TreeNodeData[], depth: number, trail: string[]) => {
     for (const n of nodes) {
       if (n.type === 'group') {
-        const trailNext = [...trail, n.title]
+        const trailNext = [...trail, n.name]
         options.push({ id: n.id, label: trailNext.join(' / '), depth })
         if (n.children && depth < MAX_LEVELS) {
           walk(n.children, depth + 1, trailNext)
@@ -416,7 +425,7 @@ const groupPathOptions = computed(() => {
       }
     }
   }
-  walk(tree.value as unknown as NoteTreeNodeInfo[], 1, [])
+  walk(tree.value, 1, [])
   return options
 })
 </script>
@@ -525,7 +534,7 @@ const groupPathOptions = computed(() => {
           <FolderInput :size="14" />
           <select
             class="ml-auto shrink-0 rounded-lg border border-line bg-white px-2 py-1 text-[12px] text-ink outline-none"
-            @change="(e) => { const v = Number((e.target as HTMLSelectElement).value); if (!isNaN(v)) moveNote(selectedNote!.id, v === 0 ? null : v).then(loadTree) }"
+            @change="onMoveChange"
           >
             <option value="" disabled selected>移动到分组…</option>
             <option value="0">（根目录）</option>
