@@ -21,9 +21,10 @@ export function renderMarkdown(source: string): string {
     return ''
   }
   // 防御：历史消息中的格式粘连（新输出已由提示词约束），渲染前统一规整：
-  // 1) 行首 "##标题" 补空格；2) 行中 "正文###标题" 断行；3) "…；-列表项" 粘连断行
+  // 1) 行首 "##标题" 补空格（前瞻排除更长 # 串与空白，避免回溯把 "## " 拆成 "# # "）；
+  // 2) 行中 "正文###标题" 断行；3) "…；-列表项" 粘连断行
   const normalized = source
-    .replace(/^(#{1,6})(?=\S)/gm, '$1 ')
+    .replace(/^(#{1,6})(?=\r?$|[^\s#])/gm, '$1 ')
     .replace(/(?<=\S)(#{1,6})(?=[^\s#])/g, '\n$1 ')
     .replace(/(?<=[一-龥，。；：,;:])\s*-(?=\S)/g, '\n- ')
   const html = marked.parse(normalized, { async: false }) as string
@@ -38,7 +39,9 @@ export function renderNoteHtml(md: string): string {
   if (!md) {
     return ''
   }
+  // Windows 文本框编辑会把换行存成 CRLF，渲染前统一为 LF
   const normalized = md
+    .replace(/\r\n/g, '\n')
     .replace(/(?<=\S)\n(#{1,6} )/g, '\n\n$1')
     .replace(/(?<=\S)\n(- )/g, '\n\n$1')
   return renderMarkdown(normalized).replace(
