@@ -56,6 +56,7 @@ export interface QuestionRecordInfo {
   imageOssKey: string
   ocrText: string | null
   questionText: string | null
+  subject: string | null
   userAnswer: string | null
   correctAnswer: string | null
   analysis: string | null

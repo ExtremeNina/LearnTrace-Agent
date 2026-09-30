@@ -15,4 +15,6 @@ public class QuestionUpdateDto {
     private String correctAnswer;
 
     private String userNote;
+
+    private String subject;
 }

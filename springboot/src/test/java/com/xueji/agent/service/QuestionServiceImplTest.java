@@ -72,7 +72,7 @@ class QuestionServiceImplTest {
                 questionMessageOf(10L, "{\"imageUrl\":\"https://oss.example.com/chat/a.png\"}")));
         when(questionRecordMapper.insert(any(QuestionRecord.class))).thenReturn(1);
 
-        boolean saved = service.saveFromConversation(1L, 100L, "已知函数 f(x)=ln(x+1)-x", "极大值为 0", null);
+        boolean saved = service.saveFromConversation(1L, 100L, "已知函数 f(x)=ln(x+1)-x", "极大值为 0", null, "数学");
 
         assertTrue(saved);
         ArgumentCaptor<QuestionRecord> captor = ArgumentCaptor.forClass(QuestionRecord.class);
@@ -81,6 +81,7 @@ class QuestionServiceImplTest {
         assertEquals(1L, record.getUserId());
         assertEquals("https://oss.example.com/chat/a.png", record.getImageOssKey());
         assertEquals("已知函数 f(x)=ln(x+1)-x", record.getQuestionText());
+        assertEquals("数学", record.getSubject());
         assertEquals("极大值为 0", record.getCorrectAnswer());
         assertEquals("SUCCESS", record.getAiStatus());
         assertEquals("SAVED", record.getRecordStatus());
@@ -91,7 +92,7 @@ class QuestionServiceImplTest {
         when(conversationMapper.selectById(100L)).thenReturn(conversationOf(1L));
         when(messageMapper.selectList(any())).thenReturn(List.of());
 
-        boolean saved = service.saveFromConversation(1L, 100L, "题目", "解答", null);
+        boolean saved = service.saveFromConversation(1L, 100L, "题目", "解答", null, null);
 
         assertFalse(saved);
         verify(questionRecordMapper, never()).insert(any(QuestionRecord.class));
@@ -99,7 +100,7 @@ class QuestionServiceImplTest {
 
     @Test
     void saveFromConversation_blankQuestion() {
-        boolean saved = service.saveFromConversation(1L, 100L, "  ", "解答", null);
+        boolean saved = service.saveFromConversation(1L, 100L, "  ", "解答", null, null);
 
         assertFalse(saved);
         verify(questionRecordMapper, never()).insert(any(QuestionRecord.class));
@@ -110,7 +111,7 @@ class QuestionServiceImplTest {
         when(conversationMapper.selectById(100L)).thenReturn(conversationOf(2L));
 
         assertThrows(BusinessException.class,
-                () -> service.saveFromConversation(1L, 100L, "题目", "解答", null));
+                () -> service.saveFromConversation(1L, 100L, "题目", "解答", null, null));
         verify(questionRecordMapper, never()).insert(any(QuestionRecord.class));
     }
 
@@ -121,7 +122,7 @@ class QuestionServiceImplTest {
                 new QuestionRecord().setId(12L).setUserId(1L),
                 new QuestionRecord().setId(3L).setUserId(1L)));
 
-        PageVO<QuestionRecord> result = service.listByUser(1L, null, 1, 10);
+        PageVO<QuestionRecord> result = service.listByUser(1L, null, null, 1, 10);
 
         assertEquals(12L, result.getTotal());
         assertEquals(10L, result.getSize());

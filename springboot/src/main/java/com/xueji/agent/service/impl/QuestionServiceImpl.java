@@ -39,7 +39,7 @@ public class QuestionServiceImpl implements QuestionService {
 
     @Override
     public boolean saveFromConversation(Long userId, Long conversationId,
-                                        String questionText, String correctAnswer, String analysis) {
+                                        String questionText, String correctAnswer, String analysis, String subject) {
         if (questionText == null || questionText.isBlank()) {
             return false;
         }
@@ -65,6 +65,7 @@ public class QuestionServiceImpl implements QuestionService {
                 .setUserId(userId)
                 .setImageOssKey(imageUrl)
                 .setQuestionText(questionText)
+                .setSubject(subject == null || subject.isBlank() ? null : subject.trim())
                 .setCorrectAnswer(correctAnswer)
                 .setAnalysis(analysis)
                 .setAiStatus("SUCCESS")
@@ -77,12 +78,15 @@ public class QuestionServiceImpl implements QuestionService {
     }
 
     @Override
-    public PageVO<QuestionRecord> listByUser(Long userId, String date, int page, int size) {
+    public PageVO<QuestionRecord> listByUser(Long userId, String date, String subject, int page, int size) {
         QueryWrapper<QuestionRecord> wrapper = new QueryWrapper<QuestionRecord>()
                 .eq("user_id", userId)
                 .eq("deleted", 0);
         if (date != null && !date.isBlank()) {
             wrapper.apply("DATE(created_at) = {0}", date);
+        }
+        if (subject != null && !subject.isBlank()) {
+            wrapper.eq("subject", subject);
         }
         long total = questionRecordMapper.selectCount(wrapper);
         int safePage = Math.max(page, 1);
@@ -112,6 +116,9 @@ public class QuestionServiceImpl implements QuestionService {
         }
         if (dto.getUserNote() != null) {
             record.setUserNote(dto.getUserNote());
+        }
+        if (dto.getSubject() != null) {
+            record.setSubject(dto.getSubject().isBlank() ? null : dto.getSubject().trim());
         }
         record.setUpdatedAt(LocalDateTime.now());
         questionRecordMapper.updateById(record);

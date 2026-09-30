@@ -33,9 +33,10 @@ public class CourseController {
     @PostMapping
     public Result<Course> upload(@RequestParam("file") MultipartFile file,
                                  @RequestParam(value = "title", required = false) String title,
+                                 @RequestParam(value = "subject", required = false) String subject,
                                  @RequestParam(value = "expectations", required = false) String expectations) {
         Long userId = UserUtils.getCurrentLoginId();
-        return Result.data(courseService.upload(userId, file, title, expectations));
+        return Result.data(courseService.upload(userId, file, title, subject, expectations));
     }
 
     /**

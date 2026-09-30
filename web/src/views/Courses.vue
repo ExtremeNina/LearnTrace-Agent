@@ -4,20 +4,26 @@ import { useRouter } from 'vue-router'
 import { Plus, AlertCircle, LoaderCircle, RotateCcw, Search, X } from 'lucide-vue-next'
 import { listCourses, uploadCourse, retryCourse } from '../api/course'
 import type { CourseInfo } from '../api/course'
+import { SUBJECTS } from '../constants/subjects'
 
 /**
  * 网课记录列表（PRD §3.2）：视频库式竖向卡片网格 + 上传弹窗（含"您希望的内容"）。
- * 数据来自后端 /courses；处理中的课程定时轮询状态。
+ * 数据来自后端 /courses；支持标题关键词、状态、日期与学科筛选，处理中的课程定时轮询状态。
  */
 const router = useRouter()
 const courses = ref<CourseInfo[]>([])
 const keyword = ref('')
 const statusFilter = ref<'ALL' | 'SUCCESS' | 'PROCESSING' | 'FAILED'>('ALL')
+/** 按日期筛选（yyyy-MM-dd），空为全部 */
+const dateFilter = ref('')
+/** 按学科筛选，空为全部 */
+const subjectFilter = ref('')
 
 // 上传弹窗
 const showUpload = ref(false)
 const uploadFile = ref<File | null>(null)
 const uploadTitle = ref('')
+const uploadSubject = ref('')
 const uploadExpectations = ref('')
 const uploading = ref(false)
 const uploadError = ref('')
@@ -53,6 +59,7 @@ onUnmounted(() => {
 function openUpload() {
   uploadFile.value = null
   uploadTitle.value = ''
+  uploadSubject.value = ''
   uploadExpectations.value = ''
   uploadError.value = ''
   showUpload.value = true
@@ -71,7 +78,7 @@ async function submitUpload() {
   uploading.value = true
   uploadError.value = ''
   try {
-    await uploadCourse(uploadFile.value, uploadTitle.value, uploadExpectations.value)
+    await uploadCourse(uploadFile.value, uploadTitle.value, uploadExpectations.value, uploadSubject.value)
     showUpload.value = false
     await load()
   } catch (e) {
@@ -123,6 +130,12 @@ const filtered = computed(() =>
       return false
     }
     if (keyword.value && !c.title.includes(keyword.value.trim())) {
+      return false
+    }
+    if (dateFilter.value && !c.createdAt.startsWith(dateFilter.value)) {
+      return false
+    }
+    if (subjectFilter.value && c.subject !== subjectFilter.value) {
       return false
     }
     return true
@@ -180,6 +193,25 @@ function openCourse(c: CourseInfo) {
             {{ f.label }}
           </button>
         </div>
+        <select
+          v-model="subjectFilter"
+          class="rounded-xl border border-line bg-white px-3 py-2 text-[13px] text-ink outline-none focus:border-primary"
+        >
+          <option value="">全部学科</option>
+          <option v-for="s in SUBJECTS" :key="s" :value="s">{{ s }}</option>
+        </select>
+        <input
+          v-model="dateFilter"
+          type="date"
+          class="rounded-xl border border-line bg-white px-3 py-2 text-[13px] text-ink outline-none focus:border-primary"
+        />
+        <button
+          v-if="dateFilter || subjectFilter"
+          class="rounded-xl px-2.5 py-2 text-[13px] text-ink-2 hover:bg-line/60 hover:text-ink"
+          @click="dateFilter = ''; subjectFilter = ''"
+        >
+          清除
+        </button>
       </div>
 
       <!-- 卡片网格 -->
@@ -211,7 +243,7 @@ function openCourse(c: CourseInfo) {
             <p class="line-clamp-2 min-h-[42px] text-[14px] leading-5 text-ink">{{ c.title }}</p>
 
             <div v-if="c.status === 'SUCCESS'" class="mt-2.5 flex items-center justify-between text-[12px] text-ink-2">
-              <span>本地上传</span>
+              <span>{{ c.subject || '本地上传' }}</span>
               <span>{{ relativeTime(c.updatedAt) }}</span>
             </div>
 
@@ -279,6 +311,17 @@ function openCourse(c: CourseInfo) {
               class="w-full rounded-xl border border-line px-3 py-2 text-[13px] outline-none focus:border-primary"
               placeholder="例如：计算机科学 第 4 讲"
             />
+          </div>
+
+          <div>
+            <label class="mb-1 block text-[12px] text-ink-2">学科（可选）</label>
+            <select
+              v-model="uploadSubject"
+              class="w-full rounded-xl border border-line bg-white px-3 py-2 text-[13px] text-ink outline-none focus:border-primary"
+            >
+              <option value="">不选择</option>
+              <option v-for="s in SUBJECTS" :key="s" :value="s">{{ s }}</option>
+            </select>
           </div>
 
           <div>

@@ -23,6 +23,9 @@ public class Course {
 
     private String title;
 
+    /** 学科（上传时选择） */
+    private String subject;
+
     /** 用户期望（上传时填写，注入笔记生成提示词） */
     private String expectations;
 

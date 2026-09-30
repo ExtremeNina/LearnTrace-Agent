@@ -28,11 +28,13 @@ public class QuestionSaveTool {
             String correctAnswer,
             @ToolParam(description = "错因分析；仅在确实识别并分析了用户错因时提供。若没有真实错因可分析（如未识别到用户作答），去掉「没有看到你的作答」这类对话式补充，此参数留空", required = false)
             String analysis,
+            @ToolParam(description = "题目所属学科，根据题目内容判断，如：数学 / 语文 / 英语 / 物理 / 化学 / 生物 / 历史 / 地理 / 政治 / 信息技术 / 其他", required = false)
+            String subject,
             ToolContext toolContext) {
         Long userId = ((Number) toolContext.getContext().get("userId")).longValue();
         Long conversationId = ((Number) toolContext.getContext().get("conversationId")).longValue();
         try {
-            boolean saved = questionService.saveFromConversation(userId, conversationId, questionText, correctAnswer, analysis);
+            boolean saved = questionService.saveFromConversation(userId, conversationId, questionText, correctAnswer, analysis, subject);
             log.info("保存题目工具执行完成, userId={}, conversationId={}, saved={}", userId, conversationId, saved);
             return saved ? "SAVE_SUCCESS" : "SAVE_NOT_FOUND";
         } catch (Exception e) {

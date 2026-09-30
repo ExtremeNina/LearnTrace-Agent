@@ -50,7 +50,7 @@ public class CourseServiceImpl implements CourseService {
     private RabbitTemplate rabbitTemplate;
 
     @Override
-    public Course upload(Long userId, MultipartFile file, String title, String expectations) {
+    public Course upload(Long userId, MultipartFile file, String title, String subject, String expectations) {
         if (file == null || file.isEmpty()) {
             throw new BusinessException("请选择要上传的视频文件");
         }
@@ -77,6 +77,7 @@ public class CourseServiceImpl implements CourseService {
         Course course = new Course()
                 .setUserId(userId)
                 .setTitle(derivedTitle)
+                .setSubject(subject == null || subject.isBlank() ? null : subject.trim())
                 .setExpectations(expectations == null || expectations.isBlank() ? null : expectations.trim())
                 .setStatus("PENDING")
                 .setCreatedAt(LocalDateTime.now())

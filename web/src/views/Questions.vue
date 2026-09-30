@@ -3,10 +3,11 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { Camera, ImageOff, Pencil, Trash2, X } from 'lucide-vue-next'
 import * as questionApi from '../api/question'
 import type { QuestionRecordInfo } from '../types/api'
+import { SUBJECTS } from '../constants/subjects'
 import { renderMarkdown } from '../utils/markdown'
 
 /**
- * 拍照记录（PRD §3.3）：题目分页列表（按日期筛选）、详情、编辑与删除
+ * 拍照记录（PRD §3.3）：题目分页列表（按日期与学科筛选）、详情、编辑与删除
  */
 const PAGE_SIZE = 10
 
@@ -18,6 +19,8 @@ const pages = ref(1)
 const total = ref(0)
 /** 按日期筛选（yyyy-MM-dd），空为全部 */
 const dateFilter = ref('')
+/** 按学科筛选，空为全部 */
+const subjectFilter = ref('')
 /** 当前查看 / 编辑的记录 */
 const active = ref<QuestionRecordInfo | null>(null)
 const editMode = ref(false)
@@ -26,6 +29,7 @@ const editForm = reactive({
   userAnswer: '',
   correctAnswer: '',
   userNote: '',
+  subject: '',
 })
 
 onMounted(() => load())
@@ -36,6 +40,7 @@ async function load() {
   try {
     const result = await questionApi.listQuestions({
       date: dateFilter.value || undefined,
+      subject: subjectFilter.value || undefined,
       page: page.value,
       size: PAGE_SIZE,
     })
@@ -49,14 +54,15 @@ async function load() {
   }
 }
 
-function onDateChange() {
+function onFilterChange() {
   page.value = 1
   load()
 }
 
-function clearDate() {
+function clearFilters() {
   dateFilter.value = ''
-  onDateChange()
+  subjectFilter.value = ''
+  onFilterChange()
 }
 
 function goPage(target: number) {
@@ -80,6 +86,7 @@ function startEdit() {
   editForm.userAnswer = active.value.userAnswer ?? ''
   editForm.correctAnswer = active.value.correctAnswer ?? ''
   editForm.userNote = active.value.userNote ?? ''
+  editForm.subject = active.value.subject ?? ''
   editMode.value = true
 }
 
@@ -133,23 +140,31 @@ const pageLabel = computed(() => `第 ${page.value} / ${pages.value} 页 · 共 
 <template>
   <div class="h-full overflow-y-auto">
     <div class="mx-auto max-w-3xl px-4 py-8">
-      <div class="flex items-center justify-between">
+      <div class="flex flex-wrap items-center justify-between gap-3">
         <h1 class="flex items-center gap-2 text-[18px] font-semibold">
           <Camera :size="20" class="text-ink-2" />
           拍照记录
         </h1>
-        <!-- 按日期筛选 -->
+        <!-- 按日期与学科筛选 -->
         <div class="flex items-center gap-2 text-[13px]">
+          <select
+            v-model="subjectFilter"
+            class="rounded-lg border border-line bg-white px-2.5 py-1.5 outline-none focus:border-primary"
+            @change="onFilterChange"
+          >
+            <option value="">全部学科</option>
+            <option v-for="s in SUBJECTS" :key="s" :value="s">{{ s }}</option>
+          </select>
           <input
             v-model="dateFilter"
             type="date"
             class="rounded-lg border border-line px-2.5 py-1.5 outline-none focus:border-primary"
-            @change="onDateChange"
+            @change="onFilterChange"
           />
           <button
-            v-if="dateFilter"
+            v-if="dateFilter || subjectFilter"
             class="rounded-lg px-2 py-1.5 text-ink-2 hover:bg-line/60 hover:text-ink"
-            @click="clearDate"
+            @click="clearFilters"
           >
             清除
           </button>
@@ -162,7 +177,7 @@ const pageLabel = computed(() => `第 ${page.value} / ${pages.value} 页 · 共 
 
       <!-- 空状态 -->
       <div v-else-if="records.length === 0" class="mt-8 rounded-xl border border-dashed border-line py-16 text-center">
-        <p class="text-[14px] text-ink-2">{{ dateFilter ? '该日期下没有保存过题目' : '还没有保存过题目' }}</p>
+        <p class="text-[14px] text-ink-2">{{ dateFilter || subjectFilter ? '该筛选条件下没有保存过题目' : '还没有保存过题目' }}</p>
         <p class="mt-1 text-[12px] text-ink-2">在对话里拍照发一道题，解答后回复「保存」即可收进这里</p>
       </div>
 
@@ -247,7 +262,10 @@ const pageLabel = computed(() => `第 ${page.value} / ${pages.value} 页 · 共 
               </button>
             </div>
           </div>
-          <p class="mt-1 text-[12px] text-ink-2">{{ formatTime(active.createdAt) }}</p>
+          <p class="mt-1 text-[12px] text-ink-2">
+            {{ formatTime(active.createdAt) }}
+            <span v-if="active.subject" class="ml-2 rounded-md bg-primary-soft px-1.5 py-0.5 text-primary">{{ active.subject }}</span>
+          </p>
 
           <img
             v-if="active.imageOssKey"
@@ -294,6 +312,16 @@ const pageLabel = computed(() => `第 ${page.value} / ${pages.value} 页 · 共 
           </div>
 
           <div class="mt-4 flex flex-col gap-4">
+            <label class="block">
+              <span class="mb-1 block text-[12px] text-ink-2">学科</span>
+              <select
+                v-model="editForm.subject"
+                class="w-full rounded-xl border border-line bg-white px-3 py-2 text-[14px] outline-none focus:border-primary"
+              >
+                <option value="">未分类</option>
+                <option v-for="s in SUBJECTS" :key="s" :value="s">{{ s }}</option>
+              </select>
+            </label>
             <label class="block">
               <span class="mb-1 block text-[12px] text-ink-2">题目</span>
               <textarea

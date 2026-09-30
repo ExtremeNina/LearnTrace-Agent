@@ -16,12 +16,12 @@ public interface QuestionService {
      * @return true 保存成功；false 当前会话没有可保存的拍照题目或内容不完整
      */
     boolean saveFromConversation(Long userId, Long conversationId,
-                                 String questionText, String correctAnswer, String analysis);
+                                 String questionText, String correctAnswer, String analysis, String subject);
 
     /**
-     * 当前用户的题目分页列表（新记录在前），可按日期（yyyy-MM-dd）筛选
+     * 当前用户的题目分页列表（新记录在前），可按日期（yyyy-MM-dd）与学科筛选
      */
-    PageVO<QuestionRecord> listByUser(Long userId, String date, int page, int size);
+    PageVO<QuestionRecord> listByUser(Long userId, String date, String subject, int page, int size);
 
     /**
      * 题目详情（校验归属，不存在或非本人返回 404）

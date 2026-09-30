@@ -4,7 +4,7 @@ import { request } from './http'
 /**
  * 拍照题目记录：分页列表、详情、编辑与删除
  */
-export function listQuestions(params: { date?: string; page: number; size: number }): Promise<PageInfo<QuestionRecordInfo>> {
+export function listQuestions(params: { date?: string; subject?: string; page: number; size: number }): Promise<PageInfo<QuestionRecordInfo>> {
   return request<PageInfo<QuestionRecordInfo>>({ method: 'GET', url: '/question/list', params })
 }
 
@@ -14,7 +14,7 @@ export function getQuestion(id: number): Promise<QuestionRecordInfo> {
 
 export function updateQuestion(
   id: number,
-  data: { questionText?: string; userAnswer?: string; correctAnswer?: string; userNote?: string }
+  data: { questionText?: string; userAnswer?: string; correctAnswer?: string; userNote?: string; subject?: string }
 ): Promise<QuestionRecordInfo> {
   return request<QuestionRecordInfo>({ method: 'PUT', url: `/question/${id}`, data })
 }

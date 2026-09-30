@@ -30,6 +30,9 @@ public class QuestionRecord {
     /** 整理后的题目文本 */
     private String questionText;
 
+    /** 学科（AI 保存时分类，可编辑） */
+    private String subject;
+
     /** 用户作答（OCR 识别 + 手动补充） */
     private String userAnswer;
 

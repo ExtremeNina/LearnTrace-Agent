@@ -4,6 +4,7 @@ export interface CourseInfo {
   id: number
   userId: number
   title: string
+  subject?: string | null
   expectations?: string | null
   videoOssKey?: string | null
   videoSize?: number | null
@@ -52,11 +53,14 @@ export function listCourses(): Promise<CourseInfo[]> {
   return request<CourseInfo[]>({ method: 'GET', url: '/courses' })
 }
 
-export function uploadCourse(file: File, title?: string, expectations?: string): Promise<CourseInfo> {
+export function uploadCourse(file: File, title?: string, expectations?: string, subject?: string): Promise<CourseInfo> {
   const form = new FormData()
   form.append('file', file)
   if (title) {
     form.append('title', title)
+  }
+  if (subject) {
+    form.append('subject', subject)
   }
   if (expectations) {
     form.append('expectations', expectations)

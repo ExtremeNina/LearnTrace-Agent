@@ -29,14 +29,16 @@ public class QuestionController {
     /**
      * 当前用户的拍照记录分页列表（新记录在前，每页默认 10 条）
      *
-     * @param date 可选，按日期筛选（yyyy-MM-dd）
+     * @param date    可选，按日期筛选（yyyy-MM-dd）
+     * @param subject 可选，按学科筛选
      */
     @GetMapping("/list")
     public Result<PageVO<QuestionRecord>> list(
             @RequestParam(required = false) String date,
+            @RequestParam(required = false) String subject,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int size) {
-        return Result.data(questionService.listByUser(StpUtil.getLoginIdAsLong(), date, page, size));
+        return Result.data(questionService.listByUser(StpUtil.getLoginIdAsLong(), date, subject, page, size));
     }
 
     /**
