@@ -224,6 +224,12 @@ function openCourse(c: CourseInfo) {
           @click="openCourse(c)"
         >
           <div class="relative aspect-video bg-gradient-to-br from-panel to-primary-soft">
+            <span
+              v-if="c.subject"
+              class="absolute left-1.5 top-1.5 z-10 rounded-md bg-black/60 px-1.5 py-0.5 text-[11px] text-white"
+            >
+              {{ c.subject }}
+            </span>
             <video
               v-if="c.videoOssKey"
               :src="c.videoOssKey"
@@ -243,7 +249,7 @@ function openCourse(c: CourseInfo) {
             <p class="line-clamp-2 min-h-[42px] text-[14px] leading-5 text-ink">{{ c.title }}</p>
 
             <div v-if="c.status === 'SUCCESS'" class="mt-2.5 flex items-center justify-between text-[12px] text-ink-2">
-              <span>{{ c.subject || '本地上传' }}</span>
+              <span>本地上传</span>
               <span>{{ relativeTime(c.updatedAt) }}</span>
             </div>
 

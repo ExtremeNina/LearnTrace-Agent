@@ -202,6 +202,12 @@ const pageLabel = computed(() => `第 ${page.value} / ${pages.value} 页 · 共 
             <p class="truncate text-[14px] text-ink">{{ excerpt(r.questionText) }}</p>
             <p class="mt-1.5 text-[12px] text-ink-2">{{ formatTime(r.createdAt) }}</p>
           </div>
+          <span
+            v-if="r.subject"
+            class="shrink-0 self-start rounded-md bg-primary-soft px-2 py-0.5 text-[11px] text-primary"
+          >
+            {{ r.subject }}
+          </span>
         </button>
       </div>
 
