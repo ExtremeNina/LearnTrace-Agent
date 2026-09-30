@@ -210,9 +210,6 @@ async function openNote(id: number) {
   selectedDetail.value = await getNoteDetail(id)
   selectedId.value = id
   activeTab.value = 'note'
-  if (selectedDetail.value.source === 'AI 生成') {
-    editedHtmlByNote.set(id, renderWithChips(selectedDetail.value))
-  }
 }
 
 function openLink(link: { linkType: string; targetId: number; tsSec?: number | null }) {
@@ -228,6 +225,10 @@ function openLink(link: { linkType: string; targetId: number; tsSec?: number | n
 // ---- 富文本编辑 ----
 const editing = ref(false)
 const editorRef = ref<HTMLDivElement | null>(null)
+/** AI 笔记的 Markdown 源码草稿（AI 笔记一律存 Markdown，富文本 HTML 会破坏详情页渲染与时间戳胶囊） */
+const mdDraft = ref('')
+
+const isAiNote = computed(() => selectedDetail.value?.source === 'AI 生成')
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -243,7 +244,12 @@ function startEdit() {
   if (!selectedDetail.value) {
     return
   }
-  // 先切编辑态让编辑器挂载，再在 nextTick 中灌入内容（此时 editorRef 才存在）
+  // AI 笔记：直接编辑 Markdown 源码；手动笔记：先切编辑态让富文本编辑器挂载，再在 nextTick 中灌入内容
+  if (selectedDetail.value.source === 'AI 生成') {
+    mdDraft.value = selectedDetail.value.content
+    editing.value = true
+    return
+  }
   editing.value = true
   nextTick(() => {
     if (editorRef.value) {
@@ -254,7 +260,14 @@ function startEdit() {
 }
 
 async function saveEdit() {
-  if (editorRef.value && selectedDetail.value) {
+  if (!selectedDetail.value) {
+    editing.value = false
+    return
+  }
+  if (selectedDetail.value.source === 'AI 生成') {
+    await updateNoteContent(selectedDetail.value.id, mdDraft.value)
+    selectedDetail.value.content = mdDraft.value
+  } else if (editorRef.value) {
     const html = editorRef.value.innerHTML
     await updateNoteContent(selectedDetail.value.id, html)
     editedHtmlByNote.set(selectedDetail.value.id, html)
@@ -565,7 +578,27 @@ const groupPathOptions = computed(() => {
         <div class="min-h-0 flex-1 overflow-y-auto">
           <!-- 笔记内容 -->
           <template v-if="activeTab === 'note'">
-            <div v-if="editing" class="ml-6 max-w-3xl px-4 pt-4">
+            <!-- AI 笔记：Markdown 源码编辑（存 Markdown，保证详情页渲染与时间戳胶囊一致） -->
+            <div v-if="editing && isAiNote" class="ml-6 max-w-3xl px-4 pt-4">
+              <div class="mb-3 flex flex-wrap items-center gap-1.5 rounded-xl border border-line bg-panel px-2.5 py-2">
+                <span class="px-1 text-[12px] text-ink-2">Markdown 源码编辑；[mm:ss] 时间戳保存后仍可点击跳转</span>
+                <span class="mx-1 h-5 w-px bg-line" />
+                <button class="flex items-center gap-1 rounded-lg bg-ink px-3 py-1.5 text-[13px] text-white hover:opacity-80" @click="saveEdit">
+                  <Save :size="14" />
+                  保存
+                </button>
+                <button class="flex items-center gap-1 rounded-lg border border-line px-3 py-1.5 text-[13px] text-ink-2 hover:bg-line/40" @click="cancelEdit">
+                  <X :size="14" />
+                  放弃
+                </button>
+              </div>
+              <textarea
+                v-model="mdDraft"
+                class="h-[60vh] w-full resize-y rounded-2xl border border-primary bg-white p-5 font-mono text-[13px] leading-7 text-ink outline-none"
+              ></textarea>
+            </div>
+
+            <div v-else-if="editing" class="ml-6 max-w-3xl px-4 pt-4">
               <div class="mb-3 flex flex-wrap items-center gap-1.5 rounded-xl border border-line bg-panel px-2.5 py-2">
                 <button class="flex h-8 w-8 items-center justify-center rounded-lg text-ink hover:bg-line/60" title="加粗" @mousedown.prevent @click="exec('bold')">
                   <Bold :size="15" />
