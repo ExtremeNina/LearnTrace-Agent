@@ -586,21 +586,21 @@ const groupPathOptions = computed(() => {
         <NotebookPen :size="40" class="text-ink-2/50" />
         <p class="text-[15px] text-ink-2">从左侧选择一个笔记页，或新建分组与笔记</p>
       </div>
-
-      <!-- 右：知识联系侧栏（桌面端常驻，移动端在正文下方折叠区） -->
-      <aside class="hidden w-80 shrink-0 flex-col overflow-y-auto border-l border-line px-4 py-4 lg:flex">
-        <LinkPanel
-          v-if="selectedDetail"
-          :note-id="selectedDetail.id"
-          :links="selectedDetail.links"
-          @changed="reloadDetail"
-          @jump="openLink"
-        />
-        <p v-else class="text-[12px] leading-5 text-ink-2">
-          选择一篇笔记后，在这里管理它的知识联系：关联讲到的网课片段、做过的题目、相关笔记，并可附一句关联说明。
-        </p>
-      </aside>
     </div>
+
+    <!-- 右：知识联系侧栏（桌面端常驻第三列，移动端在正文下方折叠区） -->
+    <aside class="hidden w-80 shrink-0 flex-col overflow-y-auto border-l border-line px-4 py-4 lg:flex">
+      <LinkPanel
+        v-if="selectedDetail"
+        :note-id="selectedDetail.id"
+        :links="selectedDetail.links"
+        @changed="reloadDetail"
+        @jump="openLink"
+      />
+      <p v-else class="text-[12px] leading-5 text-ink-2">
+        选择一篇笔记后，在这里管理它的知识联系：关联讲到的网课片段、做过的题目、相关笔记，并可附一句关联说明。
+      </p>
+    </aside>
   </div>
 </template>
 
