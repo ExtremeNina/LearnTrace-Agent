@@ -22,7 +22,56 @@ const emit = defineEmits<{
 }>()
 
 const taRef = ref<HTMLTextAreaElement | null>(null)
+const previewRef = ref<HTMLDivElement | null>(null)
 const preview = ref(false)
+
+/** 编辑/预览的滚动比例与光标位置：v-if 切换会销毁元素，切换前后按比例互相同步（方案 A） */
+let editScrollRatio = 0
+let previewScrollRatio = 0
+let savedSelectionStart = 0
+let savedSelectionEnd = 0
+
+function scrollRatio(el: HTMLElement | HTMLTextAreaElement): number {
+  const max = el.scrollHeight - el.clientHeight
+  return max > 0 ? el.scrollTop / max : 0
+}
+
+function togglePreview() {
+  if (!preview.value) {
+    // 编辑 → 预览：记下编辑滚动比例与光标，预览按同一比例落位
+    const el = taRef.value
+    if (el) {
+      editScrollRatio = scrollRatio(el)
+      savedSelectionStart = el.selectionStart
+      savedSelectionEnd = el.selectionEnd
+    }
+    preview.value = true
+    nextTick(() => {
+      const pv = previewRef.value
+      if (pv) {
+        const max = pv.scrollHeight - pv.clientHeight
+        pv.scrollTop = max > 0 ? editScrollRatio * max : 0
+      }
+    })
+  } else {
+    // 预览 → 编辑：按预览滚动比例回到编辑对应位置，并恢复光标
+    const pv = previewRef.value
+    if (pv) {
+      previewScrollRatio = scrollRatio(pv)
+    }
+    preview.value = false
+    nextTick(() => {
+      const el = taRef.value
+      if (el) {
+        // focus / 恢复光标会把文本域滚到光标处，必须先做，滚动比例最后赋值才能生效
+        el.focus()
+        el.setSelectionRange(savedSelectionStart, savedSelectionEnd)
+        const max = el.scrollHeight - el.clientHeight
+        el.scrollTop = max > 0 ? previewScrollRatio * max : 0
+      }
+    })
+  }
+}
 
 function setValue(value: string, selStart: number, selEnd: number) {
   emit('update:modelValue', value)
@@ -227,13 +276,15 @@ const heightClass = computed(() => props.heightClass || 'h-[60vh]')
         时间戳
       </button>
       <span class="mx-1 h-5 w-px bg-line" />
-      <!-- 保存 / 取消等页面级操作由父页面提供 -->
-      <slot name="actions" />
+      <!-- 保存 / 取消等页面级操作由父页面提供；包一层保证两个按钮永不因换行被拆开 -->
+      <span class="flex shrink-0 items-center gap-1.5">
+        <slot name="actions" />
+      </span>
       <button
         class="ml-auto flex h-8 items-center gap-1 rounded-lg px-2 text-[13px] hover:bg-line/60"
         :class="preview ? 'text-primary' : 'text-ink'"
         title="切换预览与编辑"
-        @click="preview = !preview"
+        @click="togglePreview"
       >
         <Pencil v-if="preview" :size="15" />
         <Eye v-else :size="15" />
@@ -251,6 +302,7 @@ const heightClass = computed(() => props.heightClass || 'h-[60vh]')
     ></textarea>
     <div
       v-else
+      ref="previewRef"
       class="note-view w-full overflow-y-auto rounded-2xl border border-primary bg-white p-4 text-[14px] leading-7 text-ink"
       :class="heightClass"
       v-html="previewHtml"
