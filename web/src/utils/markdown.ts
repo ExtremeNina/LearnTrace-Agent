@@ -29,3 +29,20 @@ export function renderMarkdown(source: string): string {
   const html = marked.parse(normalized, { async: false }) as string
   return DOMPurify.sanitize(html)
 }
+
+/**
+ * 笔记正文统一渲染管线（AI 笔记阅读态与编辑预览共用）：
+ * 块级空行归一化（LLM 输出的标题/列表前常缺空行）→ Markdown+KaTeX → [mm:ss] 转时间戳胶囊
+ */
+export function renderNoteHtml(md: string): string {
+  if (!md) {
+    return ''
+  }
+  const normalized = md
+    .replace(/(?<=\S)\n(#{1,6} )/g, '\n\n$1')
+    .replace(/(?<=\S)\n(- )/g, '\n\n$1')
+  return renderMarkdown(normalized).replace(
+    /\[(\d{1,2}:[0-5]\d(?::\d{2})?)\]/g,
+    '<span class="ts-chip" data-ts="$1">$1</span>'
+  )
+}

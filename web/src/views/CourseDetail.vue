@@ -5,8 +5,9 @@ import { Download, ArrowLeft, CircleCheck, LoaderCircle, Pencil, Save, X } from 
 import { getCourseDetail, updateCourse } from '../api/course'
 import type { CourseDetailData } from '../api/course'
 import { updateNoteContent } from '../api/note'
+import { renderNoteHtml } from '../utils/markdown'
 import { SUBJECTS } from '../constants/subjects'
-import { renderMarkdown } from '../utils/markdown'
+import MdSourceEditor from '../components/notes/MdSourceEditor.vue'
 
 /**
  * 网课详情（PRD §4.1 + §3.2 时间戳同步观看）：
@@ -51,6 +52,11 @@ function seekTo(sec: number) {
   }
 }
 
+/** 编辑器预览里点时间戳胶囊 → 跳转视频对应位置 */
+function onEditorChip(ts: string) {
+  seekTo(parseTs(ts))
+}
+
 function formatTs(sec: number): string {
   const h = Math.floor(sec / 3600)
   const m = Math.floor((sec % 3600) / 60)
@@ -67,26 +73,10 @@ function formatSize(bytes: number | null | undefined): string {
   return Math.round(bytes / 1024 / 1024) + 'MB'
 }
 
-/**
- * 块级空行归一化：LLM 输出的标题 / 列表前常缺空行，
- * 不补空行的话 Markdown 会把它们当普通段落渲染（# 与 - 直接显示、右边界参差）
- */
-function normalizeBlocks(md: string): string {
-  return md
-    .replace(/(?<=\S)\n(#{1,6} )/g, '\n\n$1')
-    .replace(/(?<=\S)\n(- )/g, '\n\n$1')
-}
-
-/**
- * 笔记渲染：归一化 → Markdown+KaTeX → [mm:ss] 时间戳转为可点击胶囊
- */
+/** 笔记渲染：与编辑预览共用同一管线（块级空行归一化 → Markdown → [mm:ss] 时间戳胶囊） */
 const noteHtml = computed(() => {
   const note = data.value?.note
-  if (!note) {
-    return ''
-  }
-  return renderMarkdown(normalizeBlocks(note.content))
-    .replace(/\[(\d{1,2}:[0-5]\d(?::\d{2})?)\]/g, '<span class="ts-chip" data-ts="$1">$1</span>')
+  return note ? renderNoteHtml(note.content) : ''
 })
 
 function onNoteClick(e: MouseEvent) {
@@ -230,34 +220,15 @@ async function saveNoteEdit() {
                   {{ tab.label }}
                 </button>
               </div>
-              <!-- AI 笔记在线编辑（Markdown 源码） -->
-              <template v-if="activeTab === 'note' && data.note">
-                <button
-                  v-if="!noteEditing"
-                  class="flex shrink-0 items-center gap-1.5 rounded-xl border border-line bg-white px-3 py-1.5 text-[13px] text-ink hover:bg-panel"
-                  @click="startNoteEdit"
-                >
-                  <Pencil :size="14" />
-                  编辑笔记
-                </button>
-                <template v-else>
-                  <button
-                    class="flex shrink-0 items-center gap-1.5 rounded-xl bg-primary px-3 py-1.5 text-[13px] text-white hover:opacity-90 disabled:opacity-50"
-                    :disabled="noteSaving"
-                    @click="saveNoteEdit"
-                  >
-                    <Save :size="14" />
-                    保存
-                  </button>
-                  <button
-                    class="flex shrink-0 items-center gap-1.5 rounded-xl border border-line bg-white px-3 py-1.5 text-[13px] text-ink hover:bg-panel"
-                    @click="noteEditing = false"
-                  >
-                    <X :size="14" />
-                    取消
-                  </button>
-                </template>
-              </template>
+              <!-- AI 笔记在线编辑入口（编辑态的保存/取消在编辑器工具栏内） -->
+              <button
+                v-if="activeTab === 'note' && data.note && !noteEditing"
+                class="flex shrink-0 items-center gap-1.5 rounded-xl border border-line bg-white px-3 py-1.5 text-[13px] text-ink hover:bg-panel"
+                @click="startNoteEdit"
+              >
+                <Pencil :size="14" />
+                编辑笔记
+              </button>
             </div>
 
             <div class="mt-4 min-h-0 flex-1 overflow-y-auto lg:pr-2">
@@ -265,10 +236,25 @@ async function saveNoteEdit() {
               <template v-if="activeTab === 'note'">
                 <div v-if="noteEditing">
                   <p v-if="noteError" class="mb-2 text-[12px] text-red-600">{{ noteError }}</p>
-                  <textarea
-                    v-model="noteDraft"
-                    class="h-[60vh] w-full resize-y rounded-2xl border border-primary bg-white p-4 font-mono text-[13px] leading-6 text-ink outline-none"
-                  ></textarea>
+                  <MdSourceEditor v-model="noteDraft" @chip="onEditorChip">
+                    <template #actions>
+                      <button
+                        class="flex items-center gap-1 rounded-lg bg-ink px-3 py-1.5 text-[13px] text-white hover:opacity-80 disabled:opacity-50"
+                        :disabled="noteSaving"
+                        @click="saveNoteEdit"
+                      >
+                        <Save :size="14" />
+                        保存
+                      </button>
+                      <button
+                        class="flex items-center gap-1 rounded-lg border border-line px-3 py-1.5 text-[13px] text-ink-2 hover:bg-line/40"
+                        @click="noteEditing = false"
+                      >
+                        <X :size="14" />
+                        取消
+                      </button>
+                    </template>
+                  </MdSourceEditor>
                 </div>
                 <div v-else class="note-view rounded-2xl border border-line bg-white p-6 text-[14px] leading-7 text-ink" v-html="noteHtml" @click="onNoteClick" />
               </template>

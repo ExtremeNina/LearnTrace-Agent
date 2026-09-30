@@ -8,6 +8,7 @@ import {
   ArrowLeft, FolderPlus, FolderInput, FolderTree, ListPlus,
 } from 'lucide-vue-next'
 import TreeNode from '../components/notes/TreeNode.vue'
+import MdSourceEditor from '../components/notes/MdSourceEditor.vue'
 import type { TreeNodeData } from '../types/notes'
 import {
   addNoteLink, createGroup, createNote, deleteNote, getNoteDetail, getNoteTree,
@@ -229,6 +230,13 @@ const editorRef = ref<HTMLDivElement | null>(null)
 const mdDraft = ref('')
 
 const isAiNote = computed(() => selectedDetail.value?.source === 'AI 生成')
+
+/** 编辑器预览里点时间戳胶囊 → 跳转关联网课对应位置 */
+function onEditorChip(ts: string) {
+  if (selectedDetail.value?.courseId) {
+    router.push(`/courses/${selectedDetail.value.courseId}?t=${ts}`)
+  }
+}
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -580,22 +588,18 @@ const groupPathOptions = computed(() => {
           <template v-if="activeTab === 'note'">
             <!-- AI 笔记：Markdown 源码编辑（存 Markdown，保证详情页渲染与时间戳胶囊一致） -->
             <div v-if="editing && isAiNote" class="ml-6 max-w-3xl px-4 pt-4">
-              <div class="mb-3 flex flex-wrap items-center gap-1.5 rounded-xl border border-line bg-panel px-2.5 py-2">
-                <span class="px-1 text-[12px] text-ink-2">Markdown 源码编辑；[mm:ss] 时间戳保存后仍可点击跳转</span>
-                <span class="mx-1 h-5 w-px bg-line" />
-                <button class="flex items-center gap-1 rounded-lg bg-ink px-3 py-1.5 text-[13px] text-white hover:opacity-80" @click="saveEdit">
-                  <Save :size="14" />
-                  保存
-                </button>
-                <button class="flex items-center gap-1 rounded-lg border border-line px-3 py-1.5 text-[13px] text-ink-2 hover:bg-line/40" @click="cancelEdit">
-                  <X :size="14" />
-                  放弃
-                </button>
-              </div>
-              <textarea
-                v-model="mdDraft"
-                class="h-[60vh] w-full resize-y rounded-2xl border border-primary bg-white p-5 font-mono text-[13px] leading-7 text-ink outline-none"
-              ></textarea>
+              <MdSourceEditor v-model="mdDraft" @chip="onEditorChip">
+                <template #actions>
+                  <button class="flex items-center gap-1 rounded-lg bg-ink px-3 py-1.5 text-[13px] text-white hover:opacity-80" @click="saveEdit">
+                    <Save :size="14" />
+                    保存
+                  </button>
+                  <button class="flex items-center gap-1 rounded-lg border border-line px-3 py-1.5 text-[13px] text-ink-2 hover:bg-line/40" @click="cancelEdit">
+                    <X :size="14" />
+                    放弃
+                  </button>
+                </template>
+              </MdSourceEditor>
             </div>
 
             <div v-else-if="editing" class="ml-6 max-w-3xl px-4 pt-4">
