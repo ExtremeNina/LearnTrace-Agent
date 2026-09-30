@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import {
-  Camera, Check, MonitorPlay, NotebookPen, Pencil, Search, SquarePen, Trash2, X,
+  Camera, Check, MonitorPlay, NotebookPen, Pencil, Plus, Search, SquarePen, Trash2, X,
 } from 'lucide-vue-next'
 import {
   addNoteLink, getNoteTree, removeNoteLink, updateNoteLinkRemark,
@@ -14,9 +14,8 @@ import type { QuestionRecordInfo } from '../../types/api'
 
 /**
  * 知识联系侧栏（PRD §3.4）：
- * 展示本笔记的知识联系；聚合搜索网课 / 题目 / 笔记就地挂链，
- * 支持可选「关联说明」——标注目标与知识点相关的地方，添加后可补改可删除。
- * 搜索在前端聚合（数据源：课程列表 / 题目前 100 条 / 笔记树叶子），个人学习数据量下够用。
+ * 卡片列表展示本笔记关联的网课 / 题目 / 笔记（含一句可选「关联说明」）；
+ * 「添加知识联系」弹出弹窗，聚合搜索（前端过滤：课程列表 / 题目前 100 条 / 笔记树叶子）就地挂链。
  */
 const props = defineProps<{
   noteId: number
@@ -49,7 +48,7 @@ function excerpt(text: string | null): string {
   return plain.length > 40 ? plain.slice(0, 40) + '…' : plain
 }
 
-// ---- 列表：删除 / 编辑说明 ----
+// ---- 卡片列表：删除 / 编辑说明 ----
 async function onRemove(link: NoteLinkInfo) {
   if (!window.confirm(`确定删除与「${link.title}」的知识联系吗？`)) {
     return
@@ -75,7 +74,7 @@ async function saveEditRemark() {
   emit('changed')
 }
 
-// ---- 聚合搜索（数据源挂载时加载一次） ----
+// ---- 聚合搜索数据源（挂载时加载一次） ----
 const keyword = ref('')
 const courses = ref<CourseInfo[]>([])
 const questions = ref<QuestionRecordInfo[]>([])
@@ -123,18 +122,35 @@ const hasResults = computed(
   () => courseResults.value.length + questionResults.value.length + noteResults.value.length > 0
 )
 
-// ---- 选中目标 → 补充说明 / 时间戳 → 挂链 ----
+// ---- 添加弹窗：选目标 → 补充说明 / 时间戳 → 挂链 ----
+const showAdd = ref(false)
+const searchRef = ref<HTMLInputElement | null>(null)
 const selected = ref<{ linkType: 'course' | 'question' | 'note'; targetId: number; title: string } | null>(null)
 const remarkDraft = ref('')
 const tsDraft = ref('')
 const adding = ref(false)
 const addError = ref('')
 
+function openAddModal() {
+  showAdd.value = true
+  keyword.value = ''
+  selected.value = null
+  remarkDraft.value = ''
+  tsDraft.value = ''
+  addError.value = ''
+  nextTick(() => searchRef.value?.focus())
+}
+
+function closeAdd() {
+  showAdd.value = false
+}
+
 function pick(linkType: 'course' | 'question' | 'note', targetId: number, title: string) {
   selected.value = { linkType, targetId, title }
   remarkDraft.value = ''
   tsDraft.value = ''
   addError.value = ''
+  nextTick(() => document.getElementById('link-remark-input')?.focus())
 }
 
 async function confirmAdd() {
@@ -154,8 +170,7 @@ async function confirmAdd() {
   addError.value = ''
   try {
     await addNoteLink(props.noteId, selected.value.linkType, selected.value.targetId, tsSec, remarkDraft.value)
-    selected.value = null
-    keyword.value = ''
+    closeAdd()
     emit('changed')
   } catch (e) {
     addError.value = e instanceof Error ? e.message : '添加失败，请稍后重试'
@@ -167,8 +182,17 @@ async function confirmAdd() {
 
 <template>
   <div>
-    <!-- 联系列表 -->
-    <div class="flex flex-col gap-2">
+    <!-- 添加入口 -->
+    <button
+      class="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-line py-2 text-[13px] text-ink-2 hover:border-primary hover:text-primary"
+      @click="openAddModal"
+    >
+      <Plus :size="14" />
+      添加知识联系
+    </button>
+
+    <!-- 联系卡片列表 -->
+    <div class="mt-3 flex flex-col gap-2">
       <div v-for="link in links" :key="link.id" class="rounded-xl border border-line bg-white px-3 py-2.5">
         <div class="flex items-start gap-2">
           <component :is="typeIcon(link.linkType)" :size="15" class="mt-1 shrink-0 text-ink-2" />
@@ -210,97 +234,119 @@ async function confirmAdd() {
         </div>
       </div>
       <p v-if="links.length === 0" class="text-[12px] leading-5 text-ink-2">
-        还没有知识联系。在下方搜索网课 / 题目 / 笔记，把这个知识点关联起来。
+        还没有知识联系。点击上方「添加知识联系」，把这个知识点与网课 / 题目 / 笔记关联起来。
       </p>
     </div>
 
-    <!-- 添加 -->
-    <div class="mt-4 border-t border-line pt-3">
-      <p class="flex items-center gap-1 text-[12px] font-semibold text-ink-2">
-        <SquarePen :size="13" />
-        添加关联
-      </p>
-      <div class="relative mt-2">
-        <Search :size="14" class="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-2" />
-        <input
-          v-model="keyword"
-          type="text"
-          placeholder="搜索网课 / 题目 / 笔记…"
-          class="w-full rounded-xl border border-line bg-white py-2 pl-8 pr-3 text-[13px] text-ink outline-none focus:border-primary"
-        />
-      </div>
-
-      <!-- 选中目标，补充说明后挂链 -->
-      <div v-if="selected" class="mt-2 rounded-xl border border-primary bg-primary-soft/40 p-2.5">
-        <div class="flex items-center gap-2">
-          <span class="shrink-0 rounded border border-line bg-white px-1.5 py-0.5 text-[11px] text-ink-2">{{ TYPE_LABEL[selected.linkType] }}</span>
-          <span class="min-w-0 flex-1 truncate text-[13px] text-ink" :title="selected.title">{{ selected.title }}</span>
-          <button class="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-ink-2 hover:bg-white" title="取消" @click="selected = null">
-            <X :size="14" />
+    <!-- 添加弹窗 -->
+    <div
+      v-if="showAdd"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-ink/25 px-4 backdrop-blur-sm"
+      @click.self="closeAdd"
+    >
+      <div class="flex max-h-[80vh] w-full max-w-lg flex-col rounded-3xl border border-line bg-white p-6 shadow-xl">
+        <div class="flex items-start justify-between">
+          <div>
+            <h2 class="flex items-center gap-1.5 text-[16px] font-semibold">
+              <SquarePen :size="16" />
+              添加知识联系
+            </h2>
+            <p class="mt-1 text-[12px] text-ink-2">搜索并选择要关联的网课、题目或笔记，可附一句关联说明。</p>
+          </div>
+          <button class="flex h-8 w-8 items-center justify-center rounded-lg text-ink-2 hover:bg-line/60 hover:text-ink" title="关闭" @click="closeAdd">
+            <X :size="16" />
           </button>
         </div>
-        <input
-          v-model="remarkDraft"
-          type="text"
-          placeholder="关联说明（可选）：这里和知识点的关系…"
-          class="mt-2 w-full rounded-lg border border-line bg-white px-2 py-1.5 text-[12px] outline-none focus:border-primary"
-        />
-        <input
-          v-if="selected.linkType === 'course'"
-          v-model="tsDraft"
-          type="text"
-          placeholder="跳转时间戳（可选），如 02:27"
-          class="mt-1.5 w-full rounded-lg border border-line bg-white px-2 py-1.5 text-[12px] outline-none focus:border-primary"
-        />
-        <p v-if="addError" class="mt-1 text-[12px] text-red-600">{{ addError }}</p>
-        <button
-          class="mt-2 w-full rounded-lg bg-primary py-1.5 text-[13px] text-white hover:opacity-90 disabled:opacity-50"
-          :disabled="adding"
-          @click="confirmAdd"
-        >
-          {{ adding ? '添加中…' : '挂上这条联系' }}
-        </button>
-      </div>
 
-      <!-- 搜索结果分组 -->
-      <div v-else-if="kw" class="mt-2 flex flex-col gap-1">
-        <p v-if="!hasResults" class="px-1 py-2 text-[12px] text-ink-2">没有匹配的网课 / 题目 / 笔记</p>
-        <template v-if="courseResults.length">
-          <p class="px-1 pt-1 text-[11px] text-ink-2">网课</p>
-          <button
-            v-for="c in courseResults"
-            :key="'c' + c.id"
-            class="flex items-center gap-2 rounded-lg px-1 py-1.5 text-left hover:bg-panel"
-            @click="pick('course', c.id, c.title)"
-          >
-            <MonitorPlay :size="14" class="shrink-0 text-ink-2" />
-            <span class="min-w-0 flex-1 truncate text-[13px] text-ink">{{ c.title }}</span>
-          </button>
-        </template>
-        <template v-if="questionResults.length">
-          <p class="px-1 pt-1 text-[11px] text-ink-2">题目</p>
-          <button
-            v-for="q in questionResults"
-            :key="'q' + q.id"
-            class="flex items-center gap-2 rounded-lg px-1 py-1.5 text-left hover:bg-panel"
-            @click="pick('question', q.id, excerpt(q.questionText))"
-          >
-            <Camera :size="14" class="shrink-0 text-ink-2" />
-            <span class="min-w-0 flex-1 truncate text-[13px] text-ink">{{ excerpt(q.questionText) }}</span>
-          </button>
-        </template>
-        <template v-if="noteResults.length">
-          <p class="px-1 pt-1 text-[11px] text-ink-2">笔记</p>
-          <button
-            v-for="n in noteResults"
-            :key="'n' + n.id"
-            class="flex items-center gap-2 rounded-lg px-1 py-1.5 text-left hover:bg-panel"
-            @click="pick('note', n.id, n.title)"
-          >
-            <NotebookPen :size="14" class="shrink-0 text-ink-2" />
-            <span class="min-w-0 flex-1 truncate text-[13px] text-ink">{{ n.title }}</span>
-          </button>
-        </template>
+        <div class="relative mt-4">
+          <Search :size="15" class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-2" />
+          <input
+            ref="searchRef"
+            v-model="keyword"
+            type="text"
+            placeholder="搜索网课 / 题目 / 笔记…"
+            class="w-full rounded-xl border border-line bg-white py-2.5 pl-9 pr-3 text-[13px] text-ink outline-none focus:border-primary"
+          />
+        </div>
+
+        <div class="mt-3 min-h-0 flex-1 overflow-y-auto">
+          <!-- 选中目标，补充说明后挂链 -->
+          <div v-if="selected" class="rounded-xl border border-primary bg-primary-soft/40 p-3">
+            <div class="flex items-center gap-2">
+              <span class="shrink-0 rounded border border-line bg-white px-1.5 py-0.5 text-[11px] text-ink-2">{{ TYPE_LABEL[selected.linkType] }}</span>
+              <span class="min-w-0 flex-1 truncate text-[13px] text-ink" :title="selected.title">{{ selected.title }}</span>
+              <button class="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-ink-2 hover:bg-white" title="重新选择" @click="selected = null">
+                <X :size="14" />
+              </button>
+            </div>
+            <input
+              id="link-remark-input"
+              v-model="remarkDraft"
+              type="text"
+              placeholder="关联说明（可选）：这里和知识点的关系…"
+              class="mt-2.5 w-full rounded-lg border border-line bg-white px-2.5 py-2 text-[13px] outline-none focus:border-primary"
+            />
+            <input
+              v-if="selected.linkType === 'course'"
+              v-model="tsDraft"
+              type="text"
+              placeholder="跳转时间戳（可选），如 02:27"
+              class="mt-1.5 w-full rounded-lg border border-line bg-white px-2.5 py-2 text-[13px] outline-none focus:border-primary"
+            />
+            <p v-if="addError" class="mt-1.5 text-[12px] text-red-600">{{ addError }}</p>
+            <button
+              class="mt-3 w-full rounded-lg bg-primary py-2 text-[13px] text-white hover:opacity-90 disabled:opacity-50"
+              :disabled="adding"
+              @click="confirmAdd"
+            >
+              {{ adding ? '添加中…' : '挂上这条联系' }}
+            </button>
+          </div>
+
+          <!-- 搜索结果分组 -->
+          <template v-else>
+            <p v-if="!kw" class="px-1 py-3 text-center text-[12px] text-ink-2">输入关键词，搜索你的网课 / 题目 / 笔记</p>
+            <p v-else-if="!hasResults" class="px-1 py-3 text-center text-[12px] text-ink-2">没有匹配的网课 / 题目 / 笔记</p>
+            <template v-else>
+              <div v-if="courseResults.length" class="mb-1">
+                <p class="px-1 py-1 text-[11px] text-ink-2">网课</p>
+                <button
+                  v-for="c in courseResults"
+                  :key="'c' + c.id"
+                  class="flex w-full items-center gap-2 rounded-lg px-1.5 py-2 text-left hover:bg-panel"
+                  @click="pick('course', c.id, c.title)"
+                >
+                  <MonitorPlay :size="14" class="shrink-0 text-ink-2" />
+                  <span class="min-w-0 flex-1 truncate text-[13px] text-ink">{{ c.title }}</span>
+                </button>
+              </div>
+              <div v-if="questionResults.length" class="mb-1">
+                <p class="px-1 py-1 text-[11px] text-ink-2">题目</p>
+                <button
+                  v-for="q in questionResults"
+                  :key="'q' + q.id"
+                  class="flex w-full items-center gap-2 rounded-lg px-1.5 py-2 text-left hover:bg-panel"
+                  @click="pick('question', q.id, excerpt(q.questionText))"
+                >
+                  <Camera :size="14" class="shrink-0 text-ink-2" />
+                  <span class="min-w-0 flex-1 truncate text-[13px] text-ink">{{ excerpt(q.questionText) }}</span>
+                </button>
+              </div>
+              <div v-if="noteResults.length">
+                <p class="px-1 py-1 text-[11px] text-ink-2">笔记</p>
+                <button
+                  v-for="n in noteResults"
+                  :key="'n' + n.id"
+                  class="flex w-full items-center gap-2 rounded-lg px-1.5 py-2 text-left hover:bg-panel"
+                  @click="pick('note', n.id, n.title)"
+                >
+                  <NotebookPen :size="14" class="shrink-0 text-ink-2" />
+                  <span class="min-w-0 flex-1 truncate text-[13px] text-ink">{{ n.title }}</span>
+                </button>
+              </div>
+            </template>
+          </template>
+        </div>
       </div>
     </div>
   </div>

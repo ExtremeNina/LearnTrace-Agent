@@ -47,7 +47,12 @@ const ui = useUiStore()
       </header>
 
       <main class="min-h-0 flex-1">
-        <router-view />
+        <router-view v-slot="{ Component }">
+          <!-- 笔记整理页跨页保留状态（上次打开的笔记 / 树展开） -->
+          <KeepAlive include="NotesView">
+            <component :is="Component" />
+          </KeepAlive>
+        </router-view>
       </main>
     </div>
   </div>

@@ -18,6 +18,9 @@ import {
 import type { NoteDetailInfo, NoteTreeNodeInfo } from '../api/note'
 import { renderMarkdown } from '../utils/markdown'
 
+// KeepAlive 按名字缓存：切到其他页面再回来时保留上次打开的笔记与树状态
+defineOptions({ name: 'NotesView' })
+
 /**
  * 笔记整理（PRD §3.4 OneNote 式页面管理）：
  * 分层树（分组自定义、最多 5 层）+ 知识联系（网课 / 题目 / 笔记）+ 富文本编辑。
