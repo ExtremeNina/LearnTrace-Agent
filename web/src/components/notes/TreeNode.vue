@@ -23,6 +23,7 @@ const emit = defineEmits<{
   confirmRename: []
   renameInput: [value: string]
   deleteGroup: [id: string]
+  deleteNote: [noteId: number]
 }>()
 
 const isGroup = computed(() => props.node.type === 'group')
@@ -63,6 +64,7 @@ function onRowClick() {
       <input
         v-if="renamingId === node.id"
         :value="renameValue"
+        data-inline-input="1"
         class="min-w-0 flex-1 rounded-md border border-primary px-1.5 text-[13px] outline-none"
         @click.stop
         @input="emit('renameInput', ($event.target as HTMLInputElement).value)"
@@ -80,14 +82,30 @@ function onRowClick() {
         >
           <Plus :size="13" />
         </button>
+        <button
+          v-if="isGroup"
+          class="p-1 text-ink-2 hover:text-primary"
+          title="新建笔记"
+          @click.stop="emit('create', 'note', node.id)"
+        >
+          <NotebookPen :size="13" />
+        </button>
         <button class="p-1 text-ink-2 hover:text-ink" title="重命名" @click.stop="emit('startRename', node.id)">
           <PencilLine :size="13" />
         </button>
         <button
           v-if="isGroup"
           class="p-1 text-ink-2 hover:text-red-500"
-          title="删除空分组"
+          title="删除分组（其下内容一并删除）"
           @click.stop="emit('deleteGroup', node.id)"
+        >
+          <Trash2 :size="13" />
+        </button>
+        <button
+          v-else
+          class="p-1 text-ink-2 hover:text-red-500"
+          title="删除笔记"
+          @click.stop="emit('deleteNote', node.noteId!)"
         >
           <Trash2 :size="13" />
         </button>
@@ -114,6 +132,7 @@ function onRowClick() {
         @confirm-rename="emit('confirmRename')"
         @rename-input="emit('renameInput', $event)"
         @delete-group="emit('deleteGroup', $event)"
+        @delete-note="emit('deleteNote', $event)"
       />
     </div>
   </div>

@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import DOMPurify from 'dompurify'
 import {
   Bold, Italic, Underline, Paintbrush, Highlighter, Eraser, Save, X,
-  NotebookPen, Plus, Download, PencilLine, Sparkles,
+  NotebookPen, Download, PencilLine, Sparkles,
   ArrowLeft, FolderPlus, FolderInput, FolderTree,
 } from 'lucide-vue-next'
 import TreeNode from '../components/notes/TreeNode.vue'
@@ -107,8 +107,21 @@ function toggleExpand(id: string) {
 }
 
 function selectGroup(id: string | null) {
+  // 点击已选中的分组 = 取消新建位置选择
+  if (id !== null && targetGroupId.value === id) {
+    targetGroupId.value = null
+    return
+  }
   targetGroupId.value = id
 }
+
+/** 新建位置显示文本：分组名或根目录 */
+const targetGroupLabel = computed(() => {
+  if (!targetGroupId.value) {
+    return '根目录'
+  }
+  return findNode(tree.value, targetGroupId.value)?.name ?? '根目录'
+})
 
 function numericGroupId(): number | null {
   if (!targetGroupId.value) {
@@ -127,12 +140,15 @@ function onCreate(type: 'group' | 'note', groupId: string) {
 }
 
 function startCreate(type: 'group' | 'note') {
-  const parentNumeric = numericGroupId()
-  if (parentNumeric !== null) {
-    const parentDepth = depthOf(targetGroupId.value!)
-    if (parentDepth + 1 > MAX_LEVELS) {
-      alert('最多支持 ' + MAX_LEVELS + ' 层，无法在更深层继续创建')
-      return
+  // 层级限制只针对分组（笔记是叶子，挂在第 5 层分组内合法）
+  if (type === 'group' && targetGroupId.value) {
+    const parentNumeric = numericGroupId()
+    if (parentNumeric !== null) {
+      const parentDepth = depthOf(targetGroupId.value!)
+      if (parentDepth + 1 > MAX_LEVELS) {
+        alert('最多支持 ' + MAX_LEVELS + ' 层，无法在更深层继续创建')
+        return
+      }
     }
   }
   creatingType.value = type
@@ -187,15 +203,72 @@ async function confirmRename() {
   renamingId.value = null
 }
 
+/** 统计子树内的分组数与笔记数（删除确认提示用） */
+function countSubtree(node: TreeNodeData): { groups: number; notes: number } {
+  let groups = 0
+  let notes = 0
+  for (const child of node.children ?? []) {
+    if (child.type === 'group') {
+      groups += 1
+      const sub = countSubtree(child)
+      groups += sub.groups
+      notes += sub.notes
+    } else {
+      notes += 1
+    }
+  }
+  return { groups, notes }
+}
+
+/** 收集子树内全部笔记 id（判断当前打开笔记是否会被连带删除） */
+function collectNoteIds(node: TreeNodeData): number[] {
+  const ids: number[] = []
+  const walk = (n: TreeNodeData) => {
+    if (n.type === 'note' && n.noteId !== undefined) {
+      ids.push(n.noteId)
+    }
+    for (const c of n.children ?? []) {
+      walk(c)
+    }
+  }
+  walk(node)
+  return ids
+}
+
 async function deleteGroup(id: string) {
   const node = findNode(tree.value, id)
-  if (node && node.children && node.children.length > 0) {
-    alert('分组不为空，请先清空其中的内容')
+  if (!node) {
     return
   }
+  const sub = countSubtree(node)
+  const scope = sub.groups + sub.notes > 0
+    ? `其下 ${sub.groups} 个子分组和 ${sub.notes} 篇笔记将一并删除`
+    : '这是一个空分组'
+  if (!window.confirm(`确定删除分组「${node.name}」吗？\n\n${scope}，这些笔记的知识联系也会被清除，删除后不可恢复。`)) {
+    return
+  }
+  const affectedNoteIds = collectNoteIds(node)
   await deleteNote(Number(id.slice(1)))
-  if (targetGroupId.value === id) {
+  await loadTree()
+  // 新建位置若在被删子树内则复位
+  if (targetGroupId.value && !findNode(tree.value, targetGroupId.value)) {
     targetGroupId.value = null
+  }
+  // 当前打开的笔记若被连带删除则关闭详情
+  if (selectedId.value !== null && affectedNoteIds.includes(selectedId.value)) {
+    selectedId.value = null
+    selectedDetail.value = null
+  }
+}
+
+async function deleteNoteLeaf(noteId: number) {
+  if (!window.confirm('确定删除这篇笔记吗？它的知识联系也会被清除，删除后不可恢复。')) {
+    return
+  }
+  await deleteNote(noteId)
+  if (selectedId.value === noteId) {
+    selectedId.value = null
+    selectedDetail.value = null
   }
   await loadTree()
 }
@@ -364,8 +437,31 @@ function onMoveChange(e: Event) {
 // ---- 知识联系 ----
 
 onMounted(async () => {
+  document.addEventListener('mousedown', onDocMouseDownWhileInlineInput)
   await loadTree()
 })
+
+onUnmounted(() => {
+  document.removeEventListener('mousedown', onDocMouseDownWhileInlineInput)
+})
+
+/**
+ * 重命名 / 新建输入打开时，点击输入框以外的空白区域即保存；
+ * 输入为空时视为取消，修复输入状态无法退出的 bug
+ */
+function onDocMouseDownWhileInlineInput(e: MouseEvent) {
+  const target = e.target as HTMLElement
+  if (target.closest('[data-inline-input]')) {
+    return
+  }
+  if (renamingId.value !== null) {
+    confirmRename()
+    return
+  }
+  if (creatingType.value !== null) {
+    confirmCreate()
+  }
+}
 
 // ---- 移动到分组下拉选项 ----
 const groupPathOptions = computed(() => {
@@ -399,16 +495,13 @@ const groupPathOptions = computed(() => {
           笔记分层
         </p>
         <div class="flex gap-1">
-          <button class="flex h-7 w-7 items-center justify-center rounded-lg text-ink hover:bg-line/60" title="在当前分组下新建分组" @click="startCreate('group')">
+          <button class="flex h-7 w-7 items-center justify-center rounded-lg text-ink hover:bg-line/60" title="新建分组" @click="startCreate('group')">
             <FolderPlus :size="16" />
-          </button>
-          <button class="flex h-7 w-7 items-center justify-center rounded-lg text-ink hover:bg-line/60" title="在当前分组下新建笔记" @click="startCreate('note')">
-            <Plus :size="16" />
           </button>
         </div>
       </div>
       <p class="px-4 pb-2 text-[11px] text-ink-2">
-        新建位置：{{ targetGroupId ? numericGroupId() ?? '' : '根目录' }}（最多 5 层）
+        新建位置：{{ targetGroupLabel }}（最多 5 层）
       </p>
 
       <!-- 内联新建输入 -->
@@ -417,6 +510,7 @@ const groupPathOptions = computed(() => {
         <input
           id="new-name-input"
           v-model="newName"
+          data-inline-input="1"
           class="min-w-0 flex-1 text-[13px] outline-none"
           :placeholder="creatingType === 'group' ? '分组名称' : '笔记标题'"
           @keydown.enter="confirmCreate"
@@ -447,6 +541,7 @@ const groupPathOptions = computed(() => {
           @confirm-rename="confirmRename"
           @rename-input="renameValue = $event"
           @delete-group="deleteGroup"
+          @delete-note="deleteNoteLeaf"
         />
       </div>
     </aside>
