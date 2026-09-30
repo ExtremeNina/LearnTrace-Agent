@@ -427,6 +427,23 @@ async function saveNoteEdit() {
   margin: 1rem 0;
   border-color: #e5e7eb;
 }
+.note-view :deep(table) {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75rem 0;
+  font-size: 13px;
+}
+.note-view :deep(th),
+.note-view :deep(td) {
+  border: 1px solid #e5e7eb;
+  padding: 0.4rem 0.75rem;
+  text-align: left;
+  vertical-align: top;
+}
+.note-view :deep(th) {
+  background: #f9fafb;
+  font-weight: 600;
+}
 .note-view :deep(.ts-chip) {
   display: inline-flex;
   align-items: center;

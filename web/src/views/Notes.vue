@@ -776,4 +776,21 @@ const groupPathOptions = computed(() => {
 .note-view :deep(p) {
   margin-bottom: 0.75rem;
 }
+.note-view :deep(table) {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75rem 0;
+  font-size: 13px;
+}
+.note-view :deep(th),
+.note-view :deep(td) {
+  border: 1px solid #e5e7eb;
+  padding: 0.4rem 0.75rem;
+  text-align: left;
+  vertical-align: top;
+}
+.note-view :deep(th) {
+  background: #f9fafb;
+  font-weight: 600;
+}
 </style>

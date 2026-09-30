@@ -33,7 +33,8 @@ export function renderMarkdown(source: string): string {
 
 /**
  * 笔记正文统一渲染管线（AI 笔记阅读态与编辑预览共用）：
- * 块级空行归一化（LLM 输出的标题/列表前常缺空行）→ Markdown+KaTeX → [mm:ss] 转时间戳胶囊
+ * 块级空行归一化（LLM 输出的标题/列表前常缺空行）→ 按空行分块渲染 → [mm:ss] 转时间戳胶囊。
+ * 表格块单独直渲染：防粘连规则会在「中文 - xxx」单元格内断行、破坏表格结构
  */
 export function renderNoteHtml(md: string): string {
   if (!md) {
@@ -44,7 +45,18 @@ export function renderNoteHtml(md: string): string {
     .replace(/\r\n/g, '\n')
     .replace(/(?<=\S)\n(#{1,6} )/g, '\n\n$1')
     .replace(/(?<=\S)\n(- )/g, '\n\n$1')
-  return renderMarkdown(normalized).replace(
+  return normalized
+    .split(/\n{2,}/)
+    .map((block) => renderNoteBlock(block.trim()))
+    .join('\n')
+}
+
+/** 单块渲染：表格块跳过防粘连规则，其余块走 renderMarkdown；时间戳统一转可点击胶囊 */
+function renderNoteBlock(block: string): string {
+  const html = block.startsWith('|')
+    ? DOMPurify.sanitize(marked.parse(block, { async: false }) as string)
+    : renderMarkdown(block)
+  return html.replace(
     /\[(\d{1,2}:[0-5]\d(?::\d{2})?)\]/g,
     '<span class="ts-chip" data-ts="$1">$1</span>'
   )
