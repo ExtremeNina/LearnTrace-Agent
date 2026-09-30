@@ -263,12 +263,11 @@ async function saveNoteEdit() {
             <div class="mt-4 min-h-0 flex-1 overflow-y-auto lg:pr-2">
               <!-- AI 笔记：编辑态为 Markdown 源码，阅读态渲染并转换时间戳胶囊 -->
               <template v-if="activeTab === 'note'">
-                <div v-if="noteEditing" class="rounded-2xl border border-primary bg-white p-6">
-                  <p class="mb-2 text-[12px] text-ink-2">Markdown 源码编辑；[mm:ss] 时间戳保存后仍可点击跳转原片段</p>
+                <div v-if="noteEditing">
                   <p v-if="noteError" class="mb-2 text-[12px] text-red-600">{{ noteError }}</p>
                   <textarea
                     v-model="noteDraft"
-                    class="h-[60vh] w-full resize-y rounded-xl border border-line p-3 font-mono text-[13px] leading-6 text-ink outline-none focus:border-primary"
+                    class="h-[60vh] w-full resize-y rounded-2xl border border-primary bg-white p-4 font-mono text-[13px] leading-6 text-ink outline-none"
                   ></textarea>
                 </div>
                 <div v-else class="note-view rounded-2xl border border-line bg-white p-6 text-[14px] leading-7 text-ink" v-html="noteHtml" @click="onNoteClick" />
