@@ -4,20 +4,19 @@ import { useRouter } from 'vue-router'
 import DOMPurify from 'dompurify'
 import {
   Bold, Italic, Underline, Paintbrush, Highlighter, Eraser, Save, X,
-  NotebookPen, MonitorPlay, Camera, Plus, Download, PencilLine, Sparkles,
-  ArrowLeft, FolderPlus, FolderInput, FolderTree, ListPlus,
+  NotebookPen, Plus, Download, PencilLine, Sparkles,
+  ArrowLeft, FolderPlus, FolderInput, FolderTree,
 } from 'lucide-vue-next'
 import TreeNode from '../components/notes/TreeNode.vue'
 import MdSourceEditor from '../components/notes/MdSourceEditor.vue'
+import LinkPanel from '../components/notes/LinkPanel.vue'
 import type { TreeNodeData } from '../types/notes'
 import {
-  addNoteLink, createGroup, createNote, deleteNote, getNoteDetail, getNoteTree,
-  moveNote, removeNoteLink, renameNote, updateNoteContent,
+  createGroup, createNote, deleteNote, getNoteDetail, getNoteTree,
+  moveNote, renameNote, updateNoteContent,
 } from '../api/note'
 import type { NoteDetailInfo, NoteTreeNodeInfo } from '../api/note'
 import { renderMarkdown } from '../utils/markdown'
-import { listCourses } from '../api/course'
-import type { CourseInfo } from '../api/course'
 
 /**
  * 笔记整理（PRD §3.4 OneNote 式页面管理）：
@@ -201,7 +200,6 @@ async function deleteGroup(id: string) {
 // ---- 详情 ----
 const selectedId = ref<number | null>(null)
 const selectedDetail = ref<NoteDetailInfo | null>(null)
-const activeTab = ref<'note' | 'links'>('note')
 const router = useRouter()
 const editedHtmlByNote = reactive(new Map<number, string>())
 
@@ -210,7 +208,14 @@ const selectedNote = computed(() => selectedDetail.value)
 async function openNote(id: number) {
   selectedDetail.value = await getNoteDetail(id)
   selectedId.value = id
-  activeTab.value = 'note'
+}
+
+/** 知识联系面板增删改后刷新详情（保留树不动） */
+async function reloadDetail() {
+  if (selectedId.value == null) {
+    return
+  }
+  selectedDetail.value = await getNoteDetail(selectedId.value)
 }
 
 function openLink(link: { linkType: string; targetId: number; tsSec?: number | null }) {
@@ -220,6 +225,11 @@ function openLink(link: { linkType: string; targetId: number; tsSec?: number | n
   }
   if (link.linkType === 'course') {
     router.push(link.tsSec != null ? `/courses/${link.targetId}?t=${formatTs(link.tsSec)}` : `/courses/${link.targetId}`)
+    return
+  }
+  // 题目：跳拍照记录列表并自动弹出该题详情
+  if (link.linkType === 'question') {
+    router.push(`/questions?open=${link.targetId}`)
   }
 }
 
@@ -307,13 +317,6 @@ function onHighlightChange(e: Event) {
 }
 
 // ---- 时间戳渲染与跳转 ----
-function parseTs(ts: string): number {
-  const parts = ts.split(':').map(Number)
-  return parts.length === 3
-    ? parts[0] * 3600 + parts[1] * 60 + parts[2]
-    : parts[0] * 60 + parts[1]
-}
-
 function formatTs(sec: number): string {
   const h = Math.floor(sec / 3600)
   const m = Math.floor((sec % 3600) / 60)
@@ -355,78 +358,7 @@ function onMoveChange(e: Event) {
   moveNote(selectedDetail.value.id, pid).then(loadTree)
 }
 
-function onTabChange(tab: 'note' | 'links') {
-  activeTab.value = tab
-}
-
-// ---- 知识联系：添加 / 删除 ----
-const showLinkForm = ref(false)
-const linkType = ref<'course' | 'question' | 'note'>('course')
-const linkTargetId = ref<number | null>(null)
-const linkTs = ref('')
-const linkError = ref('')
-const courseOptions = ref<CourseInfo[]>([])
-const noteOptions = computed(() => {
-  const options: { id: number; title: string }[] = []
-  const walk = (nodes: TreeNodeData[]) => {
-    for (const n of nodes) {
-      if (n.type === 'note' && n.noteId !== undefined && n.noteId !== selectedDetail.value?.id) {
-        options.push({ id: n.noteId, title: n.name })
-      }
-      walk(n.children ?? [])
-    }
-  }
-  walk(tree.value)
-  return options
-})
-
-async function openLinkForm() {
-  linkType.value = 'course'
-  linkTargetId.value = null
-  linkTs.value = ''
-  linkError.value = ''
-  showLinkForm.value = true
-  if (courseOptions.value.length === 0) {
-    try {
-      courseOptions.value = await listCourses()
-    } catch {
-      courseOptions.value = []
-    }
-  }
-}
-
-async function submitLink() {
-  if (!selectedDetail.value) {
-    return
-  }
-  if (linkTargetId.value === null) {
-    linkError.value = '请选择或填写关联目标'
-    return
-  }
-  let tsSec: number | null = null
-  if (linkTs.value.trim()) {
-    if (!/^\d{1,2}:[0-5]\d(:\d{2})?$/.test(linkTs.value.trim())) {
-      linkError.value = '时间戳格式应为 mm:ss'
-      return
-    }
-    tsSec = parseTs(linkTs.value.trim())
-  }
-  try {
-    await addNoteLink(selectedDetail.value.id, linkType.value, linkTargetId.value, tsSec)
-    showLinkForm.value = false
-    selectedDetail.value = await getNoteDetail(selectedDetail.value.id)
-  } catch (e) {
-    linkError.value = e instanceof Error ? e.message : '添加失败'
-  }
-}
-
-async function removeLink(linkId: number) {
-  if (!selectedDetail.value) {
-    return
-  }
-  await removeNoteLink(selectedDetail.value.id, linkId)
-  selectedDetail.value = await getNoteDetail(selectedDetail.value.id)
-}
+// ---- 知识联系 ----
 
 onMounted(async () => {
   await loadTree()
@@ -565,29 +497,9 @@ const groupPathOptions = computed(() => {
           </select>
         </div>
 
-        <!-- 标签 -->
-        <div class="flex shrink-0 gap-1 border-b border-line bg-panel px-4 pt-2 pb-2">
-          <button
-            class="rounded-lg px-4 py-1.5 text-[14px]"
-            :class="activeTab === 'note' ? 'bg-white font-medium text-ink shadow-sm' : 'text-ink-2 hover:text-ink'"
-            @click="onTabChange('note')"
-          >
-            笔记内容
-          </button>
-          <button
-            class="rounded-lg px-4 py-1.5 text-[14px]"
-            :class="activeTab === 'links' ? 'bg-white font-medium text-ink shadow-sm' : 'text-ink-2 hover:text-ink'"
-            @click="onTabChange('links')"
-          >
-            知识联系
-          </button>
-        </div>
-
         <div class="min-h-0 flex-1 overflow-y-auto">
           <!-- 笔记内容 -->
-          <template v-if="activeTab === 'note'">
-            <!-- AI 笔记：Markdown 源码编辑（存 Markdown，保证详情页渲染与时间戳胶囊一致） -->
-            <div v-if="editing && isAiNote" class="ml-6 max-w-3xl px-4 pt-4">
+          <div v-if="editing && isAiNote" class="ml-6 max-w-3xl px-4 pt-4">
               <MdSourceEditor v-model="mdDraft" @chip="onEditorChip">
                 <template #actions>
                   <button class="flex items-center gap-1 rounded-lg bg-ink px-3 py-1.5 text-[13px] text-white hover:opacity-80" @click="saveEdit">
@@ -655,99 +567,17 @@ const groupPathOptions = computed(() => {
               </p>
             </div>
 
-            <!-- 知识联系 -->
-            <div class="ml-6 max-w-3xl px-4 pb-6">
-              <div class="rounded-2xl border border-line bg-panel px-4 py-3">
-                <p class="text-[13px] font-semibold text-ink">知识联系</p>
-                <div class="mt-2 flex flex-wrap gap-2">
-                  <span
-                    v-for="link in selectedNote.links"
-                    :key="link.id"
-                    class="flex cursor-pointer items-center gap-1.5 rounded-full border border-line bg-white px-3 py-1.5 text-[13px] text-ink hover:border-primary hover:text-primary"
-                    @click="openLink(link)"
-                  >
-                    <MonitorPlay v-if="link.linkType === 'course'" :size="14" class="text-ink-2" />
-                    <Camera v-else-if="link.linkType === 'question'" :size="14" class="text-ink-2" />
-                    <NotebookPen v-else :size="14" class="text-ink-2" />
-                    {{ link.title }}
-                    <span v-if="link.tsSec != null" class="text-[11px] text-ink-2">{{ formatTs(link.tsSec) }}</span>
-                    <button class="text-ink-2 hover:text-red-500" title="删除知识联系" @click="removeLink(link.id)">
-                      <X :size="12" />
-                    </button>
-                  </span>
-                  <button
-                    class="flex items-center gap-1 rounded-full border border-dashed border-line px-3 py-1.5 text-[13px] text-ink-2 hover:border-primary hover:text-primary"
-                    @click="openLinkForm"
-                  >
-                    <ListPlus :size="14" />
-                    添加知识联系
-                  </button>
+            <!-- 知识联系（移动端折叠区；桌面端在右侧栏） -->
+            <div v-if="!editing" class="ml-6 max-w-3xl px-4 pb-6 lg:hidden">
+              <details class="rounded-2xl border border-line bg-white px-4 py-3">
+                <summary class="cursor-pointer text-[13px] font-semibold text-ink">
+                  知识联系（{{ selectedNote.links.length }}）
+                </summary>
+                <div class="mt-3">
+                  <LinkPanel :note-id="selectedNote.id" :links="selectedNote.links" @changed="reloadDetail" @jump="openLink" />
                 </div>
-              </div>
+              </details>
             </div>
-          </template>
-
-          <!-- 知识联系（独立标签页） -->
-          <div v-if="activeTab === 'links'" class="ml-6 max-w-3xl px-4 py-5">
-            <div class="flex flex-col gap-2 rounded-2xl border border-line bg-white p-5">
-              <div v-for="link in selectedNote.links" :key="link.id" class="flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 text-left text-[14px] text-ink hover:bg-panel" @click="openLink(link)">
-                <MonitorPlay v-if="link.linkType === 'course'" :size="16" class="text-ink-2" />
-                <Camera v-else-if="link.linkType === 'question'" :size="16" class="text-ink-2" />
-                <NotebookPen v-else :size="16" class="text-ink-2" />
-                <span class="flex-1 truncate">{{ link.title }}</span>
-                <span v-if="link.tsSec != null" class="text-[12px] text-primary">{{ formatTs(link.tsSec) }}</span>
-                <button class="text-ink-2 hover:text-red-500" title="删除" @click="removeLink(link.id)">
-                  <X :size="14" />
-                </button>
-              </div>
-              <p v-if="selectedNote.links.length === 0" class="text-[13px] text-ink-2">暂无知识联系，点击下方按钮添加关联的网课 / 题目 / 笔记</p>
-              <button
-                class="flex items-center justify-center gap-1 rounded-xl border border-dashed border-line py-2 text-[13px] text-ink-2 hover:border-primary hover:text-primary"
-                @click="openLinkForm"
-              >
-                <ListPlus :size="15" />
-                添加知识联系
-              </button>
-            </div>
-
-            <!-- 添加表单 -->
-            <div v-if="showLinkForm" class="mt-3 rounded-2xl border border-primary bg-white p-4">
-              <div class="flex flex-col gap-3">
-                <div>
-                  <label class="mb-1 block text-[12px] text-ink-2">类型</label>
-                  <select v-model="linkType" class="w-full rounded-lg border border-line bg-white px-2 py-1.5 text-[13px] text-ink outline-none">
-                    <option value="course">网课</option>
-                    <option value="question">题目</option>
-                    <option value="note">笔记</option>
-                  </select>
-                </div>
-                <div v-if="linkType === 'course'">
-                  <label class="mb-1 block text-[12px] text-ink-2">选择网课</label>
-                  <select v-model.number="linkTargetId" class="w-full rounded-lg border border-line bg-white px-2 py-1.5 text-[13px] text-ink outline-none">
-                    <option :value="null" disabled>选择网课</option>
-                    <option v-for="c in courseOptions" :key="c.id" :value="c.id">{{ c.title }}</option>
-                  </select>
-                </div>
-                <div v-else-if="linkType === 'note'">
-                  <label class="mb-1 block text-[12px] text-ink-2">选择笔记</label>
-                  <select v-model.number="linkTargetId" class="w-full rounded-lg border border-line bg-white px-2 py-1.5 text-[13px] text-ink outline-none">
-                    <option :value="null" disabled>选择笔记</option>
-                    <option v-for="n in noteOptions" :key="n.id" :value="n.id">{{ n.title }}</option>
-                  </select>
-                </div>
-                <div v-else>
-                  <label class="mb-1 block text-[12px] text-ink-2">题目 ID</label>
-                  <input v-model.number="linkTargetId" type="number" class="w-full rounded-lg border border-line px-2 py-1.5 text-[13px] outline-none focus:border-primary" placeholder="输入拍照记录中的题目 ID" />
-                </div>
-                <div v-if="linkType === 'course'">
-                  <label class="mb-1 block text-[12px] text-ink-2">跳转时间戳（可选，如 04:18）</label>
-                  <input v-model="linkTs" type="text" class="w-full rounded-lg border border-line px-2 py-1.5 text-[13px] outline-none focus:border-primary" placeholder="mm:ss" />
-                </div>
-                <p v-if="linkError" class="text-[12px] text-red-600">{{ linkError }}</p>
-                <button class="rounded-xl bg-primary py-2 text-[13px] text-white hover:opacity-90" @click="submitLink">添加</button>
-              </div>
-            </div>
-          </div>
         </div>
       </template>
 
@@ -756,6 +586,20 @@ const groupPathOptions = computed(() => {
         <NotebookPen :size="40" class="text-ink-2/50" />
         <p class="text-[15px] text-ink-2">从左侧选择一个笔记页，或新建分组与笔记</p>
       </div>
+
+      <!-- 右：知识联系侧栏（桌面端常驻，移动端在正文下方折叠区） -->
+      <aside class="hidden w-80 shrink-0 flex-col overflow-y-auto border-l border-line px-4 py-4 lg:flex">
+        <LinkPanel
+          v-if="selectedDetail"
+          :note-id="selectedDetail.id"
+          :links="selectedDetail.links"
+          @changed="reloadDetail"
+          @jump="openLink"
+        />
+        <p v-else class="text-[12px] leading-5 text-ink-2">
+          选择一篇笔记后，在这里管理它的知识联系：关联讲到的网课片段、做过的题目、相关笔记，并可附一句关联说明。
+        </p>
+      </aside>
     </div>
   </div>
 </template>

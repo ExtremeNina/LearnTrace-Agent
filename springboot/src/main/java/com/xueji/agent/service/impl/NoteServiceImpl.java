@@ -227,7 +227,7 @@ public class NoteServiceImpl implements NoteService {
     // ---- 知识联系 ----
 
     @Override
-    public void addLink(Long userId, Long noteId, String linkType, Long targetId, Integer tsSec) {
+    public void addLink(Long userId, Long noteId, String linkType, Long targetId, Integer tsSec, String remark) {
         Note note = ownedNote(userId, noteId);
         if (note.getNodeType() != null && note.getNodeType() == TYPE_GROUP) {
             throw new BusinessException("分组不能添加知识联系");
@@ -242,10 +242,22 @@ public class NoteServiceImpl implements NoteService {
                 .setLinkType(linkType)
                 .setTargetId(targetId)
                 .setTitle(title)
+                .setRemark(remark == null || remark.isBlank() ? null : remark.trim())
                 .setTsSec(tsSec)
                 .setCreatedAt(LocalDateTime.now())
                 .setUpdatedAt(LocalDateTime.now());
         noteLinkMapper.insert(link);
+    }
+
+    @Override
+    public void updateLinkRemark(Long userId, Long noteId, Long linkId, String remark) {
+        NoteLink link = noteLinkMapper.selectById(linkId);
+        if (link == null || !link.getNoteId().equals(noteId) || !link.getUserId().equals(userId)) {
+            throw new BusinessException(404, "知识联系不存在");
+        }
+        link.setRemark(remark == null || remark.isBlank() ? null : remark.trim())
+                .setUpdatedAt(LocalDateTime.now());
+        noteLinkMapper.updateById(link);
     }
 
     @Override

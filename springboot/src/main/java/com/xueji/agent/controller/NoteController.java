@@ -99,8 +99,17 @@ public class NoteController {
         String linkType = String.valueOf(body.getOrDefault("linkType", ""));
         Long targetId = Long.valueOf(String.valueOf(body.get("targetId")));
         Integer tsSec = body.get("tsSec") == null ? null : Integer.valueOf(String.valueOf(body.get("tsSec")));
-        noteService.addLink(userId, id, linkType, targetId, tsSec);
+        String remark = body.get("remark") == null ? null : String.valueOf(body.get("remark"));
+        noteService.addLink(userId, id, linkType, targetId, tsSec, remark);
         return Result.ok("已添加知识联系");
+    }
+
+    /** 修改知识联系的说明 */
+    @PutMapping("/{id}/links/{linkId}")
+    public Result<Void> updateLinkRemark(@PathVariable Long id, @PathVariable Long linkId, @RequestBody Map<String, String> body) {
+        Long userId = UserUtils.getCurrentLoginId();
+        noteService.updateLinkRemark(userId, id, linkId, body.get("remark"));
+        return Result.ok("已更新说明");
     }
 
     /** 删除知识联系 */

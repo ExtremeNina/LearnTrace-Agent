@@ -5,6 +5,7 @@ export interface NoteLinkInfo {
   linkType: 'course' | 'question' | 'note'
   targetId: number
   title: string
+  remark?: string | null
   tsSec?: number | null
 }
 
@@ -60,8 +61,18 @@ export function updateNoteContent(id: number, content: string): Promise<void> {
   return request<void>({ method: 'PUT', url: `/notes/${id}/content`, data: { content } })
 }
 
-export function addNoteLink(id: number, linkType: string, targetId: number, tsSec?: number | null): Promise<void> {
-  return request<void>({ method: 'POST', url: `/notes/${id}/links`, data: { linkType, targetId, tsSec: tsSec ?? null } })
+export function addNoteLink(
+  id: number,
+  linkType: string,
+  targetId: number,
+  tsSec?: number | null,
+  remark?: string | null
+): Promise<void> {
+  return request<void>({ method: 'POST', url: `/notes/${id}/links`, data: { linkType, targetId, tsSec: tsSec ?? null, remark: remark ?? null } })
+}
+
+export function updateNoteLinkRemark(id: number, linkId: number, remark: string): Promise<void> {
+  return request<void>({ method: 'PUT', url: `/notes/${id}/links/${linkId}`, data: { remark } })
 }
 
 export function removeNoteLink(id: number, linkId: number): Promise<void> {

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import { Camera, ImageOff, Pencil, Trash2, X } from 'lucide-vue-next'
 import * as questionApi from '../api/question'
 import type { QuestionRecordInfo } from '../types/api'
@@ -32,7 +33,19 @@ const editForm = reactive({
   subject: '',
 })
 
-onMounted(() => load())
+const route = useRoute()
+
+onMounted(async () => {
+  await load()
+  // 支持从笔记知识联系跳转：/questions?open=3 → 自动弹出该题详情
+  const openId = Number(route.query.open)
+  if (openId) {
+    const target = records.value.find((r) => r.id === openId)
+    if (target) {
+      openDetail(target)
+    }
+  }
+})
 
 async function load() {
   loading.value = true

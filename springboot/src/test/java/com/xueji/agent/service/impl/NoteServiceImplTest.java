@@ -178,11 +178,12 @@ class NoteServiceImplTest {
                 .setId(14L).setTitle("计算机科学 第 3 讲：布尔逻辑与逻辑门");
         when(courseMapper.selectById(14L)).thenReturn(course);
 
-        service.addLink(USER_ID, 14L, "course", 14L, 258);
+        service.addLink(USER_ID, 14L, "course", 14L, 258, "课程中用与非门演示了或非的实现");
 
         ArgumentCaptor<NoteLink> captor = ArgumentCaptor.forClass(NoteLink.class);
         verify(noteLinkMapper).insert(captor.capture());
         assertThat(captor.getValue().getTitle()).isEqualTo("计算机科学 第 3 讲：布尔逻辑与逻辑门");
+        assertThat(captor.getValue().getRemark()).isEqualTo("课程中用与非门演示了或非的实现");
         assertThat(captor.getValue().getTsSec()).isEqualTo(258);
         assertThat(captor.getValue().getNoteId()).isEqualTo(14L);
     }
@@ -192,9 +193,31 @@ class NoteServiceImplTest {
         Note boolNote = node(14, "布尔逻辑与逻辑门", 0, 10L);
         when(noteMapper.selectById(14L)).thenReturn(boolNote);
 
-        assertThatThrownBy(() -> service.addLink(USER_ID, 14L, "video", 1L, null))
+        assertThatThrownBy(() -> service.addLink(USER_ID, 14L, "video", 1L, null, null))
                 .isInstanceOf(BusinessException.class);
         verify(noteLinkMapper, never()).insert(any(NoteLink.class));
+    }
+
+    @Test
+    void updateLinkRemarkShouldCheckOwnership() {
+        NoteLink foreign = new NoteLink().setId(1L).setNoteId(14L).setUserId(999L);
+        when(noteLinkMapper.selectById(1L)).thenReturn(foreign);
+
+        assertThatThrownBy(() -> service.updateLinkRemark(USER_ID, 14L, 1L, "说明"))
+                .isInstanceOf(BusinessException.class);
+        verify(noteLinkMapper, never()).updateById(any(NoteLink.class));
+    }
+
+    @Test
+    void updateLinkRemarkShouldSaveTrimmed() {
+        NoteLink mine = new NoteLink().setId(1L).setNoteId(14L).setUserId(USER_ID);
+        when(noteLinkMapper.selectById(1L)).thenReturn(mine);
+        when(noteLinkMapper.updateById(any(NoteLink.class))).thenReturn(1);
+
+        service.updateLinkRemark(USER_ID, 14L, 1L, "  罗尔定理是拉格朗日的特例  ");
+
+        assertThat(mine.getRemark()).isEqualTo("罗尔定理是拉格朗日的特例");
+        verify(noteLinkMapper).updateById(mine);
     }
 
     @Test

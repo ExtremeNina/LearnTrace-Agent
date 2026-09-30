@@ -34,8 +34,11 @@ public interface NoteService {
     /** 更新笔记正文（在线编辑保存） */
     void updateContent(Long userId, Long noteId, String content);
 
-    /** 添加知识联系（linkType: course / question / note） */
-    void addLink(Long userId, Long noteId, String linkType, Long targetId, Integer tsSec);
+    /** 添加知识联系（linkType: course / question / note；remark 可选关联说明） */
+    void addLink(Long userId, Long noteId, String linkType, Long targetId, Integer tsSec, String remark);
+
+    /** 修改知识联系的说明（仅 remark） */
+    void updateLinkRemark(Long userId, Long noteId, Long linkId, String remark);
 
     /** 删除知识联系 */
     void removeLink(Long userId, Long noteId, Long linkId);

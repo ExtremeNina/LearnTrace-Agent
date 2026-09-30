@@ -32,6 +32,9 @@ public class NoteLink {
     /** 展示标题 */
     private String title;
 
+    /** 联系说明（这条联系相关的点，可选） */
+    private String remark;
+
     /** 跳转时间（秒，仅网课知识联系使用） */
     private Integer tsSec;
 
