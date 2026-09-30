@@ -3,9 +3,67 @@
 AI 个人学习工作台：学习资产（网课 / 题目 / 笔记）+ 知识点页 + Human-in-the-loop 的 Agent 对话。
 技术栈：Vue 3 + TypeScript + Tailwind 响应式前端（桌面与手机端都要可用，移动端 Sidebar 折叠为抽屉）；Spring Boot 3 + MyBatis-Plus + MySQL + Redis + RabbitMQ 后端。AI 框架使用 Spring AI，LLM 为 DeepSeek，OCR 接入阿里云第三方 API。
 
-进度以 git 提交为准。当前：切片一（会话骨架）已完成——注册登录、会话增删改查、Spring AI 流式对话（WebSocket）、Redis 记忆、对话附图（OSS 上传 /upload/image）、三套系统提示词与阿里云 OCR 工具均已提交；下一任务是切片二（题目记录）。切片顺序固定：一会话骨架 → 二题目记录 → 三网课。
+进度以 git 提交为准（`git log --oneline` 近 30 条可完整恢复上下文）。当前（2026-09-30 交接）：切片一（会话骨架）完成；切片二（题目记录）大部分完成——OCR 前置流水线、解答与保存引导（QuestionSaveTool）、列表/详情/编辑删除/日期筛选分页已提交，剩余相似题生成与保存；切片三（网课）大部分完成——上传→RabbitMQ→FFmpeg→ASR 分片转写→批量帧 OCR→LLM 笔记生成入库全链路已用 3 个真实视频（约 10 分钟/个）验证 SUCCESS，前端列表/详情/上传弹窗已接真数据，剩余 AI 笔记的确认环节与章节生成。详细待办、决策待定事项与环境清单见下方「当前状态与待办」；踩坑记录见「经验坑清单」。切片顺序固定：一会话骨架 → 二题目记录 → 三网课。
 
-已知遗留问题：对话图片上传曾因 OSS 配置不可用（bucket `jj-fruit-store` 实际位于武汉 region，而 endpoint 默认杭州；AK/SK 环境变量后端进程读不到）。2026-09-27 已处理：改为 git 忽略的本地配置文件 `springboot/application-local.properties`（经 application.yml 的 `spring.config.import: optional:file:./application-local.properties` 引入，含 OSS endpoint/accessKey/secretKey/bucketName 与 OCR 密钥，endpoint 已指向武汉 region），任何方式启动后端均可读到；`AliUploadUtils` 保留 `@PostConstruct` 启动期密钥校验。仍未修复：`uploadChatImage` 只捕获 IOException，OSSException 落到全局兜底处理器；前端 `Agent.vue` 未渲染 `agent.error`，上传失败无界面反馈。另：Redis db1 与其他项目共用且 sa-token 键前缀相同（`sa-token:`），他项目 token 可通过本系统鉴权，建议将 `token-name` 改为独有值隔离。
+已知遗留问题（部分为早期记录，动手前先复核是否仍存在）：对话图片上传曾因 OSS 配置不可用（bucket `jj-fruit-store` 实际位于武汉 region，endpoint 默认杭州；AK/SK 环境变量后端进程读不到），2026-09-27 已改用 git 忽略的本地配置文件方案（见「环境清单」）；`AliUploadUtils` 已有 `@PostConstruct` 启动期密钥校验；`uploadChatImage` 只捕获 IOException（OSSException 落全局兜底）与前端 `Agent.vue` 未渲染上传失败提示，这两项**未复核**。另：Redis db1 与其他项目共用且 sa-token 键前缀相同（`sa-token:`），他项目 token 可通过本系统鉴权，建议将 `token-name` 改为独有值隔离。
+
+## 经验坑清单（踩坑记录，遇到同类问题先查这里）
+
+**FFmpeg / 音视频**
+* 本机 FFmpeg 为 2026 新版，已移除 `-vsync` → 抽帧一律用 `-fps_mode vfr`（旧命令整体失败且不易察觉）
+* `fps=1/60` 之类滤镜对短视频会取整为 0 帧 → 抽帧回退要用 `select='eq(n,0)+not(mod(n,1500))'`（帧号采样）+ 第 0 帧兜底
+* 场景检测滤镜内逗号在单引号保护下无需转义；ProcessBuilder 无 shell，参数原样传
+
+**阿里云 ASR（Qwen-Audio-3.1-ASR-Flash，百炼专属部署）**
+* 单次音频上限 300s → 长音频按 280s 分片转写（`-ss/-t` 切片），句级时间戳加偏移合并
+* 实际响应不是标准多模态结构，是句级结构（顶层 `text` / `sentence.begin_time/end_time/text/words`），解析要兼容多形态
+* 错误码 `ASR_RESPONSE_HAVE_NO_WORDS` = 无语音（静音/正弦音测试视频），属正常降级
+
+**阿里云 OCR（读光 OCR，ocr_api20210707 SDK 3.1.3）**
+* 必须用「OCR 统一识别」接口 `recognizeAllText`，Type 枚举值为 `General`（`BasicOcr` 无效；`RecognizeGeneral` 是旧产品线，未开通会报 401）
+* 响应正文在 `body.data.getContent()`
+
+**百度 PaddleOCR（AI Studio 星河社区，异步任务流）**
+* 结果 NDJSON 在百度云 BOS **签名 URL** 上：签名对 URL 字节敏感，RestClient 的 URI 模板会二次编码（`%2F`→`%252F`）导致 SignatureDoesNotMatch → 必须用 `java.net.URI.create(url).toURL().openStream()` 裸请求
+* bucket `jj-fruit-store` 实际在 `oss-cn-wuhan-lr`（不在杭州）——OSS endpoint 错了会报 AccessDenied
+
+**RabbitMQ**
+* guest 只允许容器内 localhost 登录，Docker NAT 后来源是网关 IP 会被拒 → 容器内已建用户 `xueji/xueji123`（凭据同时记在 `application-local.properties`；**容器重建会丢，需重建用户**）
+* Spring AMQP 3.x 禁止 JDK 序列化反序列化（HashMap 直接被拒）→ MQ 负载一律 JSON 字符串
+* 监听容器认证失败会中止启动（SimpleMessageListenerContainer fatal）→ 认证问题表现为**整个应用起不来**，不只是 MQ 不可用
+
+**Spring AI 1.1.8**
+* `MessageChatMemoryAdvisor` 在 `org.springframework.ai.chat.client.advisor` 包（不在 chat.memory）
+* 笔记生成等非对话 LLM 调用：用独立 conversationId（如 `course-note-{id}`）隔离记忆，不污染用户对话
+* NoteGenerationService.buildUserContent 为公开静态组装方法，配套单测
+
+**构建 / 环境**
+* Lombok 需 1.18.48（pom 覆盖父 POM），否则新 JDK 报 `TypeTag :: UNKNOWN`
+* Sa-Token 1.40 的 `SaHolder` 在 `cn.dev33.satoken.context` 包；CORS 预检（OPTIONS）必须在拦截器中跳过登录校验
+* Spring AI 依赖加入后 javac 注解处理器发现会失效（Lombok 不运行）→ pom 已配置 `annotationProcessorPaths` 显式指定 Lombok
+* IDEA 自动保存会覆盖外部修改、target 增量编译状态会脏 → 外部改文件后编译报诡异错误先 `mvn clean`；错误行号与源码对不上时怀疑 IDE 缓冲区回写
+* Git Bash 里 curl 发中文表单/JSON 会 GBK 乱码 → 接口测试用 Node fetch（Node 24 自带全局 WebSocket/fetch，WS 测试脚本见 `web/test-ws.mjs`）
+
+## 当前状态与待办（2026-09-30 交接）
+
+**已完成并验证**：三个切片的核心链路均有真实数据验证——会话多轮流式对话；3 个约 10 分钟真实网课视频全流水线 SUCCESS（转写句级分段 9 段、关键帧 73 张识别 66 成功、AI 笔记 3 份入库且用户期望被遵守、笔记含 [mm:ss] 时间戳引用）；笔记分层树 + 知识联系前后端完整闭环。
+
+**待办（建议顺序）**：
+1. AI 笔记确认环节（PRD §7 确认卡片，方针讨论过未定案：整篇一张卡 vs 分节确认；确认前是否可预览）——网课笔记目前为直接入库
+2. 相似题生成与保存（PRD §8，切片二尾巴）
+3. 三个小件打包：会话 100 次上限、每日 AI 配额（Redis Lua）、会话 30 天清理（Scheduler）
+4. 学习轨迹数据层（learning_record 打点：看过网课 / 做过题）
+5. RAG 检索（rag_search，PRD §3.6）
+6. 对话上传视频入口——讨论过方案 B（轻量抽帧预览 + 确认后归档），用户搁置待总体考量
+
+**决策待定（新会话需用户重新拍板）**：上述 1 与 6 的方针；网课"章节"是否独立生成（当前并入笔记正文）。
+
+**环境清单（不在 git 里，丢失按此重建，约 10 分钟）**：
+* `springboot/application-local.properties`（gitignored）：OSS（endpoint=武汉 lr 区）/ OCR / Qwen ASR 的密钥与 RabbitMQ 凭据——若丢失，凭据见阿里云控制台与 AI Studio，格式参照 agent.md 历史提交
+* RabbitMQ 容器 `rabbitmq`（5672）：内含用户 `xueji/xueji123`（需 `rabbitmqctl set_permissions -p / xueji ".*" ".*" ".*"`）；容器重建后重建用户
+* MySQL `xueji` 库：14 张表 + 种子/测试数据（笔记分层树、3 个课程的完整流水线数据）
+* 用户级环境变量（setx）：OSS_ACCESS_KEY / OSS_SECRET_KEY / OSS_BUCKET / OSS_ENDPOINT / RABBITMQ_USER / RABBITMQ_PASS（本地开发已不依赖，走本地配置文件）
+* 新会话热身三步：`mvn test`（56 个）→ `npm run build`（web）→ 后端启动冒烟（登录 + /courses + /notes/tree）
 
 ## 工单流程节奏（implement-spec / 多工单任务）
 
