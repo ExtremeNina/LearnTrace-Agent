@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { Download, ArrowLeft, CircleCheck, LoaderCircle, Pencil, X } from 'lucide-vue-next'
+import { Download, ArrowLeft, CircleCheck, LoaderCircle, Pencil, Save, X } from 'lucide-vue-next'
 import { getCourseDetail, updateCourse } from '../api/course'
 import type { CourseDetailData } from '../api/course'
+import { updateNoteContent } from '../api/note'
 import { SUBJECTS } from '../constants/subjects'
 import { renderMarkdown } from '../utils/markdown'
 
@@ -126,6 +127,40 @@ async function saveEdit() {
     saving.value = false
   }
 }
+
+// 在线编辑 AI 笔记：Markdown 源码编辑，保存回笔记正文接口。
+// AI 笔记必须存 Markdown（详情页靠 renderMarkdown 渲染并转换 [mm:ss] 时间戳胶囊），不能存富文本 HTML
+const noteEditing = ref(false)
+const noteDraft = ref('')
+const noteSaving = ref(false)
+const noteError = ref('')
+
+function startNoteEdit() {
+  if (!data.value?.note) {
+    return
+  }
+  noteDraft.value = data.value.note.content
+  noteError.value = ''
+  noteSaving.value = false
+  noteEditing.value = true
+}
+
+async function saveNoteEdit() {
+  if (!data.value?.note) {
+    return
+  }
+  noteSaving.value = true
+  noteError.value = ''
+  try {
+    await updateNoteContent(data.value.note.id, noteDraft.value)
+    data.value.note.content = noteDraft.value
+    noteEditing.value = false
+  } catch (e) {
+    noteError.value = e instanceof Error ? e.message : '保存失败，请稍后重试'
+  } finally {
+    noteSaving.value = false
+  }
+}
 </script>
 
 <template>
@@ -179,25 +214,65 @@ async function saveEdit() {
         <div class="mt-5 flex flex-col-reverse gap-5 lg:h-[calc(100%-72px)] lg:flex-row">
           <!-- 左：AI 笔记（主区，宽） -->
           <div class="flex min-w-0 flex-1 flex-col">
-            <div class="flex shrink-0 gap-1 rounded-xl bg-panel p-1">
-              <button
-                v-for="tab in [
-                  { key: 'note', label: 'AI 笔记' },
-                  { key: 'transcript', label: '转写对照' },
-                  { key: 'frames', label: '关键帧识别' },
-                ]"
-                :key="tab.key"
-                class="flex-1 rounded-lg py-1.5 text-[14px] transition-colors"
-                :class="activeTab === tab.key ? 'bg-white font-medium text-ink shadow-sm' : 'text-ink-2 hover:text-ink'"
-                @click="onTabChange(tab.key as 'note' | 'transcript' | 'frames')"
-              >
-                {{ tab.label }}
-              </button>
+            <div class="flex shrink-0 items-center gap-2">
+              <div class="flex flex-1 gap-1 rounded-xl bg-panel p-1">
+                <button
+                  v-for="tab in [
+                    { key: 'note', label: 'AI 笔记' },
+                    { key: 'transcript', label: '转写对照' },
+                    { key: 'frames', label: '关键帧识别' },
+                  ]"
+                  :key="tab.key"
+                  class="flex-1 rounded-lg py-1.5 text-[14px] transition-colors"
+                  :class="activeTab === tab.key ? 'bg-white font-medium text-ink shadow-sm' : 'text-ink-2 hover:text-ink'"
+                  @click="onTabChange(tab.key as 'note' | 'transcript' | 'frames')"
+                >
+                  {{ tab.label }}
+                </button>
+              </div>
+              <!-- AI 笔记在线编辑（Markdown 源码） -->
+              <template v-if="activeTab === 'note' && data.note">
+                <button
+                  v-if="!noteEditing"
+                  class="flex shrink-0 items-center gap-1.5 rounded-xl border border-line bg-white px-3 py-1.5 text-[13px] text-ink hover:bg-panel"
+                  @click="startNoteEdit"
+                >
+                  <Pencil :size="14" />
+                  编辑笔记
+                </button>
+                <template v-else>
+                  <button
+                    class="flex shrink-0 items-center gap-1.5 rounded-xl bg-primary px-3 py-1.5 text-[13px] text-white hover:opacity-90 disabled:opacity-50"
+                    :disabled="noteSaving"
+                    @click="saveNoteEdit"
+                  >
+                    <Save :size="14" />
+                    保存
+                  </button>
+                  <button
+                    class="flex shrink-0 items-center gap-1.5 rounded-xl border border-line bg-white px-3 py-1.5 text-[13px] text-ink hover:bg-panel"
+                    @click="noteEditing = false"
+                  >
+                    <X :size="14" />
+                    取消
+                  </button>
+                </template>
+              </template>
             </div>
 
             <div class="mt-4 min-h-0 flex-1 overflow-y-auto lg:pr-2">
-              <!-- AI 笔记 -->
-              <div v-if="activeTab === 'note'" class="note-view rounded-2xl border border-line bg-white p-6 text-[14px] leading-7 text-ink" v-html="noteHtml" @click="onNoteClick" />
+              <!-- AI 笔记：编辑态为 Markdown 源码，阅读态渲染并转换时间戳胶囊 -->
+              <template v-if="activeTab === 'note'">
+                <div v-if="noteEditing" class="rounded-2xl border border-primary bg-white p-6">
+                  <p class="mb-2 text-[12px] text-ink-2">Markdown 源码编辑；[mm:ss] 时间戳保存后仍可点击跳转原片段</p>
+                  <p v-if="noteError" class="mb-2 text-[12px] text-red-600">{{ noteError }}</p>
+                  <textarea
+                    v-model="noteDraft"
+                    class="h-[60vh] w-full resize-y rounded-xl border border-line p-3 font-mono text-[13px] leading-6 text-ink outline-none focus:border-primary"
+                  ></textarea>
+                </div>
+                <div v-else class="note-view rounded-2xl border border-line bg-white p-6 text-[14px] leading-7 text-ink" v-html="noteHtml" @click="onNoteClick" />
+              </template>
 
               <!-- 转写对照 -->
               <div v-else-if="activeTab === 'transcript'" class="flex flex-col gap-3 rounded-2xl border border-line bg-white p-6">
