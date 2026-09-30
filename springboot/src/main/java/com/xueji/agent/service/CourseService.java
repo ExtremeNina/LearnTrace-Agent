@@ -1,5 +1,6 @@
 package com.xueji.agent.service;
 
+import com.xueji.agent.domain.dto.CourseUpdateDto;
 import com.xueji.agent.domain.entity.Course;
 import com.xueji.agent.domain.entity.CourseFrame;
 import com.xueji.agent.domain.entity.CourseTranscriptSegment;
@@ -23,6 +24,11 @@ public interface CourseService {
      * 用户的网课列表（按创建时间倒序）
      */
     List<Course> listByUser(Long userId);
+
+    /**
+     * 编辑网课（标题 / 学科；仅更新提供的字段），返回更新后的课程
+     */
+    Course updateByUser(Long userId, Long courseId, CourseUpdateDto dto);
 
     /**
      * 课程详情：课程信息 + 转写分段 + 关键帧识别结果

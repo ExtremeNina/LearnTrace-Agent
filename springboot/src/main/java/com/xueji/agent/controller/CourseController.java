@@ -1,6 +1,7 @@
 package com.xueji.agent.controller;
 
 import com.xueji.agent.common.Result;
+import com.xueji.agent.domain.dto.CourseUpdateDto;
 import com.xueji.agent.domain.entity.Course;
 import com.xueji.agent.service.CourseService;
 import com.xueji.agent.utils.UserUtils;
@@ -9,6 +10,8 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -46,6 +49,15 @@ public class CourseController {
     public Result<List<Course>> list() {
         Long userId = UserUtils.getCurrentLoginId();
         return Result.data(courseService.listByUser(userId));
+    }
+
+    /**
+     * 编辑网课（标题 / 学科，仅更新提供的字段）
+     */
+    @PutMapping("/{id}")
+    public Result<Course> update(@PathVariable Long id, @RequestBody CourseUpdateDto dto) {
+        Long userId = UserUtils.getCurrentLoginId();
+        return Result.data(courseService.updateByUser(userId, id, dto));
     }
 
     /**

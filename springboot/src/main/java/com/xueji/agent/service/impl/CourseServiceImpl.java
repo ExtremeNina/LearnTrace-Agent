@@ -2,6 +2,7 @@ package com.xueji.agent.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.xueji.agent.common.MqKeys;
+import com.xueji.agent.domain.dto.CourseUpdateDto;
 import com.xueji.agent.domain.entity.Course;
 import com.xueji.agent.domain.entity.CourseFrame;
 import com.xueji.agent.domain.entity.CourseTranscriptSegment;
@@ -100,6 +101,20 @@ public class CourseServiceImpl implements CourseService {
                 .eq("user_id", userId)
                 .eq("deleted", 0)
                 .orderByDesc("created_at"));
+    }
+
+    @Override
+    public Course updateByUser(Long userId, Long courseId, CourseUpdateDto dto) {
+        Course course = checkOwnership(userId, courseId);
+        if (dto.getTitle() != null && !dto.getTitle().isBlank()) {
+            course.setTitle(dto.getTitle().trim());
+        }
+        if (dto.getSubject() != null) {
+            course.setSubject(dto.getSubject().isBlank() ? null : dto.getSubject().trim());
+        }
+        course.setUpdatedAt(LocalDateTime.now());
+        courseMapper.updateById(course);
+        return course;
     }
 
     @Override

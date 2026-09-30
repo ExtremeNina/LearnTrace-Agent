@@ -77,6 +77,10 @@ export function getCourseDetail(id: number): Promise<CourseDetailData> {
   return request<CourseDetailData>({ method: 'GET', url: `/courses/${id}` })
 }
 
+export function updateCourse(id: number, data: { title?: string; subject?: string }): Promise<CourseInfo> {
+  return request<CourseInfo>({ method: 'PUT', url: `/courses/${id}`, data })
+}
+
 export function retryCourse(id: number): Promise<void> {
   return request<void>({ method: 'POST', url: `/courses/${id}/retry` })
 }

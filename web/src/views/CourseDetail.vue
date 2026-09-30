@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { Download, ArrowLeft, CircleCheck, LoaderCircle } from 'lucide-vue-next'
-import { getCourseDetail } from '../api/course'
+import { Download, ArrowLeft, CircleCheck, LoaderCircle, Pencil, X } from 'lucide-vue-next'
+import { getCourseDetail, updateCourse } from '../api/course'
 import type { CourseDetailData } from '../api/course'
+import { SUBJECTS } from '../constants/subjects'
 import { renderMarkdown } from '../utils/markdown'
 
 /**
@@ -97,6 +98,34 @@ function onNoteClick(e: MouseEvent) {
 function onTabChange(tab: 'note' | 'transcript' | 'frames') {
   activeTab.value = tab
 }
+
+// 在线编辑（标题 / 学科）
+const editMode = ref(false)
+const editForm = reactive({ title: '', subject: '' })
+const saving = ref(false)
+
+function openEdit() {
+  if (!data.value) {
+    return
+  }
+  editForm.title = data.value.course.title
+  editForm.subject = data.value.course.subject ?? ''
+  saving.value = false
+  editMode.value = true
+}
+
+async function saveEdit() {
+  if (!data.value || !editForm.title.trim()) {
+    return
+  }
+  saving.value = true
+  try {
+    data.value.course = await updateCourse(courseId, { title: editForm.title, subject: editForm.subject })
+    editMode.value = false
+  } finally {
+    saving.value = false
+  }
+}
 </script>
 
 <template>
@@ -117,12 +146,25 @@ function onTabChange(tab: 'note' | 'transcript' | 'frames') {
           </RouterLink>
           <div class="min-w-0">
             <h1 class="truncate text-[18px] font-semibold">{{ data.course.title }}</h1>
-            <p class="mt-0.5 text-[12px] text-ink-2">
-              {{ data.course.createdAt }} · {{ formatSize(data.course.videoSize) }}
-              <span v-if="data.course.expectations" class="ml-2 text-primary">已注入你的特别要求</span>
+            <p class="mt-0.5 flex items-center gap-2 text-[12px] text-ink-2">
+              <span
+                v-if="data.course.subject"
+                class="rounded-md bg-primary-soft px-1.5 py-0.5 text-primary"
+              >
+                {{ data.course.subject }}
+              </span>
+              <span>{{ data.course.createdAt }} · {{ formatSize(data.course.videoSize) }}</span>
+              <span v-if="data.course.expectations" class="text-primary">已注入你的特别要求</span>
             </p>
           </div>
           <div class="ml-auto flex shrink-0 items-center gap-2">
+            <button
+              class="flex items-center gap-1.5 rounded-xl border border-line px-3 py-1.5 text-[13px] text-ink hover:bg-panel"
+              @click="openEdit"
+            >
+              <Pencil :size="15" />
+              编辑
+            </button>
             <button class="flex items-center gap-1.5 rounded-xl border border-line px-3 py-1.5 text-[13px] text-ink hover:bg-panel">
               <CircleCheck :size="15" />
               AI 润色
@@ -224,6 +266,63 @@ function onTabChange(tab: 'note' | 'transcript' | 'frames') {
           </div>
         </div>
       </template>
+    </div>
+
+    <!-- 编辑弹窗（标题 / 学科） -->
+    <div
+      v-if="editMode"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-ink/25 px-4 backdrop-blur-sm"
+      @click.self="editMode = false"
+    >
+      <div class="w-full max-w-md rounded-3xl border border-line bg-white p-6 shadow-xl">
+        <div class="flex items-start justify-between">
+          <h2 class="text-[16px] font-semibold">编辑网课</h2>
+          <button
+            class="flex h-8 w-8 items-center justify-center rounded-lg text-ink-2 hover:bg-line/60 hover:text-ink"
+            title="关闭"
+            @click="editMode = false"
+          >
+            <X :size="16" />
+          </button>
+        </div>
+
+        <div class="mt-4 flex flex-col gap-4">
+          <label class="block">
+            <span class="mb-1 block text-[12px] text-ink-2">标题</span>
+            <input
+              v-model="editForm.title"
+              type="text"
+              class="w-full rounded-xl border border-line px-3 py-2 text-[14px] outline-none focus:border-primary"
+            />
+          </label>
+          <label class="block">
+            <span class="mb-1 block text-[12px] text-ink-2">学科</span>
+            <select
+              v-model="editForm.subject"
+              class="w-full rounded-xl border border-line bg-white px-3 py-2 text-[14px] outline-none focus:border-primary"
+            >
+              <option value="">不选择</option>
+              <option v-for="s in SUBJECTS" :key="s" :value="s">{{ s }}</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="mt-5 flex justify-end gap-2">
+          <button
+            class="rounded-xl border border-line px-4 py-2 text-[14px] text-ink hover:bg-line/60"
+            @click="editMode = false"
+          >
+            取消
+          </button>
+          <button
+            class="rounded-xl bg-primary px-4 py-2 text-[14px] text-white hover:opacity-90 disabled:opacity-50"
+            :disabled="saving || !editForm.title.trim()"
+            @click="saveEdit"
+          >
+            保存修改
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
