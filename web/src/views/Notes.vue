@@ -282,8 +282,22 @@ const editedHtmlByNote = reactive(new Map<number, string>())
 const selectedNote = computed(() => selectedDetail.value)
 
 async function openNote(id: number) {
+  // 切换笔记时退出编辑态，避免编辑状态与未保存草稿被带进另一篇笔记
+  editing.value = false
   selectedDetail.value = await getNoteDetail(id)
   selectedId.value = id
+  // 手动笔记且尚无内容（新建 / 未书写过）：自动进入编辑态，免去先找编辑按钮
+  if (isManualEmpty(selectedDetail.value)) {
+    startEdit()
+  }
+}
+
+/** 手动笔记内容是否为空（剥掉标签与空白后无有效文字） */
+function isManualEmpty(d: NoteDetailInfo): boolean {
+  if (d.source !== '手动创建') {
+    return false
+  }
+  return d.content.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim() === ''
 }
 
 /** 知识联系面板增删改后刷新详情（保留树不动） */
@@ -358,16 +372,21 @@ async function saveEdit() {
     editing.value = false
     return
   }
-  if (selectedDetail.value.source === 'AI 生成') {
-    await updateNoteContent(selectedDetail.value.id, mdDraft.value)
-    selectedDetail.value.content = mdDraft.value
-  } else if (editorRef.value) {
-    const html = editorRef.value.innerHTML
-    await updateNoteContent(selectedDetail.value.id, html)
-    editedHtmlByNote.set(selectedDetail.value.id, html)
-    selectedDetail.value.content = html
+  try {
+    if (selectedDetail.value.source === 'AI 生成') {
+      await updateNoteContent(selectedDetail.value.id, mdDraft.value)
+      selectedDetail.value.content = mdDraft.value
+    } else if (editorRef.value) {
+      const html = editorRef.value.innerHTML
+      await updateNoteContent(selectedDetail.value.id, html)
+      editedHtmlByNote.set(selectedDetail.value.id, html)
+      selectedDetail.value.content = html
+    }
+    editing.value = false
+  } catch (e) {
+    // 保存失败留在编辑态，内容不丢
+    window.alert(e instanceof Error ? e.message : '保存失败，请稍后重试')
   }
-  editing.value = false
 }
 
 function cancelEdit() {
@@ -418,10 +437,20 @@ const noteHtml = computed(() => {
   return renderWithChips({ ...d, content: cached ?? d.content })
 })
 
+/** 手动笔记阅读态是否无内容（显示占位提示） */
+const readEmpty = computed(() => !!selectedDetail.value && isManualEmpty(selectedDetail.value))
+
 function onNoteClick(e: MouseEvent) {
   const chip = (e.target as HTMLElement).closest('[data-ts]')
-  if (chip && selectedDetail.value?.courseId) {
-    router.push(`/courses/${selectedDetail.value.courseId}?t=${chip.getAttribute('data-ts')}`)
+  if (chip) {
+    if (selectedDetail.value?.courseId) {
+      router.push(`/courses/${selectedDetail.value.courseId}?t=${chip.getAttribute('data-ts')}`)
+    }
+    return
+  }
+  // 手动笔记：单击正文直接进入编辑（时间戳胶囊跳转优先，已在上方返回）
+  if (!editing.value && selectedDetail.value && selectedDetail.value.source !== 'AI 生成') {
+    startEdit()
   }
 }
 
@@ -561,13 +590,27 @@ const groupPathOptions = computed(() => {
             <p class="text-[12px] text-ink-2">{{ selectedNote.source }} · 更新于 {{ selectedNote.updatedAt }}</p>
           </div>
           <div class="ml-auto flex shrink-0 items-center gap-2">
+            <!-- AI 笔记：编辑按钮（Markdown 源码修订） -->
             <button
+              v-if="isAiNote"
               class="flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-[13px] hover:bg-panel"
               :class="editing ? 'border-primary text-primary' : 'border-line text-ink'"
               @click="editing ? cancelEdit() : startEdit()"
             >
               <PencilLine :size="15" />
               {{ editing ? '取消' : '编辑' }}
+            </button>
+            <!-- 手动笔记：单击正文即进入编辑，头部保存按钮（未进入编辑时置灰） -->
+            <button
+              v-else
+              class="flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-[13px]"
+              :class="editing ? 'border-primary bg-primary text-white hover:opacity-90' : 'border-line text-ink-2 opacity-50 cursor-not-allowed'"
+              :disabled="!editing"
+              title="单击正文内容即可编辑，改完点这里保存"
+              @click="saveEdit"
+            >
+              <Save :size="15" />
+              保存
             </button>
             <button class="hidden items-center gap-1.5 rounded-xl border border-line px-3 py-1.5 text-[13px] text-ink hover:bg-panel sm:flex">
               <Download :size="15" />
@@ -655,10 +698,15 @@ const groupPathOptions = computed(() => {
             </div>
 
             <div v-else class="ml-6 max-w-3xl px-4 py-5" @click="onNoteClick">
-              <div class="note-view text-[14px] leading-7 text-ink" v-html="noteHtml" />
-              <p v-if="selectedNote.courseId" class="mt-2 text-[12px] text-ink-2">
-                点击文中的时间戳可跳转网课对应位置核对。
-              </p>
+              <template v-if="readEmpty">
+                <p class="text-[14px] text-ink-2">这篇笔记还没有内容，单击此处即可开始书写。</p>
+              </template>
+              <template v-else>
+                <div class="note-view text-[14px] leading-7 text-ink" v-html="noteHtml" />
+                <p v-if="selectedNote.courseId" class="mt-2 text-[12px] text-ink-2">
+                  点击文中的时间戳可跳转网课对应位置核对；单击正文任意位置可直接编辑。
+                </p>
+              </template>
             </div>
 
             <!-- 知识联系（移动端折叠区；桌面端在右侧栏） -->
