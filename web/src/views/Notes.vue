@@ -651,11 +651,40 @@ const groupPathOptions = computed(() => {
           </div>
         </div>
 
-        <!-- 移动到分组 -->
+        <!-- 移动到分组（编辑手动笔记时，格式工具栏固定在本行） -->
         <div class="flex shrink-0 items-center gap-2 border-b border-line px-4 py-2 text-[12px] text-ink-2">
           <FolderInput :size="14" />
+          <div v-if="editing && !isAiNote" class="ml-auto flex items-center gap-1">
+            <button class="flex h-7 w-7 items-center justify-center rounded-lg text-ink hover:bg-line/60" title="加粗" @mousedown.prevent @click="exec('bold')">
+              <Bold :size="14" />
+            </button>
+            <button class="flex h-7 w-7 items-center justify-center rounded-lg text-ink hover:bg-line/60" title="斜体" @mousedown.prevent @click="exec('italic')">
+              <Italic :size="14" />
+            </button>
+            <button class="flex h-7 w-7 items-center justify-center rounded-lg text-ink hover:bg-line/60" title="下划线" @mousedown.prevent @click="exec('underline')">
+              <Underline :size="14" />
+            </button>
+            <select class="h-7 rounded-lg border border-line bg-white px-1 text-[12px] text-ink outline-none" title="字号" @change="onFontSizeChange">
+              <option value="2">小</option>
+              <option value="3" selected>标准</option>
+              <option value="5">大</option>
+              <option value="7">特大</option>
+            </select>
+            <label class="flex h-7 w-7 cursor-pointer items-center justify-center rounded-lg text-ink hover:bg-line/60" title="字体颜色">
+              <Paintbrush :size="14" />
+              <input type="color" class="sr-only" value="#0d0d0d" @input="onColorChange" />
+            </label>
+            <label class="flex h-7 w-7 cursor-pointer items-center justify-center rounded-lg text-ink hover:bg-line/60" title="背景高亮">
+              <Highlighter :size="14" />
+              <input type="color" class="sr-only" value="#fff3c4" @input="onHighlightChange" />
+            </label>
+            <button class="flex h-7 w-7 items-center justify-center rounded-lg text-ink hover:bg-line/60" title="清除格式" @mousedown.prevent @click="exec('removeFormat')">
+              <Eraser :size="14" />
+            </button>
+          </div>
           <select
-            class="ml-auto shrink-0 rounded-lg border border-line bg-white px-2 py-1 text-[12px] text-ink outline-none"
+            :class="editing && !isAiNote ? 'shrink-0' : 'ml-auto shrink-0'"
+            class="rounded-lg border border-line bg-white px-2 py-1 text-[12px] text-ink outline-none"
             @change="onMoveChange"
           >
             <option value="" disabled selected>移动到分组…</option>
@@ -683,52 +712,19 @@ const groupPathOptions = computed(() => {
               </MdSourceEditor>
             </div>
 
-            <!-- 手动笔记：原地编辑——阅读与编辑是同一个 DOM，点击后仅变为可编辑，排版不变 -->
-            <div v-else class="relative ml-6 max-w-3xl px-4 py-5" @click="onNoteClick">
-              <!-- 浮动格式工具条：编辑态出现，悬浮不占布局 -->
-              <div
-                v-if="editing"
-                class="absolute right-0 top-2 z-10 flex flex-wrap items-center gap-1 rounded-xl border border-line bg-white/95 px-2 py-1 shadow-sm backdrop-blur"
-              >
-                <button class="flex h-7 w-7 items-center justify-center rounded-lg text-ink hover:bg-line/60" title="加粗" @mousedown.prevent @click="exec('bold')">
-                  <Bold :size="14" />
-                </button>
-                <button class="flex h-7 w-7 items-center justify-center rounded-lg text-ink hover:bg-line/60" title="斜体" @mousedown.prevent @click="exec('italic')">
-                  <Italic :size="14" />
-                </button>
-                <button class="flex h-7 w-7 items-center justify-center rounded-lg text-ink hover:bg-line/60" title="下划线" @mousedown.prevent @click="exec('underline')">
-                  <Underline :size="14" />
-                </button>
-                <select class="h-7 rounded-lg border border-line bg-white px-1 text-[12px] text-ink outline-none" title="字号" @change="onFontSizeChange">
-                  <option value="2">小</option>
-                  <option value="3" selected>标准</option>
-                  <option value="5">大</option>
-                  <option value="7">特大</option>
-                </select>
-                <label class="flex h-7 w-7 cursor-pointer items-center justify-center rounded-lg text-ink hover:bg-line/60" title="字体颜色">
-                  <Paintbrush :size="14" />
-                  <input type="color" class="sr-only" value="#0d0d0d" @input="onColorChange" />
-                </label>
-                <label class="flex h-7 w-7 cursor-pointer items-center justify-center rounded-lg text-ink hover:bg-line/60" title="背景高亮">
-                  <Highlighter :size="14" />
-                  <input type="color" class="sr-only" value="#fff3c4" @input="onHighlightChange" />
-                </label>
-                <button class="flex h-7 w-7 items-center justify-center rounded-lg text-ink hover:bg-line/60" title="清除格式" @mousedown.prevent @click="exec('removeFormat')">
-                  <Eraser :size="14" />
-                </button>
-              </div>
-
-              <p v-if="readEmpty && !editing" class="text-[14px] text-ink-2">这篇笔记还没有内容，单击此处即可开始书写。</p>
+            <!-- 手动笔记：原地编辑——阅读与编辑是同一个 DOM，点击后仅变为可编辑；内边距两态一致，排版不变 -->
+            <div v-else class="ml-6 max-w-3xl py-2" @click="onNoteClick">
+              <p v-if="readEmpty && !editing" class="px-5 py-4 text-[14px] text-ink-2">这篇笔记还没有内容，单击此处即可开始书写。</p>
               <div
                 v-else
                 ref="editorRef"
-                class="note-view text-[14px] leading-7 text-ink"
+                class="note-view px-5 py-4 text-[14px] leading-7 text-ink"
                 :class="editing ? 'rounded-xl bg-white shadow-[0_0_0_1.5px_rgba(59,130,246,0.45)]' : ''"
                 :contenteditable="editing"
                 v-html="noteHtml"
                 @click="onNoteClick"
               ></div>
-              <p v-if="selectedNote.courseId && !editing" class="mt-2 text-[12px] text-ink-2">
+              <p v-if="selectedNote.courseId && !editing" class="mt-2 px-5 text-[12px] text-ink-2">
                 点击文中的时间戳可跳转网课对应位置核对；单击正文任意位置可直接编辑。
               </p>
             </div>
