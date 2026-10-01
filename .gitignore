@@ -20,6 +20,7 @@ web/dist/
 .DS_Store
 Thumbs.db
 *.local
+.zcodeignore
 springboot/application-local.properties
 
 # ---- 含密钥的第三方 API 说明文件（禁止入库）----
