@@ -89,39 +89,6 @@ LJ-Agent/
         └── views/   # Agent / History / Questions / Courses / CourseDetail / Notes / Login / Register
 ```
 
-## 主要接口
-
-鉴权：除注册 / 登录 / WS 握手外均需登录；令牌经请求头 `sa-token` 携带。
-
-| 模块 | 端点（节选） | 说明 |
-| --- | --- | --- |
-| 认证 | `POST /auth/register`、`POST /auth/login`、`GET /auth/info` | 注册 / 登录 / 当前用户 |
-| 会话 | `GET/POST /conversations`、`GET/DELETE /conversations/{id}`、`GET /conversations/{id}/messages` | 会话增删查与消息 |
-| 对话 | `WS /ws/agent?token=...` | 流式对话（上行 chat.send / chat.stop） |
-| 题目 | `GET /question/list`（date + 分页）、`GET/PUT/DELETE /question/{id}` | 拍照记录 |
-| 网课 | `GET /courses`（筛选 / 搜索）、`GET /courses/{id}`、`PUT /courses/{id}`、上传触发流水线 | 网课记录与详情 |
-| 笔记 | `GET /notes/tree`、笔记 CRUD、移动、知识联系挂链 | 分层树与知识联系 |
-| 文件 | `POST /upload/image` | 对话图片上传（OSS） |
-
-## 快速开始
-
-前置依赖：JDK 17、Maven、Node 20+、MySQL 8（库 `xueji`）、Redis、RabbitMQ、FFmpeg（在 PATH 中）。
-
-```bash
-# 后端（端口 9090；数据库 xueji，账号 root/123456）
-cd springboot
-mvn spring-boot:run
-
-# 前端（端口 5173）
-cd web
-npm install
-npm run dev
-```
-
-- 完整建表脚本尚未入库；增量 DDL 与种子数据见 `springboot/src/main/resources/sql/`（`note_hierarchy.sql`、`subject_filter.sql`、`course_frame.sql`、`note_link_remark.sql` 等），完整库结构见本地环境或 `agent.md` 环境清单
-- 第三方密钥走 git 忽略的 `springboot/application-local.properties`（OSS endpoint / accessKey / secretKey / bucketName、PaddleOCR 与 Qwen ASR 的访问凭据、RabbitMQ 用户密码），缺失时后端启动期会快速失败并提示
-- RabbitMQ 容器内建用户 `xueji/xueji123`（容器重建后需重新授权，见 `agent.md`）
-
 ## 测试
 
 ```bash

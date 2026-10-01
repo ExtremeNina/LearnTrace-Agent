@@ -58,6 +58,8 @@ AI 个人学习工作台：学习资产（网课 / 题目 / 笔记）+ 知识点
 
 **决策待定（新会话需用户重新拍板）**：上述 1 与 6 的方针；网课"章节"是否独立生成（当前并入笔记正文）。
 
+**保留想法（用户已提出、暂不实施）**：笔记编辑器集成 Tiptap——AI 笔记所见即所得（tiptap-markdown 转换层，存储仍为 Markdown 不变）+ 时间戳胶囊做成 Tiptap 自定义节点（编辑中不可拆坏、可点击）+ 手动笔记编辑器从 execCommand 迁移到 Tiptap（存 HTML 不变）；动手前先做 md 往返转换 spike，验证表格 / 时间戳 / 加粗列表不失真。流水线 LLM 输出 JSON 化缓行：收益依赖 RAG、按块润色等尚未立项的下游，且会加重"修订初稿"的编辑难题。
+
 **环境清单（不在 git 里，丢失按此重建，约 10 分钟）**：
 * `springboot/application-local.properties`（gitignored）：OSS（endpoint=武汉 lr 区）/ OCR / Qwen ASR 的密钥与 RabbitMQ 凭据——若丢失，凭据见阿里云控制台与 AI Studio，格式参照 agent.md 历史提交
 * RabbitMQ 容器 `rabbitmq`（5672）：内含用户 `xueji/xueji123`（需 `rabbitmqctl set_permissions -p / xueji ".*" ".*" ".*"`）；容器重建后重建用户
