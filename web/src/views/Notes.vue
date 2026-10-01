@@ -277,7 +277,6 @@ async function deleteNoteLeaf(noteId: number) {
 const selectedId = ref<number | null>(null)
 const selectedDetail = ref<NoteDetailInfo | null>(null)
 const router = useRouter()
-const editedHtmlByNote = reactive(new Map<number, string>())
 
 const selectedNote = computed(() => selectedDetail.value)
 
@@ -338,31 +337,41 @@ function onEditorChip(ts: string) {
   }
 }
 
-function escapeHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-}
-
-function detailToHtml(d: NoteDetailInfo): string {
-  const parts: string[] = [`<p><strong>${escapeHtml(d.title)}</strong></p>`]
-  parts.push(renderMarkdown(d.content))
-  return parts.join('')
+/** 手动笔记正文是否为 Markdown 形态（无 HTML 标签且含 md 结构标记）——历史数据兼容渲染 */
+function looksLikeMarkdown(s: string): boolean {
+  if (/<[a-z][^>]*>/i.test(s)) {
+    return false
+  }
+  return /(^|\n)\s*#{1,6}\s/.test(s) || /\n\s*[-*]\s/.test(s) || /(^|\n)\s*\d+\.\s/.test(s)
 }
 
 function startEdit() {
   if (!selectedDetail.value) {
     return
   }
-  // AI 笔记：直接编辑 Markdown 源码；手动笔记：先切编辑态让富文本编辑器挂载，再在 nextTick 中灌入内容
   if (selectedDetail.value.source === 'AI 生成') {
+    // AI 笔记：编辑 Markdown 源码（独立编辑器）
     mdDraft.value = selectedDetail.value.content
     editing.value = true
     return
   }
+  // 手动笔记：原地编辑——阅读与编辑是同一个 DOM，点击后仅变为可编辑，排版不变
   editing.value = true
   nextTick(() => {
-    if (editorRef.value) {
-      editorRef.value.innerHTML = editedHtmlByNote.get(selectedDetail.value!.id) || detailToHtml(selectedDetail.value!)
-      editorRef.value.focus()
+    const el = editorRef.value
+    if (!el) {
+      return
+    }
+    el.focus()
+    try {
+      const range = (document as unknown as { caretRangeFromPoint?: (x: number, y: number) => Range | null }).caretRangeFromPoint?.(lastClickX, lastClickY)
+      if (range && el.contains(range.startContainer)) {
+        const sel = window.getSelection()
+        sel?.removeAllRanges()
+        sel?.addRange(range)
+      }
+    } catch {
+      // 光标落点失败则停在起点
     }
   })
 }
@@ -379,7 +388,6 @@ async function saveEdit() {
     } else if (editorRef.value) {
       const html = editorRef.value.innerHTML
       await updateNoteContent(selectedDetail.value.id, html)
-      editedHtmlByNote.set(selectedDetail.value.id, html)
       selectedDetail.value.content = html
     }
     editing.value = false
@@ -390,6 +398,17 @@ async function saveEdit() {
 }
 
 function cancelEdit() {
+  if (!isAiNote.value && selectedDetail.value) {
+    // 原地编辑放弃：DOM 恢复为未修改的渲染结果
+    const html = noteHtml.value
+    editing.value = false
+    nextTick(() => {
+      if (editorRef.value) {
+        editorRef.value.innerHTML = html
+      }
+    })
+    return
+  }
   editing.value = false
 }
 
@@ -422,7 +441,10 @@ function formatTs(sec: number): string {
 }
 
 function renderWithChips(d: NoteDetailInfo): string {
-  const base = d.source === 'AI 生成' ? renderMarkdown(d.content) : DOMPurify.sanitize(d.content)
+  // AI 笔记恒为 Markdown；手动笔记兼容历史 Markdown 形态内容（无 HTML 标签且含 md 结构标记）
+  const base = d.source === 'AI 生成' || looksLikeMarkdown(d.content)
+    ? renderMarkdown(d.content)
+    : DOMPurify.sanitize(d.content)
   const courseSuffix = d.courseTitle ? `（${d.courseTitle}）` : ''
   return base.replace(/\[(\d{1,2}:[0-5]\d(?::\d{2})?)\]/g,
     `<span class="ts-chip" data-ts="$1">$1${courseSuffix}</span>`)
@@ -430,25 +452,28 @@ function renderWithChips(d: NoteDetailInfo): string {
 
 const noteHtml = computed(() => {
   const d = selectedDetail.value
-  if (!d) {
-    return ''
-  }
-  const cached = editedHtmlByNote.get(d.id)
-  return renderWithChips({ ...d, content: cached ?? d.content })
+  return d ? renderWithChips(d) : ''
 })
 
 /** 手动笔记阅读态是否无内容（显示占位提示） */
 const readEmpty = computed(() => !!selectedDetail.value && isManualEmpty(selectedDetail.value))
 
+/** 单击进入原地编辑时的落点坐标（用于把光标放到点击处） */
+let lastClickX = 0
+let lastClickY = 0
+
 function onNoteClick(e: MouseEvent) {
+  lastClickX = e.clientX
+  lastClickY = e.clientY
   const chip = (e.target as HTMLElement).closest('[data-ts]')
   if (chip) {
-    if (selectedDetail.value?.courseId) {
+    // 编辑中点击时间戳胶囊仅移动光标，不跳转
+    if (!editing.value && selectedDetail.value?.courseId) {
       router.push(`/courses/${selectedDetail.value.courseId}?t=${chip.getAttribute('data-ts')}`)
     }
     return
   }
-  // 手动笔记：单击正文直接进入编辑（时间戳胶囊跳转优先，已在上方返回）
+  // 手动笔记：单击正文直接进入原地编辑（时间戳胶囊跳转优先，已在上方返回）
   if (!editing.value && selectedDetail.value && selectedDetail.value.source !== 'AI 生成') {
     startEdit()
   }
@@ -612,6 +637,13 @@ const groupPathOptions = computed(() => {
               <Save :size="15" />
               保存
             </button>
+            <button
+              v-if="!isAiNote && editing"
+              class="flex items-center gap-1.5 rounded-xl border border-line px-3 py-1.5 text-[13px] text-ink hover:bg-line/60"
+              @click="cancelEdit"
+            >
+              放弃
+            </button>
             <button class="hidden items-center gap-1.5 rounded-xl border border-line px-3 py-1.5 text-[13px] text-ink hover:bg-panel sm:flex">
               <Download :size="15" />
               导出
@@ -651,62 +683,54 @@ const groupPathOptions = computed(() => {
               </MdSourceEditor>
             </div>
 
-            <div v-else-if="editing" class="ml-6 max-w-3xl px-4 pt-4">
-              <div class="mb-3 flex flex-wrap items-center gap-1.5 rounded-xl border border-line bg-panel px-2.5 py-2">
-                <button class="flex h-8 w-8 items-center justify-center rounded-lg text-ink hover:bg-line/60" title="加粗" @mousedown.prevent @click="exec('bold')">
-                  <Bold :size="15" />
+            <!-- 手动笔记：原地编辑——阅读与编辑是同一个 DOM，点击后仅变为可编辑，排版不变 -->
+            <div v-else class="relative ml-6 max-w-3xl px-4 py-5" @click="onNoteClick">
+              <!-- 浮动格式工具条：编辑态出现，悬浮不占布局 -->
+              <div
+                v-if="editing"
+                class="absolute right-0 top-2 z-10 flex flex-wrap items-center gap-1 rounded-xl border border-line bg-white/95 px-2 py-1 shadow-sm backdrop-blur"
+              >
+                <button class="flex h-7 w-7 items-center justify-center rounded-lg text-ink hover:bg-line/60" title="加粗" @mousedown.prevent @click="exec('bold')">
+                  <Bold :size="14" />
                 </button>
-                <button class="flex h-8 w-8 items-center justify-center rounded-lg text-ink hover:bg-line/60" title="斜体" @mousedown.prevent @click="exec('italic')">
-                  <Italic :size="15" />
+                <button class="flex h-7 w-7 items-center justify-center rounded-lg text-ink hover:bg-line/60" title="斜体" @mousedown.prevent @click="exec('italic')">
+                  <Italic :size="14" />
                 </button>
-                <button class="flex h-8 w-8 items-center justify-center rounded-lg text-ink hover:bg-line/60" title="下划线" @mousedown.prevent @click="exec('underline')">
-                  <Underline :size="15" />
+                <button class="flex h-7 w-7 items-center justify-center rounded-lg text-ink hover:bg-line/60" title="下划线" @mousedown.prevent @click="exec('underline')">
+                  <Underline :size="14" />
                 </button>
-                <select class="h-8 rounded-lg border border-line bg-white px-1.5 text-[13px] text-ink outline-none" title="字号" @change="onFontSizeChange">
-                  <option value="2">字号 小</option>
-                  <option value="3" selected>字号 标准</option>
-                  <option value="5">字号 大</option>
-                  <option value="7">字号 特大</option>
+                <select class="h-7 rounded-lg border border-line bg-white px-1 text-[12px] text-ink outline-none" title="字号" @change="onFontSizeChange">
+                  <option value="2">小</option>
+                  <option value="3" selected>标准</option>
+                  <option value="5">大</option>
+                  <option value="7">特大</option>
                 </select>
-                <label class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-ink hover:bg-line/60" title="字体颜色">
-                  <Paintbrush :size="15" />
+                <label class="flex h-7 w-7 cursor-pointer items-center justify-center rounded-lg text-ink hover:bg-line/60" title="字体颜色">
+                  <Paintbrush :size="14" />
                   <input type="color" class="sr-only" value="#0d0d0d" @input="onColorChange" />
                 </label>
-                <label class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-ink hover:bg-line/60" title="背景高亮">
-                  <Highlighter :size="15" />
+                <label class="flex h-7 w-7 cursor-pointer items-center justify-center rounded-lg text-ink hover:bg-line/60" title="背景高亮">
+                  <Highlighter :size="14" />
                   <input type="color" class="sr-only" value="#fff3c4" @input="onHighlightChange" />
                 </label>
-                <button class="flex h-8 w-8 items-center justify-center rounded-lg text-ink hover:bg-line/60" title="清除格式" @mousedown.prevent @click="exec('removeFormat')">
-                  <Eraser :size="15" />
-                </button>
-                <span class="mx-1 h-5 w-px bg-line" />
-                <button class="flex items-center gap-1 rounded-lg bg-ink px-3 py-1.5 text-[13px] text-white hover:opacity-80" @click="saveEdit">
-                  <Save :size="14" />
-                  保存
-                </button>
-                <button class="flex items-center gap-1 rounded-lg border border-line px-3 py-1.5 text-[13px] text-ink-2 hover:bg-line/40" @click="cancelEdit">
-                  <X :size="14" />
-                  放弃
+                <button class="flex h-7 w-7 items-center justify-center rounded-lg text-ink hover:bg-line/60" title="清除格式" @mousedown.prevent @click="exec('removeFormat')">
+                  <Eraser :size="14" />
                 </button>
               </div>
-              <div
-                ref="editorRef"
-                class="note-view min-h-[400px] whitespace-pre-wrap rounded-2xl border border-primary bg-white p-5 text-[14px] leading-7 text-ink outline-none"
-                contenteditable="true"
-                @click="onNoteClick"
-              />
-            </div>
 
-            <div v-else class="ml-6 max-w-3xl px-4 py-5" @click="onNoteClick">
-              <template v-if="readEmpty">
-                <p class="text-[14px] text-ink-2">这篇笔记还没有内容，单击此处即可开始书写。</p>
-              </template>
-              <template v-else>
-                <div class="note-view text-[14px] leading-7 text-ink" v-html="noteHtml" />
-                <p v-if="selectedNote.courseId" class="mt-2 text-[12px] text-ink-2">
-                  点击文中的时间戳可跳转网课对应位置核对；单击正文任意位置可直接编辑。
-                </p>
-              </template>
+              <p v-if="readEmpty && !editing" class="text-[14px] text-ink-2">这篇笔记还没有内容，单击此处即可开始书写。</p>
+              <div
+                v-else
+                ref="editorRef"
+                class="note-view text-[14px] leading-7 text-ink"
+                :class="editing ? 'rounded-xl bg-white shadow-[0_0_0_1.5px_rgba(59,130,246,0.45)]' : ''"
+                :contenteditable="editing"
+                v-html="noteHtml"
+                @click="onNoteClick"
+              ></div>
+              <p v-if="selectedNote.courseId && !editing" class="mt-2 text-[12px] text-ink-2">
+                点击文中的时间戳可跳转网课对应位置核对；单击正文任意位置可直接编辑。
+              </p>
             </div>
 
             <!-- 知识联系（移动端折叠区；桌面端在右侧栏） -->
