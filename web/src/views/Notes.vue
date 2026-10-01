@@ -462,20 +462,31 @@ const readEmpty = computed(() => !!selectedDetail.value && isManualEmpty(selecte
 let lastClickX = 0
 let lastClickY = 0
 
-function onNoteClick(e: MouseEvent) {
-  lastClickX = e.clientX
-  lastClickY = e.clientY
-  const chip = (e.target as HTMLElement).closest('[data-ts]')
+/**
+ * 笔记内容区点击语义（OneNote 式）：
+ * - 单击正文：手动笔记进入编辑态（编辑中则为正常光标操作）
+ * - 单击时间戳胶囊：跳转关联网课（编辑中仅移动光标）
+ * - 单击内容区空白：编辑中 = 放弃修改退出编辑态；非编辑态不响应（不冒蓝框）
+ */
+function onContentAreaClick(e: MouseEvent) {
+  const target = e.target as HTMLElement
+  const chip = target.closest('[data-ts]')
   if (chip) {
-    // 编辑中点击时间戳胶囊仅移动光标，不跳转
     if (!editing.value && selectedDetail.value?.courseId) {
       router.push(`/courses/${selectedDetail.value.courseId}?t=${chip.getAttribute('data-ts')}`)
     }
     return
   }
-  // 手动笔记：单击正文直接进入原地编辑（时间戳胶囊跳转优先，已在上方返回）
-  if (!editing.value && selectedDetail.value && selectedDetail.value.source !== 'AI 生成') {
-    startEdit()
+  if (target.closest('.note-view')) {
+    if (!editing.value && selectedDetail.value && selectedDetail.value.source !== 'AI 生成') {
+      lastClickX = e.clientX
+      lastClickY = e.clientY
+      startEdit()
+    }
+    return
+  }
+  if (editing.value && !isAiNote.value) {
+    cancelEdit()
   }
 }
 
@@ -695,7 +706,7 @@ const groupPathOptions = computed(() => {
           </select>
         </div>
 
-        <div class="min-h-0 flex-1 overflow-y-auto">
+        <div class="min-h-0 flex-1 overflow-y-auto" @click="onContentAreaClick">
           <!-- 笔记内容（mr-6：与右侧知识联系边栏保持间距，窄窗口下不贴边） -->
           <div v-if="editing && isAiNote" class="ml-6 mr-6 max-w-3xl px-4 pt-4">
               <MdSourceEditor v-model="mdDraft" @chip="onEditorChip">
@@ -713,16 +724,19 @@ const groupPathOptions = computed(() => {
             </div>
 
             <!-- 手动笔记：原地编辑——阅读与编辑是同一个 DOM，点击后仅变为可编辑；内边距两态一致，排版不变 -->
-            <div v-else class="ml-6 mr-6 max-w-3xl py-2" @click="onNoteClick">
-              <p v-if="readEmpty && !editing" class="px-5 py-4 text-[14px] text-ink-2">这篇笔记还没有内容，单击此处即可开始书写。</p>
+            <div v-else class="ml-6 mr-6 max-w-3xl py-2">
+              <p
+                v-if="readEmpty && !editing"
+                class="cursor-pointer px-5 py-4 text-[14px] text-ink-2"
+                @click="startEdit"
+              >这篇笔记还没有内容，单击此处即可开始书写。</p>
               <div
                 v-else
                 ref="editorRef"
-                class="note-view px-5 py-4 text-[14px] leading-7 text-ink"
+                class="note-view text-[14px] leading-7 text-ink"
                 :class="editing ? 'rounded-xl bg-white shadow-[0_0_0_1.5px_rgba(59,130,246,0.45)]' : ''"
                 :contenteditable="editing"
                 v-html="noteHtml"
-                @click="onNoteClick"
               ></div>
               <p v-if="selectedNote.courseId && !editing" class="mt-2 px-5 text-[12px] text-ink-2">
                 点击文中的时间戳可跳转网课对应位置核对；单击正文任意位置可直接编辑。
