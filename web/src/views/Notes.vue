@@ -696,8 +696,8 @@ const groupPathOptions = computed(() => {
         </div>
 
         <div class="min-h-0 flex-1 overflow-y-auto">
-          <!-- 笔记内容 -->
-          <div v-if="editing && isAiNote" class="ml-6 max-w-3xl px-4 pt-4">
+          <!-- 笔记内容（mr-6：与右侧知识联系边栏保持间距，窄窗口下不贴边） -->
+          <div v-if="editing && isAiNote" class="ml-6 mr-6 max-w-3xl px-4 pt-4">
               <MdSourceEditor v-model="mdDraft" @chip="onEditorChip">
                 <template #actions>
                   <button class="flex items-center gap-1 rounded-lg bg-ink px-3 py-1.5 text-[13px] text-white hover:opacity-80" @click="saveEdit">
@@ -713,7 +713,7 @@ const groupPathOptions = computed(() => {
             </div>
 
             <!-- 手动笔记：原地编辑——阅读与编辑是同一个 DOM，点击后仅变为可编辑；内边距两态一致，排版不变 -->
-            <div v-else class="ml-6 max-w-3xl py-2" @click="onNoteClick">
+            <div v-else class="ml-6 mr-6 max-w-3xl py-2" @click="onNoteClick">
               <p v-if="readEmpty && !editing" class="px-5 py-4 text-[14px] text-ink-2">这篇笔记还没有内容，单击此处即可开始书写。</p>
               <div
                 v-else
