@@ -198,18 +198,61 @@ public class NoteServiceImpl implements NoteService {
     @Override
     public void delete(Long userId, Long id) {
         Note node = ownedNote(userId, id);
+        List<Long> groupIds = new ArrayList<>();
+        List<Long> noteIds = new ArrayList<>();
         if (node.getNodeType() != null && node.getNodeType() == TYPE_GROUP) {
-            Long children = noteMapper.selectCount(new QueryWrapper<Note>()
-                    .eq("parent_id", id)
+            // 分组删除：递归收集整棵子树（分组 + 笔记），全部软删
+            Map<Long, List<Note>> childrenMap = new HashMap<>();
+            List<Note> all = noteMapper.selectList(new QueryWrapper<Note>()
+                    .eq("user_id", userId)
                     .eq("deleted", 0));
-            if (children != null && children > 0) {
-                throw new BusinessException("分组不为空，请先清空其中的内容");
+            for (Note n : all) {
+                if (n.getParentId() == null) {
+                    continue;
+                }
+                List<Note> children = childrenMap.get(n.getParentId());
+                if (children == null) {
+                    children = new ArrayList<>();
+                    childrenMap.put(n.getParentId(), children);
+                }
+                children.add(n);
             }
+            java.util.Deque<Long> queue = new java.util.ArrayDeque<>();
+            queue.push(id);
+            while (!queue.isEmpty()) {
+                Long current = queue.pop();
+                groupIds.add(current);
+                List<Note> children = childrenMap.get(current);
+                if (children == null) {
+                    continue;
+                }
+                for (Note child : children) {
+                    if (child.getNodeType() != null && child.getNodeType() == TYPE_GROUP) {
+                        queue.push(child.getId());
+                    } else {
+                        noteIds.add(child.getId());
+                    }
+                }
+            }
+            List<Long> allIds = new ArrayList<>(groupIds);
+            allIds.addAll(noteIds);
+            noteMapper.update(null, new com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<Note>()
+                    .in("id", allIds)
+                    .set("deleted", 1)
+                    .set("updated_at", LocalDateTime.now()));
         } else {
-            noteLinkMapper.delete(new QueryWrapper<NoteLink>().eq("note_id", id));
+            noteIds.add(id);
+            node.setDeleted(1).setUpdatedAt(LocalDateTime.now());
+            noteMapper.updateById(node);
         }
-        node.setDeleted(1).setUpdatedAt(LocalDateTime.now());
-        noteMapper.updateById(node);
+        // 清理知识联系：被删笔记身上的联系 + 其他笔记指向被删笔记的 note 型联系
+        if (!noteIds.isEmpty()) {
+            noteLinkMapper.delete(new QueryWrapper<NoteLink>()
+                    .in("note_id", noteIds)
+                    .or()
+                    .eq("link_type", "note")
+                    .in("target_id", noteIds));
+        }
     }
 
     // ---- 正文 ----

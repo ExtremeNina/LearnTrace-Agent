@@ -28,7 +28,10 @@ public interface NoteService {
     /** 移动节点到目标分组（null = 根目录），含 5 层与环校验 */
     void move(Long userId, Long id, Long parentId);
 
-    /** 删除：笔记软删；分组仅允许删除空分组 */
+    /**
+     * 删除：笔记软删并清理其知识联系；
+     * 分组删除会递归删除其下所有子分组与笔记（一并清理知识联系），调用方须先向用户确认
+     */
     void delete(Long userId, Long id);
 
     /** 更新笔记正文（在线编辑保存） */

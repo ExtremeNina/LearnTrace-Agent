@@ -23,6 +23,7 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -228,5 +229,43 @@ class NoteServiceImplTest {
         assertThatThrownBy(() -> service.removeLink(USER_ID, 14L, 1L))
                 .isInstanceOf(BusinessException.class);
         verify(noteLinkMapper, never()).deleteById(1L);
+    }
+
+    @Test
+    void deleteGroupShouldCascadeDescendantsAndLinks() {
+        Note root = node(10, "数学", 1, null);
+        Note sub = node(11, "大一上", 1, 10L);
+        Note leafA = node(12, "笔记A", 0, 10L);
+        Note leafB = node(13, "笔记B", 0, 11L);
+        when(noteMapper.selectById(10L)).thenReturn(root);
+        when(noteMapper.selectList(any())).thenReturn(List.of(root, sub, leafA, leafB));
+        when(noteLinkMapper.delete(any())).thenReturn(2);
+
+        service.delete(USER_ID, 10L);
+
+        // 整棵子树（含分组自身）一次性批量软删
+        verify(noteMapper).update(isNull(), any());
+        // 知识联系双向清理：被删笔记身上的联系 + 指向被删笔记的 note 型联系
+        ArgumentCaptor<com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<NoteLink>> captor =
+                ArgumentCaptor.forClass(com.baomidou.mybatisplus.core.conditions.query.QueryWrapper.class);
+        verify(noteLinkMapper).delete(captor.capture());
+        String sql = captor.getValue().getSqlSegment();
+        assertThat(sql).contains("note_id IN");
+        assertThat(sql).contains("link_type");
+        assertThat(sql).contains("target_id IN");
+    }
+
+    @Test
+    void deleteNoteShouldCleanItsLinks() {
+        Note leaf = node(12, "笔记A", 0, 10L);
+        when(noteMapper.selectById(12L)).thenReturn(leaf);
+        when(noteLinkMapper.delete(any())).thenReturn(1);
+
+        service.delete(USER_ID, 12L);
+
+        verify(noteMapper).updateById(leaf);
+        assertThat(leaf.getDeleted()).isEqualTo(1);
+        verify(noteLinkMapper).delete(any());
+        verify(noteMapper, never()).update(isNull(), any());
     }
 }
