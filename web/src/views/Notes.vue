@@ -548,30 +548,30 @@ const groupPathOptions = computed(() => {
 </script>
 
 <template>
-  <div class="flex h-full overflow-hidden">
+  <div class="flex h-full overflow-hidden bg-[#f8f7f4] text-[#2e3238]">
     <!-- 左：分层树 -->
     <aside
-      class="w-72 shrink-0 flex-col border-l border-line bg-white md:flex"
+      class="w-72 shrink-0 flex-col border-r border-[#e9e7e2] md:flex"
       :class="selectedId === null ? 'flex' : 'hidden'"
     >
       <div class="flex items-center justify-between px-4 pt-5 pb-2">
-        <p class="flex items-center gap-1.5 text-[14px] font-semibold text-ink">
-          <FolderTree :size="16" class="text-ink-2" />
+        <p class="flex items-center gap-1.5 text-[14px] font-semibold text-[#2e3238]">
+          <FolderTree :size="16" class="text-[#7a7f87]" />
           笔记分层
         </p>
         <div class="flex gap-1">
-          <button class="flex h-7 w-7 items-center justify-center rounded-lg text-ink hover:bg-line/60" title="新建分组" @click="startCreate('group')">
+          <button class="flex h-7 w-7 items-center justify-center rounded-lg text-[#2e3238] hover:bg-[#eceae5]" title="新建分组" @click="startCreate('group')">
             <FolderPlus :size="16" />
           </button>
         </div>
       </div>
-      <p class="px-4 pb-2 text-[11px] text-ink-2">
+      <p class="px-4 pb-2 text-[11px] text-[#7a7f87]">
         新建位置：{{ targetGroupLabel }}（最多 5 层）
       </p>
 
       <!-- 内联新建输入 -->
-      <div v-if="creatingType" class="mx-3 mb-2 flex items-center gap-1.5 rounded-xl border border-primary bg-white px-2.5 py-1.5">
-        <NotebookPen :size="14" class="text-ink-2" />
+      <div v-if="creatingType" class="mx-3 mb-2 flex items-center gap-1.5 rounded-md border border-[#4e6e8e] bg-white px-2.5 py-1.5">
+        <NotebookPen :size="14" class="text-[#7a7f87]" />
         <input
           id="new-name-input"
           v-model="newName"
@@ -581,8 +581,8 @@ const groupPathOptions = computed(() => {
           @keydown.enter="confirmCreate"
           @keydown.esc="creatingType = null"
         />
-        <button class="text-ink-2 hover:text-ink" @click="confirmCreate"><Save :size="14" /></button>
-        <button class="text-ink-2 hover:text-ink" @click="creatingType = null"><X :size="14" /></button>
+        <button class="text-[#7a7f87] hover:text-[#2e3238]" @click="confirmCreate"><Save :size="14" /></button>
+        <button class="text-[#7a7f87] hover:text-[#2e3238]" @click="creatingType = null"><X :size="14" /></button>
       </div>
 
       <!-- 分层树 -->
@@ -614,23 +614,23 @@ const groupPathOptions = computed(() => {
     <!-- 右：笔记详情 -->
     <div class="flex min-w-0 flex-1 flex-col" :class="selectedId === null ? 'hidden md:flex' : 'flex'">
       <template v-if="selectedNote">
-        <div class="flex items-center gap-3 border-b border-line px-4 py-3">
+        <div class="flex items-center gap-3 border-b border-[#e9e7e2] px-4 py-3">
           <button
-            class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-ink-2 hover:bg-line/60 md:hidden"
+            class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[#7a7f87] hover:bg-[#eceae5] md:hidden"
             @click="selectedId = null"
           >
             <ArrowLeft :size="18" />
           </button>
           <div class="min-w-0">
             <h1 class="truncate text-[18px] font-semibold">{{ selectedNote.title }}</h1>
-            <p class="text-[12px] text-ink-2">{{ selectedNote.source }} · 更新于 {{ selectedNote.updatedAt }}</p>
+            <p class="text-[12px] text-[#7a7f87]">{{ selectedNote.source }} · 更新于 {{ selectedNote.updatedAt }}</p>
           </div>
           <div class="ml-auto flex shrink-0 items-center gap-2">
             <!-- AI 笔记：编辑按钮（Markdown 源码修订） -->
             <button
               v-if="isAiNote"
-              class="flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-[13px] hover:bg-panel"
-              :class="editing ? 'border-primary text-primary' : 'border-line text-ink'"
+              class="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-[13px] hover:bg-[#f1efeb]"
+              :class="editing ? 'border-[#4e6e8e] text-[#4e6e8e]' : 'border-[#e9e7e2] text-[#2e3238]'"
               @click="editing ? cancelEdit() : startEdit()"
             >
               <PencilLine :size="15" />
@@ -639,8 +639,8 @@ const groupPathOptions = computed(() => {
             <!-- 手动笔记：单击正文即进入编辑，头部保存按钮（未进入编辑时置灰） -->
             <button
               v-else
-              class="flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-[13px]"
-              :class="editing ? 'border-primary bg-primary text-white hover:opacity-90' : 'border-line text-ink-2 opacity-50 cursor-not-allowed'"
+              class="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-[13px]"
+              :class="editing ? 'border-[#4e6e8e] bg-[#4e6e8e] text-white hover:opacity-90' : 'border-[#e9e7e2] text-[#7a7f87] opacity-50 cursor-not-allowed'"
               :disabled="!editing"
               title="单击正文内容即可编辑，改完点这里保存"
               @click="saveEdit"
@@ -650,12 +650,12 @@ const groupPathOptions = computed(() => {
             </button>
             <button
               v-if="!isAiNote && editing"
-              class="flex items-center gap-1.5 rounded-xl border border-line px-3 py-1.5 text-[13px] text-ink hover:bg-line/60"
+              class="flex items-center gap-1.5 rounded-md border border-[#e9e7e2] px-3 py-1.5 text-[13px] text-[#2e3238] hover:bg-[#eceae5]"
               @click="cancelEdit"
             >
               放弃
             </button>
-            <button class="hidden items-center gap-1.5 rounded-xl border border-line px-3 py-1.5 text-[13px] text-ink hover:bg-panel sm:flex">
+            <button class="hidden items-center gap-1.5 rounded-md border border-[#e9e7e2] px-3 py-1.5 text-[13px] text-[#2e3238] hover:bg-[#f1efeb] sm:flex">
               <Download :size="15" />
               导出
             </button>
@@ -663,39 +663,39 @@ const groupPathOptions = computed(() => {
         </div>
 
         <!-- 移动到分组（编辑手动笔记时，格式工具栏固定在本行） -->
-        <div class="flex shrink-0 items-center gap-2 border-b border-line px-4 py-2 text-[12px] text-ink-2">
+        <div class="flex shrink-0 items-center gap-2 border-b border-[#e9e7e2] px-4 py-2 text-[12px] text-[#7a7f87]">
           <FolderInput :size="14" />
           <div v-if="editing && !isAiNote" class="ml-auto flex items-center gap-1">
-            <button class="flex h-7 w-7 items-center justify-center rounded-lg text-ink hover:bg-line/60" title="加粗" @mousedown.prevent @click="exec('bold')">
+            <button class="flex h-7 w-7 items-center justify-center rounded-lg text-[#2e3238] hover:bg-[#eceae5]" title="加粗" @mousedown.prevent @click="exec('bold')">
               <Bold :size="14" />
             </button>
-            <button class="flex h-7 w-7 items-center justify-center rounded-lg text-ink hover:bg-line/60" title="斜体" @mousedown.prevent @click="exec('italic')">
+            <button class="flex h-7 w-7 items-center justify-center rounded-lg text-[#2e3238] hover:bg-[#eceae5]" title="斜体" @mousedown.prevent @click="exec('italic')">
               <Italic :size="14" />
             </button>
-            <button class="flex h-7 w-7 items-center justify-center rounded-lg text-ink hover:bg-line/60" title="下划线" @mousedown.prevent @click="exec('underline')">
+            <button class="flex h-7 w-7 items-center justify-center rounded-lg text-[#2e3238] hover:bg-[#eceae5]" title="下划线" @mousedown.prevent @click="exec('underline')">
               <Underline :size="14" />
             </button>
-            <select class="h-7 rounded-lg border border-line bg-white px-1 text-[12px] text-ink outline-none" title="字号" @change="onFontSizeChange">
+            <select class="h-7 rounded-lg border border-[#e9e7e2] bg-white px-1 text-[12px] text-[#2e3238] outline-none" title="字号" @change="onFontSizeChange">
               <option value="2">小</option>
               <option value="3" selected>标准</option>
               <option value="5">大</option>
               <option value="7">特大</option>
             </select>
-            <label class="flex h-7 w-7 cursor-pointer items-center justify-center rounded-lg text-ink hover:bg-line/60" title="字体颜色">
+            <label class="flex h-7 w-7 cursor-pointer items-center justify-center rounded-lg text-[#2e3238] hover:bg-[#eceae5]" title="字体颜色">
               <Paintbrush :size="14" />
               <input type="color" class="sr-only" value="#0d0d0d" @input="onColorChange" />
             </label>
-            <label class="flex h-7 w-7 cursor-pointer items-center justify-center rounded-lg text-ink hover:bg-line/60" title="背景高亮">
+            <label class="flex h-7 w-7 cursor-pointer items-center justify-center rounded-lg text-[#2e3238] hover:bg-[#eceae5]" title="背景高亮">
               <Highlighter :size="14" />
               <input type="color" class="sr-only" value="#fff3c4" @input="onHighlightChange" />
             </label>
-            <button class="flex h-7 w-7 items-center justify-center rounded-lg text-ink hover:bg-line/60" title="清除格式" @mousedown.prevent @click="exec('removeFormat')">
+            <button class="flex h-7 w-7 items-center justify-center rounded-lg text-[#2e3238] hover:bg-[#eceae5]" title="清除格式" @mousedown.prevent @click="exec('removeFormat')">
               <Eraser :size="14" />
             </button>
           </div>
           <select
             :class="editing && !isAiNote ? 'shrink-0' : 'ml-auto shrink-0'"
-            class="rounded-lg border border-line bg-white px-2 py-1 text-[12px] text-ink outline-none"
+            class="rounded-lg border border-[#e9e7e2] bg-white px-2 py-1 text-[12px] text-[#2e3238] outline-none"
             @change="onMoveChange"
           >
             <option value="" disabled selected>移动到分组…</option>
@@ -715,7 +715,7 @@ const groupPathOptions = computed(() => {
                     <Save :size="14" />
                     保存
                   </button>
-                  <button class="flex items-center gap-1 rounded-lg border border-line px-3 py-1.5 text-[13px] text-ink-2 hover:bg-line/40" @click="cancelEdit">
+                  <button class="flex items-center gap-1 rounded-lg border border-[#e9e7e2] px-3 py-1.5 text-[13px] text-[#7a7f87] hover:bg-[#f1efeb]" @click="cancelEdit">
                     <X :size="14" />
                     放弃
                   </button>
@@ -727,26 +727,26 @@ const groupPathOptions = computed(() => {
             <div v-else class="ml-6 mr-6 max-w-3xl py-2">
               <p
                 v-if="readEmpty && !editing"
-                class="cursor-pointer px-5 py-4 text-[14px] text-ink-2"
+                class="cursor-pointer px-5 py-4 text-[14px] text-[#7a7f87]"
                 @click="startEdit"
               >这篇笔记还没有内容，单击此处即可开始书写。</p>
               <div
                 v-else
                 ref="editorRef"
-                class="note-view px-5 py-4 text-[14px] leading-7 text-ink outline-none focus:outline-none focus-visible:outline-none"
-                :class="editing ? 'rounded-xl bg-white shadow-[0_0_0_1.5px_rgba(59,130,246,0.45)]' : ''"
+                class="note-view px-5 py-4 text-[14px] leading-7 text-[#2e3238] outline-none focus:outline-none focus-visible:outline-none"
+                :class="editing ? 'rounded-md bg-white shadow-[0_0_0_1.5px_rgba(78,110,142,0.35)]' : ''"
                 :contenteditable="editing"
                 v-html="noteHtml"
               ></div>
-              <p v-if="selectedNote.courseId && !editing" class="mt-2 px-5 text-[12px] text-ink-2">
+              <p v-if="selectedNote.courseId && !editing" class="mt-2 px-5 text-[12px] text-[#7a7f87]">
                 点击文中的时间戳可跳转网课对应位置核对；单击正文任意位置可直接编辑。
               </p>
             </div>
 
             <!-- 知识联系（移动端折叠区；桌面端在右侧栏） -->
             <div v-if="!editing" class="ml-6 max-w-3xl px-4 pb-6 lg:hidden">
-              <details class="rounded-2xl border border-line bg-white px-4 py-3">
-                <summary class="cursor-pointer text-[13px] font-semibold text-ink">
+              <details class="rounded-lg border border-[#e9e7e2] bg-white px-4 py-3">
+                <summary class="cursor-pointer text-[13px] font-semibold text-[#2e3238]">
                   知识联系（{{ selectedNote.links.length }}）
                 </summary>
                 <div class="mt-3">
@@ -759,13 +759,13 @@ const groupPathOptions = computed(() => {
 
       <!-- 未选择笔记 -->
       <div v-else class="flex h-full flex-col items-center justify-center gap-3">
-        <NotebookPen :size="40" class="text-ink-2/50" />
-        <p class="text-[15px] text-ink-2">从左侧选择一个笔记页，或新建分组与笔记</p>
+        <NotebookPen :size="40" class="text-[#7a7f87]/50" />
+        <p class="text-[15px] text-[#7a7f87]">从左侧选择一个笔记页，或新建分组与笔记</p>
       </div>
     </div>
 
     <!-- 右：知识联系侧栏（桌面端常驻第三列，移动端在正文下方折叠区） -->
-    <aside class="hidden w-80 shrink-0 flex-col overflow-y-auto border-l border-line px-4 py-4 lg:flex">
+    <aside class="hidden w-80 shrink-0 flex-col overflow-y-auto border-l border-[#e9e7e2] px-4 py-4 lg:flex">
       <LinkPanel
         v-if="selectedDetail"
         :note-id="selectedDetail.id"
@@ -773,7 +773,7 @@ const groupPathOptions = computed(() => {
         @changed="reloadDetail"
         @jump="openLink"
       />
-      <p v-else class="text-[12px] leading-5 text-ink-2">
+      <p v-else class="text-[12px] leading-5 text-[#7a7f87]">
         选择一篇笔记后，在这里管理它的知识联系：关联讲到的网课片段、做过的题目、相关笔记，并可附一句关联说明。
       </p>
     </aside>
@@ -786,9 +786,9 @@ const groupPathOptions = computed(() => {
   align-items: center;
   margin-left: 0.25rem;
   padding: 0.05rem 0.4rem;
-  border-radius: 0.375rem;
-  background: #eff6ff;
-  color: #2563eb;
+  border-radius: 0.25rem;
+  background: #edf2f7;
+  color: #4e6e8e;
   font-size: 12px;
   cursor: pointer;
   vertical-align: middle;
@@ -804,13 +804,13 @@ const groupPathOptions = computed(() => {
 }
 .note-view :deep(th),
 .note-view :deep(td) {
-  border: 1px solid #e5e7eb;
+  border: 1px solid #e9e7e2;
   padding: 0.4rem 0.75rem;
   text-align: left;
   vertical-align: top;
 }
 .note-view :deep(th) {
-  background: #f9fafb;
+  background: #f4f3f0;
   font-weight: 600;
 }
 </style>

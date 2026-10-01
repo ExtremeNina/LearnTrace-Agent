@@ -184,7 +184,7 @@ async function confirmAdd() {
   <div>
     <!-- 添加入口 -->
     <button
-      class="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-line py-2 text-[13px] text-ink-2 hover:border-primary hover:text-primary"
+      class="flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-[#e9e7e2] py-2 text-[13px] text-[#7a7f87] hover:border-[#4e6e8e]/60 hover:text-[#4e6e8e]"
       @click="openAddModal"
     >
       <Plus :size="14" />
@@ -193,23 +193,23 @@ async function confirmAdd() {
 
     <!-- 联系卡片列表 -->
     <div class="mt-3 flex flex-col gap-2">
-      <div v-for="link in links" :key="link.id" class="rounded-xl border border-line bg-white px-3 py-2.5">
+      <div v-for="link in links" :key="link.id" class="rounded-md border border-[#e9e7e2] bg-white px-3 py-2.5">
         <div class="flex items-start gap-2">
-          <component :is="typeIcon(link.linkType)" :size="15" class="mt-1 shrink-0 text-ink-2" />
+          <component :is="typeIcon(link.linkType)" :size="15" class="mt-1 shrink-0 text-[#7a7f87]" />
           <button class="min-w-0 flex-1 text-left" :title="TYPE_LABEL[link.linkType]" @click="emit('jump', link)">
-            <p class="truncate text-[13px] text-ink hover:text-primary">{{ link.title }}</p>
-            <p v-if="link.remark" class="mt-0.5 text-[12px] leading-5 text-ink-2">{{ link.remark }}</p>
+            <p class="truncate text-[13px] text-[#2e3238] hover:text-[#4e6e8e]">{{ link.title }}</p>
+            <p v-if="link.remark" class="mt-0.5 text-[12px] leading-5 text-[#7a7f87]">{{ link.remark }}</p>
           </button>
-          <span v-if="link.tsSec != null" class="shrink-0 pt-0.5 text-[12px] text-primary">{{ formatTs(link.tsSec) }}</span>
+          <span v-if="link.tsSec != null" class="shrink-0 pt-0.5 text-[12px] text-[#4e6e8e]">{{ formatTs(link.tsSec) }}</span>
           <button
-            class="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-ink-2 hover:bg-line/60 hover:text-ink"
+            class="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[#7a7f87] hover:bg-[#eceae5] hover:text-[#2e3238]"
             title="编辑说明"
             @click="startEditRemark(link)"
           >
             <Pencil :size="13" />
           </button>
           <button
-            class="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-ink-2 hover:bg-red-50 hover:text-red-600"
+            class="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[#7a7f87] hover:bg-red-50 hover:text-red-600"
             title="删除"
             @click="onRemove(link)"
           >
@@ -222,18 +222,18 @@ async function confirmAdd() {
             v-model="editDraft"
             type="text"
             placeholder="这条联系相关的点…"
-            class="min-w-0 flex-1 rounded-lg border border-line px-2 py-1.5 text-[12px] outline-none focus:border-primary"
+            class="min-w-0 flex-1 rounded-lg border border-[#e9e7e2] px-2 py-1.5 text-[12px] outline-none focus:border-[#4e6e8e]"
             @keyup.enter="saveEditRemark"
           />
-          <button class="flex h-7 w-7 items-center justify-center rounded-lg bg-primary text-white hover:opacity-90" title="保存说明" @click="saveEditRemark">
+          <button class="flex h-7 w-7 items-center justify-center rounded-lg bg-[#4e6e8e] text-white hover:opacity-90" title="保存说明" @click="saveEditRemark">
             <Check :size="14" />
           </button>
-          <button class="flex h-7 w-7 items-center justify-center rounded-lg border border-line text-ink-2 hover:bg-line/60" title="取消" @click="editingId = null">
+          <button class="flex h-7 w-7 items-center justify-center rounded-lg border border-[#e9e7e2] text-[#7a7f87] hover:bg-[#eceae5]" title="取消" @click="editingId = null">
             <X :size="14" />
           </button>
         </div>
       </div>
-      <p v-if="links.length === 0" class="text-[12px] leading-5 text-ink-2">
+      <p v-if="links.length === 0" class="text-[12px] leading-5 text-[#7a7f87]">
         还没有知识联系。点击上方「添加知识联系」，把这个知识点与网课 / 题目 / 笔记关联起来。
       </p>
     </div>
@@ -244,38 +244,38 @@ async function confirmAdd() {
       class="fixed inset-0 z-50 flex items-center justify-center bg-ink/25 px-4 backdrop-blur-sm"
       @click.self="closeAdd"
     >
-      <div class="flex max-h-[80vh] w-full max-w-lg flex-col rounded-3xl border border-line bg-white p-6 shadow-xl">
+      <div class="flex max-h-[80vh] w-full max-w-lg flex-col rounded-lg border border-[#e9e7e2] bg-white p-6 shadow-xl">
         <div class="flex items-start justify-between">
           <div>
             <h2 class="flex items-center gap-1.5 text-[16px] font-semibold">
               <SquarePen :size="16" />
               添加知识联系
             </h2>
-            <p class="mt-1 text-[12px] text-ink-2">搜索并选择要关联的网课、题目或笔记，可附一句关联说明。</p>
+            <p class="mt-1 text-[12px] text-[#7a7f87]">搜索并选择要关联的网课、题目或笔记，可附一句关联说明。</p>
           </div>
-          <button class="flex h-8 w-8 items-center justify-center rounded-lg text-ink-2 hover:bg-line/60 hover:text-ink" title="关闭" @click="closeAdd">
+          <button class="flex h-8 w-8 items-center justify-center rounded-lg text-[#7a7f87] hover:bg-[#eceae5] hover:text-[#2e3238]" title="关闭" @click="closeAdd">
             <X :size="16" />
           </button>
         </div>
 
         <div class="relative mt-4">
-          <Search :size="15" class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-2" />
+          <Search :size="15" class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#7a7f87]" />
           <input
             ref="searchRef"
             v-model="keyword"
             type="text"
             placeholder="搜索网课 / 题目 / 笔记…"
-            class="w-full rounded-xl border border-line bg-white py-2.5 pl-9 pr-3 text-[13px] text-ink outline-none focus:border-primary"
+            class="w-full rounded-md border border-[#e9e7e2] bg-white py-2.5 pl-9 pr-3 text-[13px] text-[#2e3238] outline-none focus:border-[#4e6e8e]"
           />
         </div>
 
         <div class="mt-3 min-h-0 flex-1 overflow-y-auto">
           <!-- 选中目标，补充说明后挂链 -->
-          <div v-if="selected" class="rounded-xl border border-primary bg-primary-soft/40 p-3">
+          <div v-if="selected" class="rounded-md border border-[#4e6e8e] bg-[#eef2f6] p-3">
             <div class="flex items-center gap-2">
-              <span class="shrink-0 rounded border border-line bg-white px-1.5 py-0.5 text-[11px] text-ink-2">{{ TYPE_LABEL[selected.linkType] }}</span>
-              <span class="min-w-0 flex-1 truncate text-[13px] text-ink" :title="selected.title">{{ selected.title }}</span>
-              <button class="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-ink-2 hover:bg-white" title="重新选择" @click="selected = null">
+              <span class="shrink-0 rounded border border-[#e9e7e2] bg-white px-1.5 py-0.5 text-[11px] text-[#7a7f87]">{{ TYPE_LABEL[selected.linkType] }}</span>
+              <span class="min-w-0 flex-1 truncate text-[13px] text-[#2e3238]" :title="selected.title">{{ selected.title }}</span>
+              <button class="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[#7a7f87] hover:bg-white" title="重新选择" @click="selected = null">
                 <X :size="14" />
               </button>
             </div>
@@ -284,18 +284,18 @@ async function confirmAdd() {
               v-model="remarkDraft"
               type="text"
               placeholder="关联说明（可选）：这里和知识点的关系…"
-              class="mt-2.5 w-full rounded-lg border border-line bg-white px-2.5 py-2 text-[13px] outline-none focus:border-primary"
+              class="mt-2.5 w-full rounded-lg border border-[#e9e7e2] bg-white px-2.5 py-2 text-[13px] outline-none focus:border-[#4e6e8e]"
             />
             <input
               v-if="selected.linkType === 'course'"
               v-model="tsDraft"
               type="text"
               placeholder="跳转时间戳（可选），如 02:27"
-              class="mt-1.5 w-full rounded-lg border border-line bg-white px-2.5 py-2 text-[13px] outline-none focus:border-primary"
+              class="mt-1.5 w-full rounded-lg border border-[#e9e7e2] bg-white px-2.5 py-2 text-[13px] outline-none focus:border-[#4e6e8e]"
             />
             <p v-if="addError" class="mt-1.5 text-[12px] text-red-600">{{ addError }}</p>
             <button
-              class="mt-3 w-full rounded-lg bg-primary py-2 text-[13px] text-white hover:opacity-90 disabled:opacity-50"
+              class="mt-3 w-full rounded-lg bg-[#4e6e8e] py-2 text-[13px] text-white hover:opacity-90 disabled:opacity-50"
               :disabled="adding"
               @click="confirmAdd"
             >
@@ -305,43 +305,43 @@ async function confirmAdd() {
 
           <!-- 搜索结果分组 -->
           <template v-else>
-            <p v-if="!kw" class="px-1 py-3 text-center text-[12px] text-ink-2">输入关键词，搜索你的网课 / 题目 / 笔记</p>
-            <p v-else-if="!hasResults" class="px-1 py-3 text-center text-[12px] text-ink-2">没有匹配的网课 / 题目 / 笔记</p>
+            <p v-if="!kw" class="px-1 py-3 text-center text-[12px] text-[#7a7f87]">输入关键词，搜索你的网课 / 题目 / 笔记</p>
+            <p v-else-if="!hasResults" class="px-1 py-3 text-center text-[12px] text-[#7a7f87]">没有匹配的网课 / 题目 / 笔记</p>
             <template v-else>
               <div v-if="courseResults.length" class="mb-1">
-                <p class="px-1 py-1 text-[11px] text-ink-2">网课</p>
+                <p class="px-1 py-1 text-[11px] text-[#7a7f87]">网课</p>
                 <button
                   v-for="c in courseResults"
                   :key="'c' + c.id"
-                  class="flex w-full items-center gap-2 rounded-lg px-1.5 py-2 text-left hover:bg-panel"
+                  class="flex w-full items-center gap-2 rounded-lg px-1.5 py-2 text-left hover:bg-[#f1efeb]"
                   @click="pick('course', c.id, c.title)"
                 >
-                  <MonitorPlay :size="14" class="shrink-0 text-ink-2" />
-                  <span class="min-w-0 flex-1 truncate text-[13px] text-ink">{{ c.title }}</span>
+                  <MonitorPlay :size="14" class="shrink-0 text-[#7a7f87]" />
+                  <span class="min-w-0 flex-1 truncate text-[13px] text-[#2e3238]">{{ c.title }}</span>
                 </button>
               </div>
               <div v-if="questionResults.length" class="mb-1">
-                <p class="px-1 py-1 text-[11px] text-ink-2">题目</p>
+                <p class="px-1 py-1 text-[11px] text-[#7a7f87]">题目</p>
                 <button
                   v-for="q in questionResults"
                   :key="'q' + q.id"
-                  class="flex w-full items-center gap-2 rounded-lg px-1.5 py-2 text-left hover:bg-panel"
+                  class="flex w-full items-center gap-2 rounded-lg px-1.5 py-2 text-left hover:bg-[#f1efeb]"
                   @click="pick('question', q.id, excerpt(q.questionText))"
                 >
-                  <Camera :size="14" class="shrink-0 text-ink-2" />
-                  <span class="min-w-0 flex-1 truncate text-[13px] text-ink">{{ excerpt(q.questionText) }}</span>
+                  <Camera :size="14" class="shrink-0 text-[#7a7f87]" />
+                  <span class="min-w-0 flex-1 truncate text-[13px] text-[#2e3238]">{{ excerpt(q.questionText) }}</span>
                 </button>
               </div>
               <div v-if="noteResults.length">
-                <p class="px-1 py-1 text-[11px] text-ink-2">笔记</p>
+                <p class="px-1 py-1 text-[11px] text-[#7a7f87]">笔记</p>
                 <button
                   v-for="n in noteResults"
                   :key="'n' + n.id"
-                  class="flex w-full items-center gap-2 rounded-lg px-1.5 py-2 text-left hover:bg-panel"
+                  class="flex w-full items-center gap-2 rounded-lg px-1.5 py-2 text-left hover:bg-[#f1efeb]"
                   @click="pick('note', n.id, n.title)"
                 >
-                  <NotebookPen :size="14" class="shrink-0 text-ink-2" />
-                  <span class="min-w-0 flex-1 truncate text-[13px] text-ink">{{ n.title }}</span>
+                  <NotebookPen :size="14" class="shrink-0 text-[#7a7f87]" />
+                  <span class="min-w-0 flex-1 truncate text-[13px] text-[#2e3238]">{{ n.title }}</span>
                 </button>
               </div>
             </template>
