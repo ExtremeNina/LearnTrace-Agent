@@ -37,6 +37,9 @@ public class QuestionServiceImpl implements QuestionService {
     @Resource
     private MessageMapper messageMapper;
 
+    @Resource
+    private QuestionVectorStoreService questionVectorStoreService;
+
     @Override
     public boolean saveFromConversation(Long userId, Long conversationId,
                                         String questionText, String correctAnswer, String analysis, String subject) {
@@ -73,6 +76,8 @@ public class QuestionServiceImpl implements QuestionService {
                 .setCreatedAt(LocalDateTime.now())
                 .setUpdatedAt(LocalDateTime.now());
         questionRecordMapper.insert(record);
+        // 向量化入库（异步，失败不阻塞保存）
+        questionVectorStoreService.ingestAsync(record);
         log.info("题目已保存, userId={}, conversationId={}, recordId={}", userId, conversationId, record.getId());
         return true;
     }
@@ -122,6 +127,8 @@ public class QuestionServiceImpl implements QuestionService {
         }
         record.setUpdatedAt(LocalDateTime.now());
         questionRecordMapper.updateById(record);
+        // 内容有修改：同步重建向量
+        questionVectorStoreService.ingestAsync(record);
         return record;
     }
 
@@ -131,6 +138,7 @@ public class QuestionServiceImpl implements QuestionService {
         record.setDeleted(1);
         record.setUpdatedAt(LocalDateTime.now());
         questionRecordMapper.updateById(record);
+        questionVectorStoreService.remove(id);
     }
 
     /**

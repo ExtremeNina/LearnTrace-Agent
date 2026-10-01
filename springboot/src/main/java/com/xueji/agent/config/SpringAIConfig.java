@@ -6,6 +6,7 @@ import com.xueji.agent.ai.tool.OcrTool;
 import com.xueji.agent.ai.tool.PaddleOcrTool;
 import com.xueji.agent.ai.tool.QwenAsrTool;
 import com.xueji.agent.ai.tool.QuestionSaveTool;
+import com.xueji.agent.ai.tool.RagSearchTool;
 import com.xueji.agent.service.QuestionService;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
@@ -14,10 +15,20 @@ import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.memory.ChatMemoryRepository;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
+import org.springframework.ai.document.MetadataMode;
+import org.springframework.ai.embedding.EmbeddingModel;
+import org.springframework.ai.openai.OpenAiEmbeddingModel;
+import org.springframework.ai.openai.OpenAiEmbeddingOptions;
+import org.springframework.ai.openai.api.OpenAiApi;
+import org.springframework.ai.vectorstore.VectorStore;
+import org.springframework.ai.vectorstore.redis.RedisVectorStore;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import redis.clients.jedis.JedisPooled;
 
 /**
  * Spring AI 装配：LLM 调用统一经 ChatClient（PRD §11，业务代码不直接调 LLM API）。
@@ -26,6 +37,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
  * 工具链路：OCR 已改为前置流水线（业务代码先识别 + OcrTextFormatter 整理，再进推理），
  * ChatClient 不再注册 AI Tool。
  */
+@Slf4j
 @Configuration
 public class SpringAIConfig {
 
@@ -130,13 +142,58 @@ public class SpringAIConfig {
     }
 
     @Bean
+    @Primary
+    public EmbeddingModel embeddingModel(
+            @Value("${xj.embedding.base-url:https://dashscope.aliyuncs.com/compatible-mode/v1}") String baseUrl,
+            @Value("${xj.embedding.api-key:}") String apiKey,
+            @Value("${xj.embedding.model:text-embedding-v3}") String model,
+            @Value("${qwen.asr.api-key:}") String asrKeyForProbe) {
+        // Embedding 走百炼 OpenAI 兼容端点（DeepSeek 无 embedding 接口）；
+        // 标记 @Primary 覆盖 openai starter 按 spring.ai.openai.* 自动装配的默认实例
+        // 百炼兼容端点已含 /v1，覆盖默认路径避免 /v1/v1 叠加 404
+        log.info("Embedding 探针: xj key 长度={}, qwen key 长度={}, base-url={}", apiKey.length(), asrKeyForProbe.length(), baseUrl);
+        OpenAiApi api = OpenAiApi.builder()
+                .baseUrl(baseUrl)
+                .apiKey(apiKey)
+                .embeddingsPath("/embeddings")
+                .build();
+        return new OpenAiEmbeddingModel(api, MetadataMode.EMBED,
+                OpenAiEmbeddingOptions.builder().model(model).build());
+    }
+
+    /**
+     * 向量库：独立 Redis 实例（6380，redis-stack），仅存 RAG 向量与元数据；
+     * 索引启动时自动创建（FT.CREATE），维度由 embedding 模型决定（text-embedding-v3 = 1024）
+     */
+    @Bean
+    public VectorStore questionVectorStore(EmbeddingModel embeddingModel,
+            @Value("${xj.vector.redis.host:127.0.0.1}") String host,
+            @Value("${xj.vector.redis.port:6380}") int port) {
+        JedisPooled jedis = new JedisPooled(host, port);
+        return RedisVectorStore.builder(jedis, embeddingModel)
+                .indexName("xueji-rag-idx")
+                .prefix("rag:question:")
+                .metadataFields(
+                        RedisVectorStore.MetadataField.tag("userId"),
+                        RedisVectorStore.MetadataField.tag("subject"))
+                .initializeSchema(true)
+                .build();
+    }
+
+    @Bean
+    public RagSearchTool ragSearchTool(VectorStore questionVectorStore) {
+        return new RagSearchTool(questionVectorStore);
+    }
+
+    @Bean
     public ChatClient chatClient(ChatClient.Builder chatClientBuilder,
                                  Advisor messageChatMemoryAdvisor,
                                  Advisor loggerAdvisor,
-                                 QuestionSaveTool questionSaveTool) {
+                                 QuestionSaveTool questionSaveTool,
+                                 RagSearchTool ragSearchTool) {
         return chatClientBuilder
                 .defaultAdvisors(messageChatMemoryAdvisor, loggerAdvisor)
-                .defaultTools(questionSaveTool)
+                .defaultTools(questionSaveTool, ragSearchTool)
                 .build();
     }
 }

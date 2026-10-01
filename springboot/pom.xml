@@ -149,6 +149,11 @@
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-starter-model-openai</artifactId>
         </dependency>
+        <!-- 向量库：Redis（RediSearch），用于相似题 RAG 检索 -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-vector-store-redis</artifactId>
+        </dependency>
 
         <!-- WebSocket（/ws/agent 流式对话） -->
         <dependency>

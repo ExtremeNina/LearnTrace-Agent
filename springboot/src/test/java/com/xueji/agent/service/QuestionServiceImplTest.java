@@ -10,6 +10,7 @@ import com.xueji.agent.mapper.ConversationMapper;
 import com.xueji.agent.mapper.MessageMapper;
 import com.xueji.agent.mapper.QuestionRecordMapper;
 import com.xueji.agent.service.impl.QuestionServiceImpl;
+import com.xueji.agent.service.impl.QuestionVectorStoreService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -38,6 +39,7 @@ class QuestionServiceImplTest {
     private QuestionRecordMapper questionRecordMapper;
     private ConversationMapper conversationMapper;
     private MessageMapper messageMapper;
+    private QuestionVectorStoreService questionVectorStoreService;
     private QuestionServiceImpl service;
 
     @BeforeEach
@@ -45,10 +47,12 @@ class QuestionServiceImplTest {
         questionRecordMapper = mock(QuestionRecordMapper.class);
         conversationMapper = mock(ConversationMapper.class);
         messageMapper = mock(MessageMapper.class);
+        questionVectorStoreService = mock(QuestionVectorStoreService.class);
         service = new QuestionServiceImpl();
         ReflectionTestUtils.setField(service, "questionRecordMapper", questionRecordMapper);
         ReflectionTestUtils.setField(service, "conversationMapper", conversationMapper);
         ReflectionTestUtils.setField(service, "messageMapper", messageMapper);
+        ReflectionTestUtils.setField(service, "questionVectorStoreService", questionVectorStoreService);
     }
 
     private Conversation conversationOf(Long userId) {
@@ -85,6 +89,7 @@ class QuestionServiceImplTest {
         assertEquals("极大值为 0", record.getCorrectAnswer());
         assertEquals("SUCCESS", record.getAiStatus());
         assertEquals("SAVED", record.getRecordStatus());
+        verify(questionVectorStoreService).ingestAsync(record);
     }
 
     @Test
@@ -96,6 +101,7 @@ class QuestionServiceImplTest {
 
         assertFalse(saved);
         verify(questionRecordMapper, never()).insert(any(QuestionRecord.class));
+        verify(questionVectorStoreService, never()).ingestAsync(any());
     }
 
     @Test
