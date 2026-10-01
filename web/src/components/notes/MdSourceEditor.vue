@@ -189,9 +189,9 @@ const heightClass = computed(() => props.heightClass || 'h-[60vh]')
 
 <template>
   <div>
-    <div class="mb-2 flex flex-wrap items-center gap-1.5 rounded-md border border-[#e9e7e2] bg-[#f4f3f0] px-2.5 py-2">
+    <div class="mb-2 flex flex-wrap items-center gap-1.5 rounded-xl border border-line bg-panel px-2.5 py-2">
       <button
-        class="flex h-8 items-center gap-1 rounded-lg px-2 text-[13px] text-[#2e3238] hover:bg-[#eceae5]"
+        class="flex h-8 items-center gap-1 rounded-lg px-2 text-[13px] text-ink hover:bg-line/60"
         title="当前行设为标题"
         @mousedown.prevent
         @click="insertLinePrefix('## ')"
@@ -200,7 +200,7 @@ const heightClass = computed(() => props.heightClass || 'h-[60vh]')
         标题
       </button>
       <button
-        class="flex h-8 w-8 items-center justify-center rounded-lg text-[#2e3238] hover:bg-[#eceae5]"
+        class="flex h-8 w-8 items-center justify-center rounded-lg text-ink hover:bg-line/60"
         title="加粗（再点一次取消）"
         @mousedown.prevent
         @click="toggleWrap('**')"
@@ -208,7 +208,7 @@ const heightClass = computed(() => props.heightClass || 'h-[60vh]')
         <Bold :size="15" />
       </button>
       <button
-        class="flex h-8 w-8 items-center justify-center rounded-lg text-[#2e3238] hover:bg-[#eceae5]"
+        class="flex h-8 w-8 items-center justify-center rounded-lg text-ink hover:bg-line/60"
         title="斜体（再点一次取消）"
         @mousedown.prevent
         @click="toggleWrap('*')"
@@ -216,7 +216,7 @@ const heightClass = computed(() => props.heightClass || 'h-[60vh]')
         <Italic :size="15" />
       </button>
       <button
-        class="flex h-8 w-8 items-center justify-center rounded-lg text-[#2e3238] hover:bg-[#eceae5]"
+        class="flex h-8 w-8 items-center justify-center rounded-lg text-ink hover:bg-line/60"
         title="删除线（再点一次取消）"
         @mousedown.prevent
         @click="toggleWrap('~~')"
@@ -224,7 +224,7 @@ const heightClass = computed(() => props.heightClass || 'h-[60vh]')
         <Strikethrough :size="15" />
       </button>
       <button
-        class="flex h-8 w-8 items-center justify-center rounded-lg text-[#2e3238] hover:bg-[#eceae5]"
+        class="flex h-8 w-8 items-center justify-center rounded-lg text-ink hover:bg-line/60"
         title="行内代码（再点一次取消）"
         @mousedown.prevent
         @click="toggleWrap('`')"
@@ -232,7 +232,7 @@ const heightClass = computed(() => props.heightClass || 'h-[60vh]')
         <Code :size="15" />
       </button>
       <button
-        class="flex h-8 items-center gap-1 rounded-lg px-2 text-[13px] text-[#2e3238] hover:bg-[#eceae5]"
+        class="flex h-8 items-center gap-1 rounded-lg px-2 text-[13px] text-ink hover:bg-line/60"
         title="无序列表"
         @mousedown.prevent
         @click="insertLinePrefix('- ')"
@@ -241,7 +241,7 @@ const heightClass = computed(() => props.heightClass || 'h-[60vh]')
         列表
       </button>
       <button
-        class="flex h-8 items-center gap-1 rounded-lg px-2 text-[13px] text-[#2e3238] hover:bg-[#eceae5]"
+        class="flex h-8 items-center gap-1 rounded-lg px-2 text-[13px] text-ink hover:bg-line/60"
         title="有序列表"
         @mousedown.prevent
         @click="insertLinePrefix('1. ')"
@@ -250,7 +250,7 @@ const heightClass = computed(() => props.heightClass || 'h-[60vh]')
         序号
       </button>
       <button
-        class="flex h-8 items-center gap-1 rounded-lg px-2 text-[13px] text-[#2e3238] hover:bg-[#eceae5]"
+        class="flex h-8 items-center gap-1 rounded-lg px-2 text-[13px] text-ink hover:bg-line/60"
         title="引用"
         @mousedown.prevent
         @click="insertLinePrefix('> ')"
@@ -259,7 +259,7 @@ const heightClass = computed(() => props.heightClass || 'h-[60vh]')
         引用
       </button>
       <button
-        class="flex h-8 w-8 items-center justify-center rounded-lg text-[#2e3238] hover:bg-[#eceae5]"
+        class="flex h-8 w-8 items-center justify-center rounded-lg text-ink hover:bg-line/60"
         title="分隔线"
         @mousedown.prevent
         @click="insert('\n\n---\n\n')"
@@ -267,7 +267,7 @@ const heightClass = computed(() => props.heightClass || 'h-[60vh]')
         <Minus :size="15" />
       </button>
       <button
-        class="flex h-8 items-center gap-1 rounded-lg px-2 text-[13px] text-[#2e3238] hover:bg-[#eceae5]"
+        class="flex h-8 items-center gap-1 rounded-lg px-2 text-[13px] text-ink hover:bg-line/60"
         title="插入时间戳（保存后可点击跳转视频）"
         @mousedown.prevent
         @click="onTimestamp"
@@ -275,14 +275,14 @@ const heightClass = computed(() => props.heightClass || 'h-[60vh]')
         <Clock :size="15" />
         时间戳
       </button>
-      <span class="mx-1 h-5 w-px bg-[#e2e0db]" />
+      <span class="mx-1 h-5 w-px bg-line" />
       <!-- 保存 / 取消等页面级操作由父页面提供；包一层保证两个按钮永不因换行被拆开 -->
       <span class="flex shrink-0 items-center gap-1.5">
         <slot name="actions" />
       </span>
       <button
-        class="ml-auto flex h-8 items-center gap-1 rounded-lg px-2 text-[13px] hover:bg-[#eceae5]"
-        :class="preview ? 'text-[#4e6e8e]' : 'text-[#2e3238]'"
+        class="ml-auto flex h-8 items-center gap-1 rounded-lg px-2 text-[13px] hover:bg-line/60"
+        :class="preview ? 'text-primary' : 'text-ink'"
         title="切换预览与编辑"
         @click="togglePreview"
       >
@@ -296,14 +296,14 @@ const heightClass = computed(() => props.heightClass || 'h-[60vh]')
       v-if="!preview"
       ref="taRef"
       :value="modelValue"
-      class="w-full resize-y rounded-lg border border-[#e2e0db] bg-white p-4 font-mono text-[13px] leading-6 text-[#2e3238] outline-none focus:border-[#4e6e8e]"
+      class="w-full resize-y rounded-2xl border border-primary bg-white p-4 font-mono text-[13px] leading-6 text-ink outline-none"
       :class="heightClass"
       @input="onInput"
     ></textarea>
     <div
       v-else
       ref="previewRef"
-      class="note-view w-full overflow-y-auto rounded-lg border border-[#e2e0db] bg-white p-4 text-[14px] leading-7 text-[#2e3238]"
+      class="note-view w-full overflow-y-auto rounded-2xl border border-primary bg-white p-4 text-[14px] leading-7 text-ink"
       :class="heightClass"
       v-html="previewHtml"
       @click="onPreviewClick"

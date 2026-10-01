@@ -45,38 +45,38 @@ function onRowClick() {
 <template>
   <div>
     <div
-      class="group flex items-center gap-1 rounded-md py-1.5 pr-1.5"
+      class="group flex items-center gap-1 rounded-xl py-1.5 pr-1.5"
       :class="[
-        isTarget && node.type === 'group' ? 'bg-[#eef2f6] shadow-[inset_2px_0_0_#4e6e8e]' : '',
-        isSelectedNote ? 'bg-[#eef2f6] shadow-[inset_2px_0_0_#4e6e8e]' : 'hover:bg-[#f1efeb]',
+        isTarget && node.type === 'group' ? 'bg-primary-soft/70' : '',
+        isSelectedNote ? 'bg-line/60' : 'hover:bg-line/50',
       ]"
       :style="{ paddingLeft: (depth - 1) * 14 + 8 + 'px' }"
       @click="onRowClick"
     >
-      <span v-if="node.type === 'group'" class="shrink-0 text-[#7a7f87]">
+      <span v-if="node.type === 'group'" class="shrink-0 text-ink-2">
         <ChevronDown v-if="isExpanded" :size="14" />
         <ChevronRight v-else :size="14" />
       </span>
       <span v-else class="w-[14px] shrink-0"></span>
-      <Folder v-if="node.type === 'group'" :size="15" class="shrink-0 text-[#7a7f87]" />
-      <NotebookPen v-else :size="15" class="shrink-0 text-[#7a7f87]" />
+      <Folder v-if="node.type === 'group'" :size="15" class="shrink-0 text-ink-2" />
+      <NotebookPen v-else :size="15" class="shrink-0 text-ink-2" />
 
       <input
         v-if="renamingId === node.id"
         :value="renameValue"
         data-inline-input="1"
-        class="min-w-0 flex-1 rounded-md border border-[#4e6e8e] px-1.5 text-[13px] outline-none"
+        class="min-w-0 flex-1 rounded-md border border-primary px-1.5 text-[13px] outline-none"
         @click.stop
         @input="emit('renameInput', ($event.target as HTMLInputElement).value)"
         @keydown.enter="emit('confirmRename')"
         @keydown.esc="emit('confirmRename')"
       />
-      <span v-else class="min-w-0 flex-1 truncate text-[#2e3238]">{{ node.name }}</span>
+      <span v-else class="min-w-0 flex-1 truncate text-ink">{{ node.name }}</span>
 
       <span class="hidden shrink-0 items-center gap-0.5 group-hover:flex">
         <button
           v-if="isGroup && canNest"
-          class="p-1 text-[#7a7f87] hover:text-[#4e6e8e]"
+          class="p-1 text-ink-2 hover:text-primary"
           title="新建子分组"
           @click.stop="emit('create', 'group', node.id)"
         >
@@ -84,18 +84,18 @@ function onRowClick() {
         </button>
         <button
           v-if="isGroup"
-          class="p-1 text-[#7a7f87] hover:text-[#4e6e8e]"
+          class="p-1 text-ink-2 hover:text-primary"
           title="新建笔记"
           @click.stop="emit('create', 'note', node.id)"
         >
           <NotebookPen :size="13" />
         </button>
-        <button class="p-1 text-[#7a7f87] hover:text-[#2e3238]" title="重命名" @click.stop="emit('startRename', node.id)">
+        <button class="p-1 text-ink-2 hover:text-ink" title="重命名" @click.stop="emit('startRename', node.id)">
           <PencilLine :size="13" />
         </button>
         <button
           v-if="isGroup"
-          class="p-1 text-[#7a7f87] hover:text-[#a14e3c]"
+          class="p-1 text-ink-2 hover:text-red-500"
           title="删除分组（其下内容一并删除）"
           @click.stop="emit('deleteGroup', node.id)"
         >
@@ -103,7 +103,7 @@ function onRowClick() {
         </button>
         <button
           v-else
-          class="p-1 text-[#7a7f87] hover:text-[#a14e3c]"
+          class="p-1 text-ink-2 hover:text-red-500"
           title="删除笔记"
           @click.stop="emit('deleteNote', node.noteId!)"
         >
