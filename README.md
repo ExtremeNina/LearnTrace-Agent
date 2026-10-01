@@ -2,6 +2,16 @@
 
 AI 个人学习工作台：学习资产（网课 / 题目 / 笔记）+ 知识点页 + Human-in-the-loop 的 Agent 对话。记录你与知识发生过什么，并把它们连成网。
 
+![技术栈](https://img.shields.io/badge/Vue_3-TypeScript-42b883) ![后端](https://img.shields.io/badge/Spring_Boot_3.4-MyBatis--Plus-6db33f) ![存储](https://img.shields.io/badge/MySQL_8-Redis-RabbitMQ-4479a1) ![AI](https://img.shields.io/badge/Spring_AI-DeepSeek-8b5cf6)
+
+## 界面预览
+
+| Agent 对话 | 笔记整理 |
+| --- | --- |
+| ![Agent 对话](docs/images/demo-agent.jpg) | ![笔记整理](docs/images/demo-notes.jpg) |
+| **网课记录** | **网课详情 · AI 笔记** |
+| ![网课记录](docs/images/demo-courses.jpg) | ![网课详情](docs/images/demo-course-detail.jpg) |
+
 ## 技术栈
 
 - **前端**：Vue 3 + TypeScript + Tailwind CSS（Vite 构建，桌面 / 移动端响应式）
@@ -32,9 +42,6 @@ AI 个人学习工作台：学习资产（网课 / 题目 / 笔记）+ 知识点
 - 双轨编辑：手动笔记富文本、AI 笔记 Markdown 源码（含工具按钮 / 预览 / 编辑与预览滚动同步）；点击空白区域即保存
 - 知识联系右侧边栏：卡片展示关联的网课 / 题目 / 笔记及一句关联说明；弹窗聚合搜索挂链；点击卡片跳转（网课带时间戳、题目自动弹出详情）
 - 页面切换后保留上次打开的笔记与树状态（KeepAlive）
-
-### 文档与规范
-- 产品需求见 `学迹PRD.md`；交接状态、硬性编码规范与踩坑记录见 `agent.md`
 
 ## 架构与核心链路
 
