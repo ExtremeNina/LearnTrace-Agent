@@ -6,8 +6,8 @@ spring:
     import: optional:file:./application-local.properties
   ai:
     openai:
-      # DeepSeek 提供 OpenAI 兼容端点，统一经 Spring AI 接入（PRD §11）
-      api-key: ***REMOVED***
+      # DeepSeek 提供 OpenAI 兼容端点，统一经 Spring AI 接入（PRD §11）；密钥在本地私密配置注入，不入 git
+      api-key: ${DEEPSEEK_API_KEY:}
       base-url: https://api.deepseek.com
       chat:
         options:
