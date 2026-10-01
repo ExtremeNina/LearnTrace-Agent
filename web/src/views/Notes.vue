@@ -733,7 +733,7 @@ const groupPathOptions = computed(() => {
               <div
                 v-else
                 ref="editorRef"
-                class="note-view text-[14px] leading-7 text-ink"
+                class="note-view px-5 py-4 text-[14px] leading-7 text-ink"
                 :class="editing ? 'rounded-xl bg-white shadow-[0_0_0_1.5px_rgba(59,130,246,0.45)]' : ''"
                 :contenteditable="editing"
                 v-html="noteHtml"
