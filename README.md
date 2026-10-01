@@ -4,6 +4,13 @@ AI 个人学习工作台：学习资产（网课 / 题目 / 笔记）+ 知识点
 
 ![技术栈](https://img.shields.io/badge/Vue_3-TypeScript-42b883) ![后端](https://img.shields.io/badge/Spring_Boot_3.4-MyBatis--Plus-6db33f) ![存储](https://img.shields.io/badge/MySQL_8-Redis-RabbitMQ-4479a1) ![AI](https://img.shields.io/badge/Spring_AI-DeepSeek-8b5cf6)
 
+**学迹**把个人学习中最容易散失的三类资产——看过的**网课视频**、拍过的**题目**、随手记的**笔记**——统一收纳进同一个工作台，并让 AI 参与其中：
+
+- **网课转写成结构化笔记**：上传视频后由流水线自动完成语音转写、关键帧识别与笔记生成，笔记中的时间戳可以点击跳回原片核对；
+- **拍题即得解答**：拍照上传后 OCR 识别题目，AI 整理解答与错因，确认后归档进拍照记录；
+- **知识连成网**：每个知识点是一页笔记，页与页、页与网课、页与题目之间用「知识联系」互相挂链，复习时顺藤摸瓜；
+- **Human-in-the-loop 的 Agent**：对话贯穿全部学习资产，涉及保存、修改等持久化操作时必须经用户确认才会执行。
+
 ## 界面预览
 
 | Agent 对话 | 笔记整理 |
@@ -15,7 +22,7 @@ AI 个人学习工作台：学习资产（网课 / 题目 / 笔记）+ 知识点
 ## 技术栈
 
 - **前端**：Vue 3 + TypeScript + Tailwind CSS（Vite 构建，桌面 / 移动端响应式）
-- **后端**：Spring Boot 3.4 + MyBatis-Plus + MySQL 8（库名 `xueji`）+ Redis + RabbitMQ + Sa-Token
+- **后端**：Spring Boot 3.4 + MyBatis-Plus + MySQL 8 + Redis + RabbitMQ + Sa-Token
 - **AI**：Spring AI 接 DeepSeek（对话与笔记生成）；语音转写 Qwen-Audio ASR（阿里云百炼）；OCR 百度 PaddleOCR（AI Studio 异步任务）；图片存储阿里云 OSS
 
 ## 功能现状
@@ -31,7 +38,7 @@ AI 个人学习工作台：学习资产（网课 / 题目 / 笔记）+ 知识点
 - 保存内容由模型先整理（清洗「说明：…补全为…」等元叙述），imageUrl 由服务端确定性获取
 - 学科选项：数学 / 语文 / 英语 / 物理 / 化学 / 生物 / 历史 / 地理 / 政治 / 计算机 / 其他
 
-### 网课
+### 视频转写
 - 上传视频 → RabbitMQ 流水线：FFmpeg 抽音频与关键帧 → ASR 分片转写（长音频 280s 分片 + 句级时间戳合并）→ 批量帧 OCR → LLM 生成 AI 笔记入库
 - AI 笔记固定结构：课程概览（一句话概括 + 主要内容）→ 章节时间线（表格，时间戳可点击跳转视频）→ 知识点 → 总结
 - 列表（标题搜索 / 状态 / 日期 / 学科筛选）、详情三标签（AI 笔记 / 转写对照 / 关键帧识别）、在线编辑标题与学科
@@ -43,32 +50,62 @@ AI 个人学习工作台：学习资产（网课 / 题目 / 笔记）+ 知识点
 - 知识联系右侧边栏：卡片展示关联的网课 / 题目 / 笔记及一句关联说明；弹窗聚合搜索挂链；点击卡片跳转（网课带时间戳、题目自动弹出详情）
 - 页面切换后保留上次打开的笔记与树状态（KeepAlive）
 
-## 架构与核心链路
+## 总体架构
 
-**对话与拍照解题**（`ws/` + `ai/`）：
+```mermaid
+flowchart TB
+    subgraph web["前端（Vue 3 + TypeScript）"]
+        agentUI["Agent 对话"]
+        questionUI["拍照记录"]
+        courseUI["视频转写"]
+        noteUI["笔记整理"]
+    end
 
-```text
-用户消息 ──WebSocket(/ws/agent)──► AgentWebSocketHandler
-                                     │ 回合互斥（conversationId 粒度）
-                                     ▼
-                         AgentChatService（Spring AI ChatClient 流式）
-                                     │ 带图消息：OCR 前置流水线
-                                     │   OcrTool（PaddleOCR 异步任务）→ OcrTextFormatter → 拼入 prompt
-                                     │ 工具：QuestionSaveTool（ToolContext 携带 userId/conversationId）
-                                     ▼
-                    ChatEvent 流（DELTA / COMPLETE / STOP / ERROR）
-                                     │
-                    message 表双写（事实源） + Redis 会话记忆（advisor 自动读写）
+    subgraph server["后端（Spring Boot 3.4）"]
+        ws["WebSocket 网关"]
+        rest["REST 接口"]
+        orchestrator["Agent 编排（Spring AI）"]
+        tools["工具集（OCR / 保存题目）"]
+        pipeline["视频处理流水线"]
+        services["题目 / 网课 / 笔记服务"]
+    end
+
+    subgraph storage["数据与存储"]
+        mysql[("MySQL")]
+        redis[("Redis")]
+        mq[["RabbitMQ"]]
+        oss[("阿里云 OSS")]
+    end
+
+    subgraph ai["外部 AI 服务"]
+        llm["DeepSeek"]
+        asr["Qwen ASR"]
+        ocr["PaddleOCR"]
+    end
+
+    agentUI --> ws
+    agentUI --> rest
+    questionUI --> rest
+    courseUI --> rest
+    noteUI --> rest
+    courseUI -- 上传视频 --> mq
+    ws --> orchestrator
+    orchestrator --> llm
+    orchestrator --> tools
+    tools --> ocr
+    ws --> redis
+    rest --> services
+    services --> mysql
+    services --> redis
+    mq --> pipeline
+    pipeline --> asr
+    pipeline --> ocr
+    pipeline -- 生成笔记 --> llm
+    pipeline --> oss
 ```
 
-**网课处理流水线**（`mq/` + `service/`）：
-
-```text
-上传视频 ──► RabbitMQ(CourseProcessConsumer) ──► CoursePipelineService
-    ├─ FFmpeg 抽音频（280s 分片）→ QwenAsrTool 转写（句级时间戳）
-    ├─ FFmpeg 场景抽帧（fps_mode vfr）→ OcrTool 批量帧 OCR
-    └─ 转写 + 帧 OCR + 用户期望 → NoteGenerationService 生成 AI 笔记 → 落库
-```
+- **对话链路**：Agent 对话经 WebSocket 网关进入 Agent 编排（Spring AI 流式调用 DeepSeek），带图消息先经 PaddleOCR 识别再拼入上下文，涉及持久化的操作由工具集执行并需用户确认；会话记忆存于 Redis，消息双写 MySQL。
+- **视频转写链路**：上传的视频经 RabbitMQ 进入处理流水线——FFmpeg 抽取音频与关键帧、Qwen ASR 分片转写、PaddleOCR 批量识别帧文字，最后由 LLM 生成结构化 AI 笔记；视频与帧图存于阿里云 OSS。
 
 ## 目录结构
 
