@@ -10,6 +10,12 @@ import java.util.List;
  */
 public interface ConversationService {
 
+    /** 单个会话的对话轮次上限（按用户消息数计） */
+    int MAX_TURNS_PER_CONVERSATION = 100;
+
+    /** 会话保留天数：超过该天数未活跃的会话由定时任务清理 */
+    int RETENTION_DAYS = 30;
+
     /**
      * 创建会话
      */
@@ -39,4 +45,14 @@ public interface ConversationService {
      * 会话仍为默认标题时，用首条用户消息生成标题（截断 + 与用户其他会话去重）
      */
     void applyTitleFromFirstMessage(Long userId, Long conversationId, String firstMessage);
+
+    /**
+     * 统计会话内的用户消息数（对话轮次），用于会话轮次上限校验
+     */
+    long countUserMessages(Long userId, Long conversationId);
+
+    /**
+     * 清理超过保留天数未活跃的会话（连带消息与 Redis 会话记忆），返回清理数量
+     */
+    int cleanupExpiredConversations();
 }

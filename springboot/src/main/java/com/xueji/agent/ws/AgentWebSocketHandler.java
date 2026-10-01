@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xueji.agent.domain.vo.ChatEvent;
 import com.xueji.agent.exception.BusinessException;
 import com.xueji.agent.service.AgentChatService;
+import com.xueji.agent.service.ConversationService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -30,6 +31,9 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
 
     @Resource
     private AgentChatService agentChatService;
+
+    @Resource
+    private ConversationService conversationService;
 
     @Resource
     private ObjectMapper objectMapper;
@@ -64,6 +68,13 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
             sendEvent(session, ChatEvent.error(null, "BAD_REQUEST", "消息不能为空"));
             return;
         }
+
+        // 会话轮次上限：超过后拒绝继续对话，引导新建会话
+        if (conversationService.countUserMessages(userId, conversationId) >= ConversationService.MAX_TURNS_PER_CONVERSATION) {
+            sendEvent(session, ChatEvent.error(null, "CONVERSATION_LIMIT", "该会话对话已达 100 次上限，请新建会话继续"));
+            return;
+        }
+
         String turnId = "t_" + UUID.randomUUID().toString().substring(0, 8);
 
         // 回合互斥：第二个回合直接拒绝，不排队

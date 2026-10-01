@@ -126,4 +126,26 @@ public class ConversationServiceImpl implements ConversationService {
         }
         return text;
     }
+
+    @Override
+    public long countUserMessages(Long userId, Long conversationId) {
+        checkOwnership(userId, conversationId);
+        return messageMapper.selectCount(new QueryWrapper<Message>()
+                .eq("conversation_id", conversationId)
+                .eq("role", "user"));
+    }
+
+    @Override
+    public int cleanupExpiredConversations() {
+        LocalDateTime threshold = LocalDateTime.now().minusDays(RETENTION_DAYS);
+        List<Conversation> expired = conversationMapper.selectList(new QueryWrapper<Conversation>()
+                .lt("last_active_at", threshold));
+        for (Conversation conversation : expired) {
+            messageMapper.delete(new QueryWrapper<Message>().eq("conversation_id", conversation.getId()));
+            // 同步清理 Redis 会话记忆
+            chatMemory.clear(String.valueOf(conversation.getId()));
+            conversationMapper.deleteById(conversation.getId());
+        }
+        return expired.size();
+    }
 }

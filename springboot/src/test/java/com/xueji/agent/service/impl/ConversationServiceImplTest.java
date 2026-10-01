@@ -5,6 +5,7 @@ import com.xueji.agent.domain.entity.Message;
 import com.xueji.agent.exception.BusinessException;
 import com.xueji.agent.mapper.ConversationMapper;
 import com.xueji.agent.mapper.MessageMapper;
+import com.xueji.agent.service.ConversationService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -13,6 +14,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.ai.chat.memory.ChatMemory;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -192,5 +194,31 @@ class ConversationServiceImplTest {
         service.applyTitleFromFirstMessage(USER_ID, CONV_ID, "   ");
 
         verify(conversationMapper, never()).updateById(any());
+    }
+
+    @Test
+    void cleanupShouldDeleteOnlyExpiredConversations() {
+        Conversation expired = new Conversation().setId(1L).setUserId(USER_ID).setTitle("过期会话")
+                .setLastActiveAt(LocalDateTime.now().minusDays(ConversationService.RETENTION_DAYS + 1));
+        Conversation active = new Conversation().setId(2L).setUserId(USER_ID).setTitle("活跃会话")
+                .setLastActiveAt(LocalDateTime.now().minusDays(1));
+        when(conversationMapper.selectList(any())).thenReturn(List.of(expired));
+
+        int removed = service.cleanupExpiredConversations();
+
+        assertThat(removed).isEqualTo(1);
+        verify(messageMapper).delete(any());
+        verify(chatMemory).clear("1");
+        verify(conversationMapper).deleteById(1L);
+        verify(conversationMapper, never()).deleteById(2L);
+        verify(chatMemory, never()).clear("2");
+    }
+
+    @Test
+    void countUserMessagesShouldCheckOwnership() {
+        when(conversationMapper.selectById(CONV_ID)).thenReturn(null);
+
+        assertThatThrownBy(() -> service.countUserMessages(USER_ID, CONV_ID))
+                .isInstanceOf(BusinessException.class);
     }
 }
