@@ -57,9 +57,10 @@ public class RagSearchTool {
             for (int i = 0; i < docs.size(); i++) {
                 Document doc = docs.get(i);
                 Object subjectMeta = doc.getMetadata().getOrDefault("subject", "未分类");
-                Object isWrong = doc.getMetadata().getOrDefault("isWrong", "");
+                // 元数据统一按字符串写入（QuestionVectorStoreService），读取同样收口为字符串再比较
+                String isWrong = String.valueOf(doc.getMetadata().getOrDefault("isWrong", ""));
                 sb.append("第").append(i + 1).append("条【").append(subjectMeta)
-                        .append(isWrong.equals(1) || "1".equals(String.valueOf(isWrong)) ? " · 错题" : "").append("】\n")
+                        .append("1".equals(isWrong) ? " · 错题" : "").append("】\n")
                         .append(doc.getText()).append('\n');
                 if (i < docs.size() - 1) {
                     sb.append("---\n");

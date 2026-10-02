@@ -3,6 +3,7 @@ package com.xueji.agent.ai;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.xueji.agent.ai.prompt.AgentPrompts;
 import com.xueji.agent.ai.tool.AsrSegment;
+import com.xueji.agent.common.CourseStatus;
 import com.xueji.agent.domain.entity.Course;
 import com.xueji.agent.domain.entity.CourseFrame;
 import com.xueji.agent.domain.entity.CourseTranscriptSegment;
@@ -103,7 +104,7 @@ public class NoteGenerationService {
         boolean hasFrames = false;
         if (frames != null) {
             for (CourseFrame frame : frames) {
-                if (!"SUCCESS".equals(frame.getOcrStatus()) || !StringUtils.hasText(frame.getOcrText())) {
+                if (!CourseStatus.SUCCESS.equals(frame.getOcrStatus()) || !StringUtils.hasText(frame.getOcrText())) {
                     continue;
                 }
                 hasFrames = true;

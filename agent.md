@@ -90,7 +90,9 @@ AI 个人学习工作台：学习资产（网课 / 题目 / 笔记）+ 知识点
 * 禁止 Lambda 表达式：集合处理用显式循环；MyBatis-Plus 用字符串列名的 `QueryWrapper`，不用 LambdaQueryWrapper
 * 禁止 `@Async`：需要线程时使用 config 包统一定义的独立 `ThreadPoolExecutor` 显式提交；长耗时任务走 RabbitMQ
 * 业务代码不直接调 LLM API，统一经 Spring AI
+  * 豁免：QwenAsrTool（网课语音转写）用裸 RestClient 直连百炼 DashScope 专属部署端点——ASR 是前置流水线的语音识别而非对话推理，Spring AI 1.1.8 无对应 ASR 抽象（该端点为百炼专属部署，非 OpenAI 兼容协议）
 * Agent 涉及用户数据的创建 / 修改 / 删除 / 持久化，必须先发对话内确认卡片，用户确认后才执行
+* 题目 OCR 指定阿里云（PRD §3.3 原文）实为百度 PaddleOCR——历史上为版面还原（结构化 Markdown，试卷 / 表格更好）有意切换的前置流水线决策，不算偏差；实现须经 `OcrTool` 接口 + SpringAIConfig Bean 装配，换回阿里云只需切换 Bean
 * Git 提交规范（Conventional Commits，中文描述）：格式 `<类型>: 中文描述`，类型包括 `feat`（新功能）/ `fix`（缺陷修复）/ `docs`（文档）/ `style`（格式调整，不改逻辑）/ `refactor`（重构，不改行为）/ `test`（测试）/ `chore`（构建与杂务）；每完成一个独立功能提交一次，单一职责
 
 ## 数据库

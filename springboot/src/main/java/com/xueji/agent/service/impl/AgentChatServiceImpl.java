@@ -4,10 +4,10 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.xueji.agent.ai.prompt.AgentPrompts;
 import com.xueji.agent.ai.tool.OcrTextFormatter;
 import com.xueji.agent.ai.tool.OcrTool;
+import com.xueji.agent.common.OwnershipCheck;
 import com.xueji.agent.domain.entity.Conversation;
 import com.xueji.agent.domain.entity.Message;
 import com.xueji.agent.domain.vo.ChatEvent;
-import com.xueji.agent.exception.BusinessException;
 import com.xueji.agent.mapper.ConversationMapper;
 import com.xueji.agent.mapper.MessageMapper;
 import com.xueji.agent.service.AgentChatService;
@@ -52,10 +52,7 @@ public class AgentChatServiceImpl implements AgentChatService {
 
     @Override
     public Flux<ChatEvent> chat(Long userId, Long conversationId, String content, String imageUrl) {
-        Conversation conversation = conversationMapper.selectById(conversationId);
-        if (conversation == null || !conversation.getUserId().equals(userId)) {
-            throw new BusinessException(404, "会话不存在");
-        }
+        OwnershipCheck.requireOwned(conversationMapper.selectById(conversationId), userId, "会话不存在");
 
         String turnId = "t_" + java.util.UUID.randomUUID().toString().substring(0, 8);
 

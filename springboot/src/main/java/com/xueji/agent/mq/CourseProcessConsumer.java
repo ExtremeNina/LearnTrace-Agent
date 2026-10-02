@@ -1,6 +1,7 @@
 package com.xueji.agent.mq;
 
 import com.rabbitmq.client.Channel;
+import com.xueji.agent.common.MqKeys;
 import com.xueji.agent.service.impl.CoursePipelineService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -25,7 +26,7 @@ public class CourseProcessConsumer {
     @Resource
     private CoursePipelineService coursePipelineService;
 
-    @RabbitListener(queues = "xj.course.process")
+    @RabbitListener(queues = MqKeys.COURSE_PROCESS_QUEUE)
     public void onProcess(@Payload String payload, Channel channel, Message message) throws IOException {
         long tag = message.getMessageProperties().getDeliveryTag();
         Long courseId = null;

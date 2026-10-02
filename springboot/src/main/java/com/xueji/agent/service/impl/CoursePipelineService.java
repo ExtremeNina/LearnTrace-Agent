@@ -5,6 +5,7 @@ import com.xueji.agent.ai.tool.AsrSegment;
 import com.xueji.agent.ai.NoteGenerationService;
 import com.xueji.agent.ai.tool.OcrTool;
 import com.xueji.agent.ai.tool.QwenAsrTool;
+import com.xueji.agent.common.CourseStatus;
 import com.xueji.agent.domain.entity.Course;
 import com.xueji.agent.domain.entity.CourseFrame;
 import com.xueji.agent.domain.entity.CourseTranscriptSegment;
@@ -18,17 +19,17 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Comparator;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.Future;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Stream;
 
 /**
  * 网课处理流水线（PRD §3.2，MQ 消费者调用）：
@@ -80,10 +81,10 @@ public class CoursePipelineService {
             log.warn("流水线跳过：课程不存在, courseId={}", courseId);
             return;
         }
-        if ("SUCCESS".equals(course.getStatus())) {
+        if (CourseStatus.SUCCESS.equals(course.getStatus())) {
             return;
         }
-        updateStatus(course, "PROCESSING", null);
+        updateStatus(course, CourseStatus.PROCESSING, null);
 
         Path video = Path.of(tempPath == null ? "" : tempPath);
         if (!Files.exists(video)) {
@@ -143,13 +144,13 @@ public class CoursePipelineService {
                     CourseFrame frame = new CourseFrame()
                             .setCourseId(courseId)
                             .setTimeSec(sec)
-                            .setOcrStatus("FAILED");
+                            .setOcrStatus(CourseStatus.FAILED);
                     try {
                         String frameUrl = aliUploadUtils.uploadLocalFile(frameFile,
                                 "course/" + courseId + "/frames/" + sec + ".jpg");
                         frame.setOssKey(frameUrl);
                         frame.setOcrText(ocrTool.recognizeText(frameUrl));
-                        frame.setOcrStatus("SUCCESS");
+                        frame.setOcrStatus(CourseStatus.SUCCESS);
                     } catch (Exception e) {
                         log.warn("帧 OCR 失败, courseId={}, sec={}", courseId, sec, e);
                         frame.setOcrText(null);
@@ -186,7 +187,13 @@ public class CoursePipelineService {
 
             // 6. 收尾状态
             boolean audioOk = asrSegments != null && !asrSegments.isEmpty();
-            boolean framesOk = frames.stream().anyMatch(f -> "SUCCESS".equals(f.getOcrStatus()));
+            boolean framesOk = false;
+            for (CourseFrame frame : frames) {
+                if (CourseStatus.SUCCESS.equals(frame.getOcrStatus())) {
+                    framesOk = true;
+                    break;
+                }
+            }
             if (!audioOk && !framesOk) {
                 markFailed(course, "转写与画面识别均失败"
                         + (transcriptError != null ? "（转写：" + transcriptError + "）" : ""));
@@ -204,7 +211,7 @@ public class CoursePipelineService {
                 log.warn("AI 笔记生成失败（课程处理仍为成功）, courseId={}", courseId, e);
             }
 
-            course.setStatus("SUCCESS")
+            course.setStatus(CourseStatus.SUCCESS)
                     .setErrorMsg(noteError == null ? null : "网课处理完成，但 AI 笔记生成失败：" + noteError)
                     .setUpdatedAt(LocalDateTime.now());
             courseMapper.updateById(course);
@@ -290,11 +297,13 @@ public class CoursePipelineService {
         while (matcher.find()) {
             pts.add(Double.parseDouble(matcher.group(1)));
         }
-        try (Stream<Path> list = Files.list(dir)) {
-            list.filter(f -> f.getFileName().toString().endsWith(".jpg"))
-                    .sorted(Comparator.naturalOrder())
-                    .forEach(files::add);
+        // 显式遍历目录收集帧文件（glob 只取 .jpg），按文件名自然序排列（frame_%03d.jpg 零填充，字典序即帧序）
+        try (DirectoryStream<Path> dirStream = Files.newDirectoryStream(dir, "*.jpg")) {
+            for (Path frameFile : dirStream) {
+                files.add(frameFile);
+            }
         }
+        Collections.sort(files);
         if (files.isEmpty() || pts.isEmpty()) {
             return false;
         }
@@ -322,7 +331,7 @@ public class CoursePipelineService {
 
     private void markFailed(Course course, String message) {
         log.error("网课处理失败, courseId={}: {}", course.getId(), message);
-        updateStatus(course, "FAILED", truncate(message));
+        updateStatus(course, CourseStatus.FAILED, truncate(message));
     }
 
     private String truncate(String s) {

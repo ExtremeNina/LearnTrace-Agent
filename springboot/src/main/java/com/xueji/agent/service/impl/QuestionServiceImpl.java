@@ -3,12 +3,11 @@ package com.xueji.agent.service.impl;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.xueji.agent.common.OwnershipCheck;
 import com.xueji.agent.domain.dto.QuestionUpdateDto;
-import com.xueji.agent.domain.entity.Conversation;
 import com.xueji.agent.domain.entity.Message;
 import com.xueji.agent.domain.entity.QuestionRecord;
 import com.xueji.agent.domain.vo.PageVO;
-import com.xueji.agent.exception.BusinessException;
 import com.xueji.agent.mapper.ConversationMapper;
 import com.xueji.agent.mapper.MessageMapper;
 import com.xueji.agent.mapper.QuestionRecordMapper;
@@ -46,10 +45,7 @@ public class QuestionServiceImpl implements QuestionService {
         if (questionText == null || questionText.isBlank()) {
             return false;
         }
-        Conversation conversation = conversationMapper.selectById(conversationId);
-        if (conversation == null || !conversation.getUserId().equals(userId)) {
-            throw new BusinessException(404, "会话不存在");
-        }
+        OwnershipCheck.requireOwned(conversationMapper.selectById(conversationId), userId, "会话不存在");
 
         // 最近一条带图的用户消息即题目来源（payload 内含 imageUrl）
         List<Message> questionMessages = messageMapper.selectList(new QueryWrapper<Message>()
@@ -145,11 +141,7 @@ public class QuestionServiceImpl implements QuestionService {
      * 取本人且未删除的记录，否则视为不存在
      */
     private QuestionRecord requireOwnedRecord(Long userId, Long id) {
-        QuestionRecord record = questionRecordMapper.selectById(id);
-        if (record == null || record.getDeleted() == 1 || !record.getUserId().equals(userId)) {
-            throw new BusinessException(404, "题目不存在");
-        }
-        return record;
+        return OwnershipCheck.requireOwned(questionRecordMapper.selectById(id), userId, "题目不存在");
     }
 
     /**

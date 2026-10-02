@@ -1,10 +1,10 @@
 package com.xueji.agent.service.impl;
 
 import com.xueji.agent.domain.entity.QuestionRecord;
+import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.VectorStore;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -36,15 +36,11 @@ public class QuestionVectorStoreService {
         return s == null ? "" : s.replaceAll("[#*`]", " ").replaceAll("\\s+", " ").trim();
     }
 
-    private final VectorStore vectorStore;
+    @Resource
+    private VectorStore vectorStore;
 
-    private final ThreadPoolExecutor courseExecutor;
-
-    public QuestionVectorStoreService(VectorStore vectorStore,
-            @Qualifier("courseExecutor") ThreadPoolExecutor courseExecutor) {
-        this.vectorStore = vectorStore;
-        this.courseExecutor = courseExecutor;
-    }
+    @Resource(name = "courseExecutor")
+    private ThreadPoolExecutor courseExecutor;
 
     /** 异步入库：embedding 为远程调用，放线程池避免拖慢对话回合 */
     public void ingestAsync(QuestionRecord record) {

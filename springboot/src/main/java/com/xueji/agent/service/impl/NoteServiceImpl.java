@@ -1,6 +1,7 @@
 package com.xueji.agent.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.xueji.agent.common.OwnershipCheck;
 import com.xueji.agent.domain.entity.Course;
 import com.xueji.agent.domain.entity.Note;
 import com.xueji.agent.domain.entity.NoteLink;
@@ -185,7 +186,12 @@ public class NoteServiceImpl implements NoteService {
                 .eq("deleted", 0));
         Map<Long, List<Note>> byParent = new HashMap<>();
         for (Note n : all) {
-            byParent.computeIfAbsent(n.getParentId(), k -> new ArrayList<>()).add(n);
+            List<Note> children = byParent.get(n.getParentId());
+            if (children == null) {
+                children = new ArrayList<>();
+                byParent.put(n.getParentId(), children);
+            }
+            children.add(n);
         }
         int baseDepth = newParent == null ? 0 : depthOf(newParent, userId);
         if (baseDepth + subtreeHeight(node, byParent) > MAX_LEVELS) {
@@ -339,11 +345,7 @@ public class NoteServiceImpl implements NoteService {
     // ---- 校验工具 ----
 
     private Note ownedNote(Long userId, Long id) {
-        Note note = noteMapper.selectById(id);
-        if (note == null || !note.getUserId().equals(userId) || Integer.valueOf(1).equals(note.getDeleted())) {
-            throw new BusinessException(404, "笔记不存在");
-        }
-        return note;
+        return OwnershipCheck.requireOwned(noteMapper.selectById(id), userId, "笔记不存在");
     }
 
     /**
@@ -414,9 +416,5 @@ public class NoteServiceImpl implements NoteService {
             }
         }
         return 1 + max;
-    }
-
-    private int subtreeHeight(Note node) {
-        return 1;
     }
 }

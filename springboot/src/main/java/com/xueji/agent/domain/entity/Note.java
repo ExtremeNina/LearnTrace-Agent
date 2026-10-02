@@ -3,6 +3,7 @@ package com.xueji.agent.domain.entity;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.xueji.agent.common.UserOwned;
 import lombok.Data;
 import lombok.experimental.Accessors;
 
@@ -14,7 +15,7 @@ import java.time.LocalDateTime;
 @Data
 @TableName("note")
 @Accessors(chain = true)
-public class Note {
+public class Note implements UserOwned {
 
     @TableId(type = IdType.AUTO)
     private Long id;

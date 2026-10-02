@@ -1,6 +1,9 @@
 package com.xueji.agent.controller;
 
 import com.xueji.agent.common.Result;
+import com.xueji.agent.domain.dto.NoteCreateDto;
+import com.xueji.agent.domain.dto.NoteLinkCreateDto;
+import com.xueji.agent.domain.dto.NoteMoveDto;
 import com.xueji.agent.domain.vo.NoteTreeNodeVO;
 import com.xueji.agent.service.NoteService;
 import com.xueji.agent.utils.UserUtils;
@@ -43,20 +46,18 @@ public class NoteController {
 
     /** 新建分组 */
     @PostMapping("/group")
-    public Result<Long> createGroup(@RequestBody Map<String, Object> body) {
+    public Result<Long> createGroup(@RequestBody NoteCreateDto dto) {
         Long userId = UserUtils.getCurrentLoginId();
-        Long parentId = body.get("parentId") == null ? null : Long.valueOf(String.valueOf(body.get("parentId")));
-        String name = String.valueOf(body.getOrDefault("name", ""));
-        return Result.data(noteService.createGroup(userId, parentId, name));
+        String name = dto.getName() == null ? "" : dto.getName();
+        return Result.data(noteService.createGroup(userId, dto.getParentId(), name));
     }
 
     /** 新建笔记 */
     @PostMapping("/note")
-    public Result<Long> createNote(@RequestBody Map<String, Object> body) {
+    public Result<Long> createNote(@RequestBody NoteCreateDto dto) {
         Long userId = UserUtils.getCurrentLoginId();
-        Long parentId = body.get("parentId") == null ? null : Long.valueOf(String.valueOf(body.get("parentId")));
-        String title = String.valueOf(body.getOrDefault("title", ""));
-        return Result.data(noteService.createNote(userId, parentId, title));
+        String title = dto.getTitle() == null ? "" : dto.getTitle();
+        return Result.data(noteService.createNote(userId, dto.getParentId(), title));
     }
 
     /** 重命名（分组 / 笔记通用） */
@@ -69,10 +70,9 @@ public class NoteController {
 
     /** 移动节点到目标分组（parentId 为空表示根目录） */
     @PutMapping("/{id}/move")
-    public Result<Void> move(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+    public Result<Void> move(@PathVariable Long id, @RequestBody NoteMoveDto dto) {
         Long userId = UserUtils.getCurrentLoginId();
-        Long parentId = body.get("parentId") == null ? null : Long.valueOf(String.valueOf(body.get("parentId")));
-        noteService.move(userId, id, parentId);
+        noteService.move(userId, id, dto.getParentId());
         return Result.ok();
     }
 
@@ -94,13 +94,9 @@ public class NoteController {
 
     /** 添加知识联系 */
     @PostMapping("/{id}/links")
-    public Result<Void> addLink(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+    public Result<Void> addLink(@PathVariable Long id, @RequestBody NoteLinkCreateDto dto) {
         Long userId = UserUtils.getCurrentLoginId();
-        String linkType = String.valueOf(body.getOrDefault("linkType", ""));
-        Long targetId = Long.valueOf(String.valueOf(body.get("targetId")));
-        Integer tsSec = body.get("tsSec") == null ? null : Integer.valueOf(String.valueOf(body.get("tsSec")));
-        String remark = body.get("remark") == null ? null : String.valueOf(body.get("remark"));
-        noteService.addLink(userId, id, linkType, targetId, tsSec, remark);
+        noteService.addLink(userId, id, dto.getLinkType(), dto.getTargetId(), dto.getTsSec(), dto.getRemark());
         return Result.ok("已添加知识联系");
     }
 

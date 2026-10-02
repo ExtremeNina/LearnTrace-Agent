@@ -1,11 +1,11 @@
 package com.xueji.agent.controller;
 
-import cn.dev33.satoken.stp.StpUtil;
 import com.xueji.agent.common.Result;
 import com.xueji.agent.domain.dto.QuestionUpdateDto;
 import com.xueji.agent.domain.entity.QuestionRecord;
 import com.xueji.agent.domain.vo.PageVO;
 import com.xueji.agent.service.QuestionService;
+import com.xueji.agent.utils.UserUtils;
 import jakarta.annotation.Resource;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -38,7 +38,7 @@ public class QuestionController {
             @RequestParam(required = false) String subject,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int size) {
-        return Result.data(questionService.listByUser(StpUtil.getLoginIdAsLong(), date, subject, page, size));
+        return Result.data(questionService.listByUser(UserUtils.getCurrentLoginId(), date, subject, page, size));
     }
 
     /**
@@ -46,7 +46,7 @@ public class QuestionController {
      */
     @GetMapping("/{id}")
     public Result<QuestionRecord> detail(@PathVariable Long id) {
-        return Result.data(questionService.getDetail(StpUtil.getLoginIdAsLong(), id));
+        return Result.data(questionService.getDetail(UserUtils.getCurrentLoginId(), id));
     }
 
     /**
@@ -54,7 +54,7 @@ public class QuestionController {
      */
     @PutMapping("/{id}")
     public Result<QuestionRecord> update(@PathVariable Long id, @RequestBody QuestionUpdateDto dto) {
-        return Result.data(questionService.updateByUser(StpUtil.getLoginIdAsLong(), id, dto));
+        return Result.data(questionService.updateByUser(UserUtils.getCurrentLoginId(), id, dto));
     }
 
     /**
@@ -62,7 +62,7 @@ public class QuestionController {
      */
     @DeleteMapping("/{id}")
     public Result<Void> delete(@PathVariable Long id) {
-        questionService.deleteByUser(StpUtil.getLoginIdAsLong(), id);
+        questionService.deleteByUser(UserUtils.getCurrentLoginId(), id);
         return Result.ok("已删除");
     }
 }

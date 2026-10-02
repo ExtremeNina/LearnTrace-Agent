@@ -84,7 +84,6 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
             return;
         }
 
-        FluxGuard guard = new FluxGuard();
         String imageUrl = node.path("imageUrl").asText("");
         Disposable disposable = agentChatService.chat(userId, conversationId, content, imageUrl)
                 .doFinally(sig -> {
@@ -98,7 +97,6 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
                                 sendEvent(session, event);
                             } catch (IOException e) {
                                 log.warn("WS 发送失败，取消回合", e);
-                                guard.stopped = true;
                                 Disposable d = runningTurns.remove(conversationId);
                                 if (d != null) {
                                     d.dispose();
@@ -129,10 +127,5 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
         // 连接断开不取消进行中的回合：服务端继续跑完并落库，前端重连后从 REST 补齐
-    }
-
-    /** 打断标记：被 chat.stop 取消的回合不再补发 STOP */
-    private static class FluxGuard {
-        volatile boolean stopped = false;
     }
 }

@@ -1,9 +1,9 @@
 package com.xueji.agent.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.xueji.agent.common.OwnershipCheck;
 import com.xueji.agent.domain.entity.Conversation;
 import com.xueji.agent.domain.entity.Message;
-import com.xueji.agent.exception.BusinessException;
 import com.xueji.agent.mapper.ConversationMapper;
 import com.xueji.agent.mapper.MessageMapper;
 import com.xueji.agent.service.ConversationService;
@@ -78,11 +78,7 @@ public class ConversationServiceImpl implements ConversationService {
      * 校验会话归属，防止越权访问他人会话
      */
     private Conversation checkOwnership(Long userId, Long conversationId) {
-        Conversation conversation = conversationMapper.selectById(conversationId);
-        if (conversation == null || !conversation.getUserId().equals(userId)) {
-            throw new BusinessException(404, "会话不存在");
-        }
-        return conversation;
+        return OwnershipCheck.requireOwned(conversationMapper.selectById(conversationId), userId, "会话不存在");
     }
 
     @Override

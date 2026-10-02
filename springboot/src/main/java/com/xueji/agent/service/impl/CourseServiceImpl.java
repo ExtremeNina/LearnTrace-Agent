@@ -1,7 +1,9 @@
 package com.xueji.agent.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.xueji.agent.common.CourseStatus;
 import com.xueji.agent.common.MqKeys;
+import com.xueji.agent.common.OwnershipCheck;
 import com.xueji.agent.domain.dto.CourseUpdateDto;
 import com.xueji.agent.domain.entity.Course;
 import com.xueji.agent.domain.entity.CourseFrame;
@@ -80,7 +82,7 @@ public class CourseServiceImpl implements CourseService {
                 .setTitle(derivedTitle)
                 .setSubject(subject == null || subject.isBlank() ? null : subject.trim())
                 .setExpectations(expectations == null || expectations.isBlank() ? null : expectations.trim())
-                .setStatus("PENDING")
+                .setStatus(CourseStatus.PENDING)
                 .setCreatedAt(LocalDateTime.now())
                 .setUpdatedAt(LocalDateTime.now());
         courseMapper.insert(course);
@@ -146,10 +148,10 @@ public class CourseServiceImpl implements CourseService {
     @Override
     public void retry(Long userId, Long courseId) {
         Course course = checkOwnership(userId, courseId);
-        if (!"FAILED".equals(course.getStatus())) {
+        if (!CourseStatus.FAILED.equals(course.getStatus())) {
             throw new BusinessException("仅处理失败的网课可以重试");
         }
-        course.setStatus("PENDING").setErrorMsg(null).setUpdatedAt(LocalDateTime.now());
+        course.setStatus(CourseStatus.PENDING).setErrorMsg(null).setUpdatedAt(LocalDateTime.now());
         courseMapper.updateById(course);
         // 重试时本地临时文件可能已清理，仅重发消息由流水线校验（文件丢失会再次置为 FAILED 并提示重新上传）
         Map<String, Object> payload = new HashMap<>();
@@ -159,10 +161,6 @@ public class CourseServiceImpl implements CourseService {
     }
 
     private Course checkOwnership(Long userId, Long courseId) {
-        Course course = courseMapper.selectById(courseId);
-        if (course == null || !course.getUserId().equals(userId) || Integer.valueOf(1).equals(course.getDeleted())) {
-            throw new BusinessException(404, "网课不存在");
-        }
-        return course;
+        return OwnershipCheck.requireOwned(courseMapper.selectById(courseId), userId, "网课不存在");
     }
 }

@@ -26,6 +26,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.context.annotation.Primary;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import redis.clients.jedis.JedisPooled;
@@ -111,16 +112,20 @@ public class SpringAIConfig {
     /**
      * OCR 识别端（前置流水线使用）：当前选用百度 PaddleOCR（PaddleOCR-VL，
      * 输出结构化 Markdown，复杂版面 / 试卷还原好）。
+     * 唯一在用的 OcrTool 实现，标记 @Primary：按类型注入时确定落到此 Bean，不依赖字段名。
      */
     @Bean
+    @Primary
     public OcrTool ocrTool() {
         return new PaddleOcrTool(paddleApiBase, paddleToken, paddleModel);
     }
 
     /**
-     * 阿里云读光 OCR 备选实现（快速纯文本），可通过切换 Bean 启用
+     * 阿里云读光 OCR 备选实现（快速纯文本）：无人消费时不在启动期构造，
+     * 切换实现时以 @Resource(name = "aliyunOcrTool") 显式按名注入，避免与 ocrTool 混淆
      */
     @Bean
+    @Lazy
     public OcrTool aliyunOcrTool() {
         return new AliyunOcrTool(ocrAccessKey, ocrSecretKey, ocrEndpoint);
     }
