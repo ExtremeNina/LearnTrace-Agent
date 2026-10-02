@@ -279,15 +279,15 @@ const timelineTicks = computed(() => {
 </script>
 
 <template>
-  <div class="h-full overflow-y-auto">
-    <div class="px-4 py-6">
+  <div class="h-full overflow-y-auto lg:overflow-hidden">
+    <div class="flex min-h-full flex-col px-4 py-6 lg:h-full">
       <!-- 加载 / 错误 -->
       <div v-if="loading" class="flex h-64 items-center justify-center text-[14px] text-ink-2">加载中…</div>
       <div v-else-if="error" class="flex h-64 items-center justify-center text-[14px] text-red-500">{{ error }}</div>
 
       <template v-else-if="data">
         <!-- 返回 + 标题 + 操作 -->
-        <div class="flex items-center gap-3">
+        <div class="flex shrink-0 items-center gap-3">
           <RouterLink
             to="/courses"
             class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-ink-2 hover:bg-line/60"
@@ -326,13 +326,13 @@ const timelineTicks = computed(() => {
           </div>
         </div>
 
-        <div class="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_420px] lg:h-[calc(100%-72px)]">
-          <!-- 左：视频 + 学习笔记 -->
-          <div class="flex min-h-0 flex-col">
+        <div class="mt-5 grid min-h-0 flex-1 grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_460px]">
+          <!-- 左：视频 + 学习笔记（限宽让视频更聚焦） -->
+          <div class="mx-auto flex min-h-0 w-full flex-col lg:max-w-[760px]">
             <video
               v-if="data.course.videoOssKey"
               ref="videoRef"
-              class="aspect-video w-full rounded-2xl border border-line bg-black"
+              class="aspect-video w-full shrink-0 rounded-2xl border border-line bg-black"
               controls
               preload="metadata"
               :src="data.course.videoOssKey"
@@ -341,7 +341,7 @@ const timelineTicks = computed(() => {
               视频处理中，稍后可在线观看
             </div>
 
-            <div class="mt-3 flex items-center gap-1.5 rounded-xl border border-line bg-primary-soft/60 px-3 py-2 text-[12px] text-ink-2">
+            <div class="mt-3 flex shrink-0 items-center gap-1.5 rounded-xl border border-line bg-primary-soft/60 px-3 py-2 text-[12px] text-ink-2">
               <template v-if="data.course.status === 'SUCCESS'">
                 <CircleCheck :size="14" class="shrink-0 text-green-600" />
                 AI 笔记由转写与画面识别生成，点击时间戳可跳回原片段核对。
@@ -353,7 +353,7 @@ const timelineTicks = computed(() => {
             </div>
 
             <!-- 学习笔记（用户随想） -->
-            <div class="mt-4 flex min-h-[220px] flex-1 flex-col rounded-2xl border border-line bg-white">
+            <div class="mt-4 flex min-h-[180px] flex-1 flex-col rounded-2xl border border-ink-2/25 bg-panel">
               <div class="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2">
                 <p class="text-[13px] font-semibold text-ink">学习笔记</p>
                 <div class="ml-auto flex items-center gap-1">
@@ -401,7 +401,7 @@ const timelineTicks = computed(() => {
           </div>
 
           <!-- 右：AI 笔记 / 转写对照 -->
-          <div class="flex min-h-0 flex-col rounded-2xl border border-line bg-white">
+          <div class="flex min-h-0 flex-col rounded-2xl border border-ink-2/25 bg-panel">
             <div class="flex shrink-0 items-center gap-1 border-b border-line p-2">
               <button
                 v-for="tab in [
@@ -410,7 +410,7 @@ const timelineTicks = computed(() => {
                 ]"
                 :key="tab.key"
                 class="flex-1 rounded-lg py-1.5 text-[14px] transition-colors"
-                :class="activeTab === tab.key ? 'bg-panel font-medium text-ink shadow-sm' : 'text-ink-2 hover:text-ink'"
+                :class="activeTab === tab.key ? 'bg-white font-medium text-ink shadow-sm' : 'text-ink-2 hover:text-ink'"
                 @click="onTabChange(tab.key as 'note' | 'transcript')"
               >
                 {{ tab.label }}
