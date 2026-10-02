@@ -20,7 +20,9 @@ import java.util.List;
 public class PaddleOcrTool implements OcrTool {
 
     private static final long POLL_INTERVAL_MS = 3000;
-    private static final long TIMEOUT_MS = 120_000;
+
+    /** 轮询上限（秒）：可配置；超时抛出异常，由调用方降级提示，不再让请求侧长时间无反馈 */
+    private final long timeoutSeconds;
 
     private final String apiBase;
     private final String token;
@@ -28,10 +30,11 @@ public class PaddleOcrTool implements OcrTool {
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final RestClient restClient = RestClient.create();
 
-    public PaddleOcrTool(String apiBase, String token, String model) {
+    public PaddleOcrTool(String apiBase, String token, String model, long pollTimeoutSeconds) {
         this.apiBase = apiBase;
         this.token = token;
         this.model = model;
+        this.timeoutSeconds = pollTimeoutSeconds;
     }
 
     @Override
@@ -86,7 +89,7 @@ public class PaddleOcrTool implements OcrTool {
      * 轮询任务状态直至完成，返回结果 NDJSON 的下载地址
      */
     private String pollResult(String jobId) throws Exception {
-        long deadline = System.currentTimeMillis() + TIMEOUT_MS;
+        long deadline = System.currentTimeMillis() + timeoutSeconds * 1000;
         while (System.currentTimeMillis() < deadline) {
             Thread.sleep(POLL_INTERVAL_MS);
             String body = restClient.get()
@@ -104,7 +107,7 @@ public class PaddleOcrTool implements OcrTool {
             }
             // pending / running：继续等待
         }
-        throw new IllegalStateException("识别超时（" + (TIMEOUT_MS / 1000) + "s），请稍后重试");
+        throw new IllegalStateException("识别超时（" + timeoutSeconds + "s），请稍后重试");
     }
 
     /**

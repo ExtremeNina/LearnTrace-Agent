@@ -62,13 +62,15 @@ public class QuestionVectorStoreService {
         }
     }
 
-    void ingest(QuestionRecord record) {
+    /** 同步入库单条题目（补漏定时任务复用；按文档 ID 幂等，重复摄取为覆盖） */
+    public void ingest(QuestionRecord record) {
         String text = buildText(record);
         if (text.isBlank()) {
             return;
         }
         Document document = new Document(String.valueOf(record.getId()), text, Map.of(
                 "userId", String.valueOf(record.getUserId()),
+                "type", "question",
                 "subject", record.getSubject() == null || record.getSubject().isBlank() ? "未分类" : record.getSubject(),
                 "isWrong", record.getIsWrong() == null ? "未判定" : String.valueOf(record.getIsWrong())));
         vectorStore.add(List.of(document));

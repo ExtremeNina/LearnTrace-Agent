@@ -66,6 +66,9 @@ public class SpringAIConfig {
     @Value("${paddle-ocr.model:PaddleOCR-VL-1.6}")
     private String paddleModel;
 
+    @Value("${paddle-ocr.poll-timeout-seconds:45}")
+    private long paddlePollTimeoutSeconds;
+
     @Value("${qwen.asr.api-key:}")
     private String qwenAsrApiKey;
 
@@ -119,7 +122,7 @@ public class SpringAIConfig {
     @Bean
     @Primary
     public OcrTool ocrTool() {
-        return new PaddleOcrTool(paddleApiBase, paddleToken, paddleModel);
+        return new PaddleOcrTool(paddleApiBase, paddleToken, paddleModel, paddlePollTimeoutSeconds);
     }
 
     /**
@@ -182,7 +185,8 @@ public class SpringAIConfig {
                 .prefix("rag:question:")
                 .metadataFields(
                         RedisVectorStore.MetadataField.tag("userId"),
-                        RedisVectorStore.MetadataField.tag("subject"))
+                        RedisVectorStore.MetadataField.tag("subject"),
+                        RedisVectorStore.MetadataField.tag("type"))
                 .initializeSchema(true)
                 .build();
     }

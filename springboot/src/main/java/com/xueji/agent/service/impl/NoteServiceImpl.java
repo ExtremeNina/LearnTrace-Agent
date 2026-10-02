@@ -1,6 +1,7 @@
 package com.xueji.agent.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.xueji.agent.ai.RagIngestService;
 import com.xueji.agent.common.OwnershipCheck;
 import com.xueji.agent.domain.entity.Course;
 import com.xueji.agent.domain.entity.Note;
@@ -49,6 +50,9 @@ public class NoteServiceImpl implements NoteService {
 
     @Resource
     private QuestionRecordMapper questionRecordMapper;
+
+    @Resource
+    private RagIngestService ragIngestService;
 
     // ---- 树 ----
 
@@ -161,6 +165,8 @@ public class NoteServiceImpl implements NoteService {
         Note node = ownedNote(userId, id);
         node.setTitle(name).setUpdatedAt(LocalDateTime.now());
         noteMapper.updateById(node);
+        // 标题参与向量化文本，重命名后重建向量
+        ragIngestService.ingestNoteAsync(node);
     }
 
     @Override
@@ -258,6 +264,10 @@ public class NoteServiceImpl implements NoteService {
                     .or()
                     .eq("link_type", "note")
                     .in("target_id", noteIds));
+            // 被删笔记（含分组级联的叶子笔记）同步移出向量库
+            for (Long noteId : noteIds) {
+                ragIngestService.removeNote(noteId);
+            }
         }
     }
 
@@ -271,6 +281,7 @@ public class NoteServiceImpl implements NoteService {
         }
         note.setContent(content == null ? "" : content).setUpdatedAt(LocalDateTime.now());
         noteMapper.updateById(note);
+        ragIngestService.ingestNoteAsync(note);
     }
 
     // ---- 知识联系 ----

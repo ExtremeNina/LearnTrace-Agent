@@ -4,6 +4,7 @@ import com.xueji.agent.domain.entity.Note;
 import com.xueji.agent.domain.entity.NoteLink;
 import com.xueji.agent.domain.vo.NoteTreeNodeVO;
 import com.xueji.agent.exception.BusinessException;
+import com.xueji.agent.ai.RagIngestService;
 import com.xueji.agent.mapper.CourseMapper;
 import com.xueji.agent.mapper.NoteLinkMapper;
 import com.xueji.agent.mapper.NoteMapper;
@@ -48,6 +49,9 @@ class NoteServiceImplTest {
 
     @Mock
     private QuestionRecordMapper questionRecordMapper;
+
+    @Mock
+    private RagIngestService ragIngestService;
 
     @InjectMocks
     private NoteServiceImpl service;

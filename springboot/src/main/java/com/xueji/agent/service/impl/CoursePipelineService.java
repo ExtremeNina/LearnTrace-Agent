@@ -1,6 +1,7 @@
 package com.xueji.agent.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.xueji.agent.ai.RagIngestService;
 import com.xueji.agent.ai.tool.AsrSegment;
 import com.xueji.agent.ai.NoteGenerationService;
 import com.xueji.agent.ai.tool.OcrTool;
@@ -68,6 +69,9 @@ public class CoursePipelineService {
 
     @Resource
     private NoteGenerationService noteGenerationService;
+
+    @Resource
+    private RagIngestService ragIngestService;
 
     @Resource(name = "courseExecutor")
     private ThreadPoolExecutor courseExecutor;
@@ -215,6 +219,11 @@ public class CoursePipelineService {
                     .setErrorMsg(noteError == null ? null : "网课处理完成，但 AI 笔记生成失败：" + noteError)
                     .setUpdatedAt(LocalDateTime.now());
             courseMapper.updateById(course);
+            // 转写分段参与 RAG 检索（异步，失败不影响课程状态）
+            ragIngestService.ingestCourseTranscriptsAsync(course, transcriptMapper.selectList(
+                    new QueryWrapper<CourseTranscriptSegment>()
+                            .eq("course_id", courseId)
+                            .orderByAsc("sort")));
             log.info("网课流水线完成, courseId={}, 时长={}s, 帧数={}, 转写句数={}, 转写字数={}, 笔记失败={}",
                     courseId, durationSec, frames.size(), asrSegments == null ? 0 : asrSegments.size(),
                     transcriptChars, noteError != null);

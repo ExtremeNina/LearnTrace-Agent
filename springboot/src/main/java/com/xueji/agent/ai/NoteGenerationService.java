@@ -34,6 +34,9 @@ public class NoteGenerationService {
     @Resource
     private NoteMapper noteMapper;
 
+    @Resource
+    private RagIngestService ragIngestService;
+
     /**
      * 生成笔记并入库（重试幂等：先删除该课程此前生成的 AI 笔记再插入）。
      * 返回笔记 ID；生成失败抛出异常，由调用方决定降级方式
@@ -42,10 +45,16 @@ public class NoteGenerationService {
                                     List<CourseFrame> frames, int durationSec) {
         String markdown = generate(course, transcript, frames, durationSec);
 
-        // 幂等：清掉旧 AI 笔记
+        // 幂等：清掉旧 AI 笔记（同步移出向量库，防止孤儿向量）
+        List<Note> oldNotes = noteMapper.selectList(new QueryWrapper<Note>()
+                .eq("course_id", course.getId())
+                .eq("source_type", 1));
         noteMapper.delete(new QueryWrapper<Note>()
                 .eq("course_id", course.getId())
                 .eq("source_type", 1));
+        for (Note oldNote : oldNotes) {
+            ragIngestService.removeNote(oldNote.getId());
+        }
 
         Note note = new Note()
                 .setUserId(course.getUserId())
@@ -57,6 +66,8 @@ public class NoteGenerationService {
                 .setCreatedAt(LocalDateTime.now())
                 .setUpdatedAt(LocalDateTime.now());
         noteMapper.insert(note);
+        // AI 笔记参与 RAG 检索
+        ragIngestService.ingestNoteAsync(note);
         log.info("AI 笔记已生成入库, courseId={}, noteId={}, 字数={}", course.getId(), note.getId(), markdown.length());
         return note.getId();
     }
