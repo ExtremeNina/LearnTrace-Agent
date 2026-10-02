@@ -326,9 +326,9 @@ const timelineTicks = computed(() => {
           </div>
         </div>
 
-        <div class="mt-5 grid min-h-0 flex-1 grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_460px]">
-          <!-- 左：视频 + 学习笔记（限宽让视频更聚焦） -->
-          <div class="mx-auto flex min-h-0 w-full flex-col lg:max-w-[760px]">
+        <div class="mt-5 grid min-h-0 flex-1 grid-cols-1 gap-5 lg:grid-cols-[3fr_2fr]">
+          <!-- 左：视频 + 学习笔记 -->
+          <div class="flex min-h-0 flex-col">
             <video
               v-if="data.course.videoOssKey"
               ref="videoRef"
