@@ -86,6 +86,7 @@ AI 个人学习工作台：学习资产（网课 / 题目 / 笔记）+ 知识点
 ## 硬性规范（每次写代码都适用）
 
 * 依赖注入统一使用 `@Resource`（jakarta.annotation），不使用 `@Autowired`，不使用 Lombok 的 `@RequiredArgsConstructor` 构造器注入
+* 枚举类（状态词表、可枚举取值）统一定义在 `domain/enums` 包；基础设施键名注册表（MqKeys / RedisKeys）不属于枚举，留在 `common` 包
 
 * 禁止 Lambda 表达式：集合处理用显式循环；MyBatis-Plus 用字符串列名的 `QueryWrapper`，不用 LambdaQueryWrapper
 * 禁止 `@Async`：需要线程时使用 config 包统一定义的独立 `ThreadPoolExecutor` 显式提交；长耗时任务走 RabbitMQ

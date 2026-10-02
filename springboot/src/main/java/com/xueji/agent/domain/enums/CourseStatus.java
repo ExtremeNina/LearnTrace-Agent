@@ -1,4 +1,4 @@
-package com.xueji.agent.common;
+package com.xueji.agent.domain.enums;
 
 /**
  * 网课处理状态收口：course.status 与 course_frame.ocr_status 共用词表，

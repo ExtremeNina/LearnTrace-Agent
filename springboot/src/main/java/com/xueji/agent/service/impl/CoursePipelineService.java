@@ -5,7 +5,7 @@ import com.xueji.agent.ai.tool.AsrSegment;
 import com.xueji.agent.ai.NoteGenerationService;
 import com.xueji.agent.ai.tool.OcrTool;
 import com.xueji.agent.ai.tool.QwenAsrTool;
-import com.xueji.agent.common.CourseStatus;
+import com.xueji.agent.domain.enums.CourseStatus;
 import com.xueji.agent.domain.entity.Course;
 import com.xueji.agent.domain.entity.CourseFrame;
 import com.xueji.agent.domain.entity.CourseTranscriptSegment;

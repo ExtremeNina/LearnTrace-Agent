@@ -1,7 +1,7 @@
 package com.xueji.agent.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-import com.xueji.agent.common.CourseStatus;
+import com.xueji.agent.domain.enums.CourseStatus;
 import com.xueji.agent.common.MqKeys;
 import com.xueji.agent.common.OwnershipCheck;
 import com.xueji.agent.domain.dto.CourseUpdateDto;
