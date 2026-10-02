@@ -21,6 +21,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -76,7 +77,7 @@ class QuestionServiceImplTest {
                 questionMessageOf(10L, "{\"imageUrl\":\"https://oss.example.com/chat/a.png\"}")));
         when(questionRecordMapper.insert(any(QuestionRecord.class))).thenReturn(1);
 
-        boolean saved = service.saveFromConversation(1L, 100L, "已知函数 f(x)=ln(x+1)-x", "极大值为 0", null, "数学");
+        boolean saved = service.saveFromConversation(1L, 100L, "photo", "已知函数 f(x)=ln(x+1)-x", "极大值为 0", null, "数学");
 
         assertTrue(saved);
         ArgumentCaptor<QuestionRecord> captor = ArgumentCaptor.forClass(QuestionRecord.class);
@@ -97,7 +98,7 @@ class QuestionServiceImplTest {
         when(conversationMapper.selectById(100L)).thenReturn(conversationOf(1L));
         when(messageMapper.selectList(any())).thenReturn(List.of());
 
-        boolean saved = service.saveFromConversation(1L, 100L, "题目", "解答", null, null);
+        boolean saved = service.saveFromConversation(1L, 100L, "photo", "题目", "解答", null, null);
 
         assertFalse(saved);
         verify(questionRecordMapper, never()).insert(any(QuestionRecord.class));
@@ -105,8 +106,44 @@ class QuestionServiceImplTest {
     }
 
     @Test
+    void saveFromConversation_textSourceShouldSaveWithoutImage() {
+        // RAG 相似题 / 手打题为纯文字来源：不查图片消息，imageOssKey 为 null，其余通道不变
+        when(conversationMapper.selectById(100L)).thenReturn(conversationOf(1L));
+        when(questionRecordMapper.insert(any(QuestionRecord.class))).thenReturn(1);
+
+        boolean saved = service.saveFromConversation(1L, 100L, "text",
+                "与原题同型的相似题：已知函数 g(x)=e^x-x-1，求极值", "极小值为 -1", null, "数学");
+
+        assertTrue(saved);
+        ArgumentCaptor<QuestionRecord> captor = ArgumentCaptor.forClass(QuestionRecord.class);
+        verify(questionRecordMapper, times(1)).insert(captor.capture());
+        QuestionRecord record = captor.getValue();
+        assertNull(record.getImageOssKey());
+        assertEquals("与原题同型的相似题：已知函数 g(x)=e^x-x-1，求极值", record.getQuestionText());
+        assertEquals("SAVED", record.getRecordStatus());
+        // 无图题目同样入库向量，RAG 可再次召回
+        verify(questionVectorStoreService).ingestAsync(record);
+        verify(messageMapper, never()).selectList(any());
+    }
+
+    @Test
+    void saveFromConversation_textSourceShouldNotAttachStaleImage() {
+        // 会话里更早有拍照题目，但本次保存的是相似题：不得把旧图挂到新记录上
+        when(conversationMapper.selectById(100L)).thenReturn(conversationOf(1L));
+        when(questionRecordMapper.insert(any(QuestionRecord.class))).thenReturn(1);
+
+        boolean saved = service.saveFromConversation(1L, 100L, "text", "相似题题干", "相似题解答", null, null);
+
+        assertTrue(saved);
+        ArgumentCaptor<QuestionRecord> captor = ArgumentCaptor.forClass(QuestionRecord.class);
+        verify(questionRecordMapper).insert(captor.capture());
+        assertNull(captor.getValue().getImageOssKey());
+        verify(messageMapper, never()).selectList(any());
+    }
+
+    @Test
     void saveFromConversation_blankQuestion() {
-        boolean saved = service.saveFromConversation(1L, 100L, "  ", "解答", null, null);
+        boolean saved = service.saveFromConversation(1L, 100L, "photo", "  ", "解答", null, null);
 
         assertFalse(saved);
         verify(questionRecordMapper, never()).insert(any(QuestionRecord.class));
@@ -117,7 +154,7 @@ class QuestionServiceImplTest {
         when(conversationMapper.selectById(100L)).thenReturn(conversationOf(2L));
 
         assertThrows(BusinessException.class,
-                () -> service.saveFromConversation(1L, 100L, "题目", "解答", null, null));
+                () -> service.saveFromConversation(1L, 100L, "photo", "题目", "解答", null, null));
         verify(questionRecordMapper, never()).insert(any(QuestionRecord.class));
     }
 

@@ -39,26 +39,33 @@ public class QuestionServiceImpl implements QuestionService {
     @Resource
     private QuestionVectorStoreService questionVectorStoreService;
 
+    /** 题目来源：会话内拍照识别 */
+    private static final String SOURCE_PHOTO = "photo";
+
     @Override
-    public boolean saveFromConversation(Long userId, Long conversationId,
+    public boolean saveFromConversation(Long userId, Long conversationId, String source,
                                         String questionText, String correctAnswer, String analysis, String subject) {
         if (questionText == null || questionText.isBlank()) {
             return false;
         }
         OwnershipCheck.requireOwned(conversationMapper.selectById(conversationId), userId, "会话不存在");
 
-        // 最近一条带图的用户消息即题目来源（payload 内含 imageUrl）
-        List<Message> questionMessages = messageMapper.selectList(new QueryWrapper<Message>()
-                .eq("conversation_id", conversationId)
-                .eq("role", "user")
-                .isNotNull("payload")
-                .like("payload", "imageUrl")
-                .orderByDesc("id")
-                .last("LIMIT 1"));
-        if (questionMessages.isEmpty()) {
-            return false;
+        // 拍照题目的图片取最近一条带图用户消息（payload 内含 imageUrl）；
+        // 纯文字题目（相似题 / 手打题）不入库图片，直接走无图分支
+        String imageUrl = null;
+        if (SOURCE_PHOTO.equals(source)) {
+            List<Message> questionMessages = messageMapper.selectList(new QueryWrapper<Message>()
+                    .eq("conversation_id", conversationId)
+                    .eq("role", "user")
+                    .isNotNull("payload")
+                    .like("payload", "imageUrl")
+                    .orderByDesc("id")
+                    .last("LIMIT 1"));
+            if (questionMessages.isEmpty()) {
+                return false;
+            }
+            imageUrl = parsePayload(questionMessages.get(0).getPayload()).getStr("imageUrl", "");
         }
-        String imageUrl = parsePayload(questionMessages.get(0).getPayload()).getStr("imageUrl", "");
 
         QuestionRecord record = new QuestionRecord()
                 .setUserId(userId)

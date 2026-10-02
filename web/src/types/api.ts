@@ -49,11 +49,11 @@ export interface MessageInfo {
   createdAt: string
 }
 
-/** 拍照题目记录（对应后端 domain/entity/QuestionRecord） */
+/** 题目记录（对应后端 domain/entity/QuestionRecord；纯文字题目如相似题无图片） */
 export interface QuestionRecordInfo {
   id: number
   userId: number
-  imageOssKey: string
+  imageOssKey: string | null
   ocrText: string | null
   questionText: string | null
   subject: string | null

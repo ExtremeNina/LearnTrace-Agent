@@ -10,12 +10,14 @@ import com.xueji.agent.domain.vo.PageVO;
 public interface QuestionService {
 
     /**
-     * 把会话中最近一次拍照识别的题目保存到用户拍照记录。
+     * 把会话中的题目保存到用户题目记录。
      * questionText / correctAnswer / analysis 由模型整理后传入（保存前已清洗元叙述）。
      *
-     * @return true 保存成功；false 当前会话没有可保存的拍照题目或内容不完整
+     * @param source 题目来源：photo = 会话中最近一次拍照识别的题目（自动关联题目图片）；
+     *               text = 纯文字题目（RAG 相似题、用户手打的题），不关联图片
+     * @return true 保存成功；false 当前会话没有可保存的题目或内容不完整
      */
-    boolean saveFromConversation(Long userId, Long conversationId,
+    boolean saveFromConversation(Long userId, Long conversationId, String source,
                                  String questionText, String correctAnswer, String analysis, String subject);
 
     /**

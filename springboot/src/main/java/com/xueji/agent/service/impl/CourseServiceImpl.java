@@ -154,9 +154,11 @@ public class CourseServiceImpl implements CourseService {
         course.setStatus(CourseStatus.PENDING).setErrorMsg(null).setUpdatedAt(LocalDateTime.now());
         courseMapper.updateById(course);
         // 重试时本地临时文件可能已清理，仅重发消息由流水线校验（文件丢失会再次置为 FAILED 并提示重新上传）
-        Map<String, Object> payload = new HashMap<>();
-        payload.put("courseId", courseId);
-        payload.put("tempPath", "");
+        // 负载必须与 upload 一致用 JSON 字符串：默认 SimpleMessageConverter 对 Map 走 JDK 序列化，消费者反序列化会直接被拒
+        String payload = cn.hutool.json.JSONUtil.createObj()
+                .set("courseId", courseId)
+                .set("tempPath", "")
+                .toString();
         rabbitTemplate.convertAndSend(MqKeys.COURSE_EXCHANGE, MqKeys.COURSE_PROCESS_ROUTING, payload);
     }
 

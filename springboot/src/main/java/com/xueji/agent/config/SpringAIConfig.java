@@ -82,8 +82,10 @@ public class SpringAIConfig {
     private String qwenAsrSampleRate;
 
     @Bean
-    public ChatMemoryRepository redisChatMemoryRepository(StringRedisTemplate stringRedisTemplate) {
-        return new RedisChatMemoryRepository(stringRedisTemplate);
+    public ChatMemoryRepository redisChatMemoryRepository(StringRedisTemplate stringRedisTemplate,
+                                                          com.xueji.agent.mapper.MessageMapper messageMapper) {
+        // 重建窗口与记忆滑窗同参：Redis 缓存缺失时从 message 表回填最近 maxMessages 条
+        return new RedisChatMemoryRepository(stringRedisTemplate, messageMapper, this.maxMessages);
     }
 
     @Bean

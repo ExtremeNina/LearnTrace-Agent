@@ -4,9 +4,9 @@
 
 | 编号 | 优先级 | 模块 | 标题 | 状态 |
 | --- | --- | --- | --- | --- |
-| B02 | P1 | 网课 | 会话重试走 MQ 裸 HashMap 负载，重试链路大概率不可用 | 待办 |
-| B03 | P1 | 题目/RAG | 相似题确认后无法保存（saveQuestion 强依赖带图消息） | 待办 |
-| B05 | P2 | 会话 | 会话热上下文实现与 PRD §6 承诺不符 | 待办 |
+| B02 | P1 | 网课 | 会话重试走 MQ 裸 HashMap 负载，重试链路大概率不可用 | 已完成 |
+| B03 | P1 | 题目/RAG | 相似题确认后无法保存（saveQuestion 强依赖带图消息） | 已完成 |
+| B05 | P2 | 会话 | 会话热上下文实现与 PRD §6 承诺不符 | 已完成 |
 | B06 | P2 | 安全/配额 | 鉴权与用量约束缺失（邀请码/双Token/每日配额/时长与图片上限） | 待办 |
 | B07 | P2 | Agent | Agent 缺少查询类工具（笔记/课程/学习状态检索） | 待办 |
 | B08 | P2 | 题目 | 拍照解题 OCR 在请求线程内同步轮询最长 120s | 待办 |
@@ -23,3 +23,6 @@
 ## 完成记录
 
 - 2026-10-02：B09 完成（11 项全部整改：新增 OwnershipCheck / CourseStatus 收口与 3 个 Note DTO，补 OwnershipCheckTest、RagSearchToolTest，`mvn test` 76 个全部通过）。
+- 2026-10-02：B02 完成（retry 改 JSON 字符串负载 + 负载契约回归测试）。
+- 2026-10-02：B03 完成（saveQuestion 增加 photo/text 来源参数，无图分支入库 question_record；image_oss_key 改可 NULL 并已对库执行；提示词与工具描述同步；`mvn test` 85 个全部通过）。
+- 2026-10-02：B05 完成（RedisChatMemoryRepository 缓存缺失时自 MySQL 重建热上下文并回填，清空 Redis 功能不变；存储形态与水位比对按架构裁剪，Redisson 按约定后置到多实例部署前）。
