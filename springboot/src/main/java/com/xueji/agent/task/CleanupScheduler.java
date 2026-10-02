@@ -1,5 +1,6 @@
-package com.xueji.agent.service;
+package com.xueji.agent.task;
 
+import com.xueji.agent.service.ConversationService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;

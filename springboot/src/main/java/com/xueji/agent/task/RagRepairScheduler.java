@@ -1,4 +1,4 @@
-package com.xueji.agent.service;
+package com.xueji.agent.task;
 
 import com.xueji.agent.ai.RagIngestService;
 import com.xueji.agent.common.RedisKeys;
