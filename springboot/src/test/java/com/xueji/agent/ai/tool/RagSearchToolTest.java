@@ -86,6 +86,21 @@ class RagSearchToolTest {
     }
 
     @Test
+    void questionDocsWithPrefixShouldExposeQuestionIdOnlyForQ() {
+        stubSearch(
+                // 拍照题目（q: 前缀）外露题目 ID，供保存相似题时回填 sourceQuestionId
+                new Document("q:7", "题目：一元二次方程", Map.of("type", "question", "isWrong", "1", "subject", "数学")),
+                // 相似题（sq: 前缀）的 ID 不能作为来源题目，不外露
+                new Document("sq:3", "题目：数列极限", Map.of("type", "question", "isWrong", "0", "subject", "数学")));
+
+        String output = tool().ragSearch("方程", "", CONTEXT);
+
+        assertThat(output).contains("第1条【题目 · 数学 · 错题 · 题目ID 7】");
+        assertThat(output).contains("第2条【题目 · 数学】");
+        assertThat(output).doesNotContain("sq:3");
+    }
+
+    @Test
     void emptyResultShouldReturnFriendlyText() {
         stubSearch();
 

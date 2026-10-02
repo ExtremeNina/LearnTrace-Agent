@@ -32,7 +32,7 @@ public class QuestionVectorStoreService {
         return sb.toString();
     }
 
-    private static String stripMarks(String s) {
+    public static String stripMarks(String s) {
         return s == null ? "" : s.replaceAll("[#*`]", " ").replaceAll("\\s+", " ").trim();
     }
 
@@ -56,24 +56,27 @@ public class QuestionVectorStoreService {
     /** 删除对应向量（题目删除 / 内容修改重建时调用） */
     public void remove(Long questionId) {
         try {
-            vectorStore.delete(List.of(String.valueOf(questionId)));
+            vectorStore.delete(List.of(DOC_PREFIX + questionId));
         } catch (Exception e) {
             log.warn("题目向量删除失败, questionId={}", questionId, e);
         }
     }
 
-    /** 同步入库单条题目（补漏定时任务复用；按文档 ID 幂等，重复摄取为覆盖） */
-    public void ingest(QuestionRecord record) {
-        String text = buildText(record);
-        if (text.isBlank()) {
-            return;
-        }
-        Document document = new Document(String.valueOf(record.getId()), text, Map.of(
-                "userId", String.valueOf(record.getUserId()),
-                "type", "question",
-                "subject", record.getSubject() == null || record.getSubject().isBlank() ? "未分类" : record.getSubject(),
-                "isWrong", record.getIsWrong() == null ? "未判定" : String.valueOf(record.getIsWrong())));
-        vectorStore.add(List.of(document));
-        log.info("题目已向量化入库, questionId={}", record.getId());
+/** 拍照题目向量文档 ID 前缀（与相似题 sq: 前缀区分两表自增主键） */
+public static final String DOC_PREFIX = "q:";
+
+/** 同步入库单条题目（补漏定时任务复用；按文档 ID 幂等，重复摄取为覆盖） */
+public void ingest(QuestionRecord record) {
+    String text = buildText(record);
+    if (text.isBlank()) {
+        return;
     }
+    Document document = new Document(DOC_PREFIX + record.getId(), text, Map.of(
+            "userId", String.valueOf(record.getUserId()),
+            "type", "question",
+            "subject", record.getSubject() == null || record.getSubject().isBlank() ? "未分类" : record.getSubject(),
+            "isWrong", record.getIsWrong() == null ? "未判定" : String.valueOf(record.getIsWrong())));
+    vectorStore.add(List.of(document));
+    log.info("题目已向量化入库, questionId={}", record.getId());
+}
 }

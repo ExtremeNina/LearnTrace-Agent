@@ -65,7 +65,11 @@ public class RagSearchTool {
                     default -> {
                         Object subjectMeta = doc.getMetadata().getOrDefault("subject", "未分类");
                         String isWrong = String.valueOf(doc.getMetadata().getOrDefault("isWrong", ""));
-                        label = "题目 · " + subjectMeta + ("1".equals(isWrong) ? " · 错题" : "");
+                        // 仅拍照题目外露 ID（供保存相似题时回填 sourceQuestionId）；
+                        // 相似题（sq: 前缀）的 ID 不能当作来源题目，不外露
+                        String docId = doc.getId();
+                        String idSuffix = docId.startsWith("q:") ? " · 题目ID " + docId.substring(2) : "";
+                        label = "题目 · " + subjectMeta + ("1".equals(isWrong) ? " · 错题" : "") + idSuffix;
                     }
                 }
                 sb.append("第").append(i + 1).append("条【").append(label).append("】\n")

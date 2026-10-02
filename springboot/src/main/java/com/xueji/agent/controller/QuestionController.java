@@ -2,8 +2,8 @@ package com.xueji.agent.controller;
 
 import com.xueji.agent.common.Result;
 import com.xueji.agent.domain.dto.QuestionUpdateDto;
-import com.xueji.agent.domain.entity.QuestionRecord;
 import com.xueji.agent.domain.vo.PageVO;
+import com.xueji.agent.domain.vo.QuestionItemVO;
 import com.xueji.agent.service.QuestionService;
 import com.xueji.agent.utils.UserUtils;
 import jakarta.annotation.Resource;
@@ -17,7 +17,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 题目记录接口：拍照记录分页列表（可按日期筛选）、详情、编辑与删除
+ * 题目记录接口：拍照题目与 AI 相似题合并分页列表（可按日期 / 学科筛选）、详情、编辑与删除。
+ * 相似题记录带 source=similar_ai 标记，详情 / 编辑 / 删除按 source 分派到对应表
  */
 @RequestMapping("/question")
 @RestController
@@ -27,13 +28,13 @@ public class QuestionController {
     private QuestionService questionService;
 
     /**
-     * 当前用户的拍照记录分页列表（新记录在前，每页默认 10 条）
+     * 当前用户的题目合并分页列表（新记录在前，每页默认 10 条）
      *
      * @param date    可选，按日期筛选（yyyy-MM-dd）
      * @param subject 可选，按学科筛选
      */
     @GetMapping("/list")
-    public Result<PageVO<QuestionRecord>> list(
+    public Result<PageVO<QuestionItemVO>> list(
             @RequestParam(required = false) String date,
             @RequestParam(required = false) String subject,
             @RequestParam(defaultValue = "1") int page,
@@ -43,26 +44,32 @@ public class QuestionController {
 
     /**
      * 题目详情
+     *
+     * @param source photo（缺省）/ similar_ai
      */
     @GetMapping("/{id}")
-    public Result<QuestionRecord> detail(@PathVariable Long id) {
-        return Result.data(questionService.getDetail(UserUtils.getCurrentLoginId(), id));
+    public Result<QuestionItemVO> detail(@PathVariable Long id,
+                                         @RequestParam(required = false, defaultValue = "photo") String source) {
+        return Result.data(questionService.getDetail(UserUtils.getCurrentLoginId(), id, source));
     }
 
     /**
      * 编辑题目（仅更新提供的字段）
      */
     @PutMapping("/{id}")
-    public Result<QuestionRecord> update(@PathVariable Long id, @RequestBody QuestionUpdateDto dto) {
-        return Result.data(questionService.updateByUser(UserUtils.getCurrentLoginId(), id, dto));
+    public Result<QuestionItemVO> update(@PathVariable Long id,
+                                         @RequestParam(required = false, defaultValue = "photo") String source,
+                                         @RequestBody QuestionUpdateDto dto) {
+        return Result.data(questionService.updateByUser(UserUtils.getCurrentLoginId(), id, source, dto));
     }
 
     /**
      * 删除题目（逻辑删除）
      */
     @DeleteMapping("/{id}")
-    public Result<Void> delete(@PathVariable Long id) {
-        questionService.deleteByUser(UserUtils.getCurrentLoginId(), id);
+    public Result<Void> delete(@PathVariable Long id,
+                               @RequestParam(required = false, defaultValue = "photo") String source) {
+        questionService.deleteByUser(UserUtils.getCurrentLoginId(), id, source);
         return Result.ok("已删除");
     }
 }

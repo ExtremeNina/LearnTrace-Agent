@@ -10,7 +10,7 @@ import type { NoteLinkInfo, NoteTreeNodeInfo } from '../../api/note'
 import type { CourseInfo } from '../../api/course'
 import { listCourses } from '../../api/course'
 import { listQuestions } from '../../api/question'
-import type { QuestionRecordInfo } from '../../types/api'
+import type { QuestionItemInfo } from '../../types/api'
 
 /**
  * 知识联系侧栏（PRD §3.4）：
@@ -77,7 +77,7 @@ async function saveEditRemark() {
 // ---- 聚合搜索数据源（挂载时加载一次） ----
 const keyword = ref('')
 const courses = ref<CourseInfo[]>([])
-const questions = ref<QuestionRecordInfo[]>([])
+const questions = ref<QuestionItemInfo[]>([])
 const noteOptions = ref<{ id: number; title: string }[]>([])
 
 onMounted(async () => {
@@ -87,7 +87,8 @@ onMounted(async () => {
     courses.value = []
   }
   try {
-    questions.value = (await listQuestions({ page: 1, size: 100 })).list
+    // 知识联系的目标是拍照题目（后端按 question_record 解析标题），合并列表中的 AI 相似题不作为链接目标
+    questions.value = (await listQuestions({ page: 1, size: 100 })).list.filter((q) => q.source === 'photo')
   } catch {
     questions.value = []
   }

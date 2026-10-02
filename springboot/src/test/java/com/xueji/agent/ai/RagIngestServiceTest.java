@@ -4,10 +4,12 @@ import com.xueji.agent.domain.entity.Course;
 import com.xueji.agent.domain.entity.CourseTranscriptSegment;
 import com.xueji.agent.domain.entity.Note;
 import com.xueji.agent.domain.entity.QuestionRecord;
+import com.xueji.agent.domain.entity.SimilarQuestion;
 import com.xueji.agent.mapper.CourseMapper;
 import com.xueji.agent.mapper.CourseTranscriptSegmentMapper;
 import com.xueji.agent.mapper.NoteMapper;
 import com.xueji.agent.mapper.QuestionRecordMapper;
+import com.xueji.agent.mapper.SimilarQuestionMapper;
 import com.xueji.agent.service.impl.QuestionVectorStoreService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -48,6 +50,9 @@ class RagIngestServiceTest {
     private QuestionRecordMapper questionRecordMapper;
 
     @Mock
+    private SimilarQuestionMapper similarQuestionMapper;
+
+    @Mock
     private NoteMapper noteMapper;
 
     @Mock
@@ -65,6 +70,7 @@ class RagIngestServiceTest {
         ReflectionTestUtils.setField(service, "courseExecutor", courseExecutor);
         ReflectionTestUtils.setField(service, "questionVectorStoreService", questionVectorStoreService);
         ReflectionTestUtils.setField(service, "questionRecordMapper", questionRecordMapper);
+        ReflectionTestUtils.setField(service, "similarQuestionMapper", similarQuestionMapper);
         ReflectionTestUtils.setField(service, "noteMapper", noteMapper);
         ReflectionTestUtils.setField(service, "courseMapper", courseMapper);
         ReflectionTestUtils.setField(service, "transcriptSegmentMapper", transcriptSegmentMapper);
@@ -141,6 +147,33 @@ class RagIngestServiceTest {
         assertThat(RagIngestService.buildTranscriptText(blank, "课程")).isEmpty();
     }
 
+    // ---- 相似题（sq: 前缀）----
+
+    @Test
+    void similarQuestionShouldIngestWithSqPrefixAndQuestionType() {
+        SimilarQuestion similar = new SimilarQuestion()
+                .setId(3L).setUserId(5L).setQuestionText("**相似题**：求 $g(x)=e^x-x-1$ 的极值")
+                .setAnswer("极小值为 -1").setSubject("数学");
+
+        service.ingestSimilarQuestion(similar);
+
+        @SuppressWarnings("unchecked")
+        org.mockito.ArgumentCaptor<List<org.springframework.ai.document.Document>> captor =
+                org.mockito.ArgumentCaptor.forClass((Class) List.class);
+        verify(vectorStore).add(captor.capture());
+        org.springframework.ai.document.Document doc = captor.getValue().get(0);
+        // 与拍照题目（q: 前缀）区分两表自增主键
+        assertThat(doc.getId()).isEqualTo("sq:3");
+        assertThat(doc.getMetadata()).containsEntry("type", "question").containsEntry("subject", "数学");
+        assertThat(doc.getText()).startsWith("题目：相似题 ：求").contains("解答：极小值为 -1");
+    }
+
+    @Test
+    void removeSimilarShouldDeleteBySqId() {
+        service.removeSimilar(3L);
+        verify(vectorStore).delete(List.of("sq:3"));
+    }
+
     // ---- 补漏回填 ----
 
     @Test
@@ -148,6 +181,8 @@ class RagIngestServiceTest {
         when(questionRecordMapper.selectList(any())).thenReturn(List.of(
                 new QuestionRecord().setId(1L).setUserId(5L).setDeleted(0).setQuestionText("题一"),
                 new QuestionRecord().setId(2L).setUserId(5L).setDeleted(1).setQuestionText("题二")));
+        when(similarQuestionMapper.selectList(any())).thenReturn(List.of(
+                new SimilarQuestion().setId(21L).setUserId(5L).setQuestionText("相似题").setDeleted(0)));
         when(noteMapper.selectList(any())).thenReturn(List.of(
                 new Note().setId(10L).setUserId(5L).setTitle("笔记A").setContent("内容A").setDeleted(0),
                 new Note().setId(11L).setUserId(5L).setTitle("笔记B").setContent("内容B").setDeleted(1)));
@@ -158,10 +193,10 @@ class RagIngestServiceTest {
 
         int processed = service.repairSince(LocalDateTime.of(2026, 10, 1, 0, 0));
 
-        assertThat(processed).isEqualTo(5);
+        assertThat(processed).isEqualTo(6);
         verify(questionVectorStoreService).ingest(any(QuestionRecord.class));
         verify(questionVectorStoreService).remove(2L);
-        verify(vectorStore, org.mockito.Mockito.times(2)).add(anyList()); // 笔记 1 块 + 转写 1 块（笔记 B 已删不入库）
+        verify(vectorStore, org.mockito.Mockito.times(3)).add(anyList()); // 相似题 1 块 + 笔记 1 块 + 转写 1 块（笔记 B 已删不入库）
     }
 
     @Test

@@ -33,11 +33,13 @@ public class QuestionSaveTool {
             String analysis,
             @ToolParam(description = "题目所属学科，根据题目内容判断，如：数学 / 语文 / 英语 / 物理 / 化学 / 生物 / 历史 / 地理 / 政治 / 计算机 / 其他", required = false)
             String subject,
+            @ToolParam(description = "仅当保存的相似题是基于 rag_search 召回的某道题生成时，提供该题的 ID（见召回结果中的题目ID）；其余情况留空", required = false)
+            Long sourceQuestionId,
             ToolContext toolContext) {
         Long userId = ((Number) toolContext.getContext().get("userId")).longValue();
         Long conversationId = ((Number) toolContext.getContext().get("conversationId")).longValue();
         try {
-            boolean saved = questionService.saveFromConversation(userId, conversationId, source,
+            boolean saved = questionService.saveFromConversation(userId, conversationId, source, sourceQuestionId,
                     questionText, correctAnswer, analysis, subject);
             log.info("保存题目工具执行完成, userId={}, conversationId={}, source={}, saved={}",
                     userId, conversationId, source, saved);

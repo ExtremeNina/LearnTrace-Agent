@@ -1,18 +1,19 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { Camera, ImageOff, Pencil, Trash2, X } from 'lucide-vue-next'
+import { Camera, ImageOff, Pencil, Sparkles, Trash2, X } from 'lucide-vue-next'
 import * as questionApi from '../api/question'
-import type { QuestionRecordInfo } from '../types/api'
+import type { QuestionItemInfo } from '../types/api'
 import { SUBJECTS } from '../constants/subjects'
 import { renderMarkdown } from '../utils/markdown'
 
 /**
- * 拍照记录（PRD §3.3）：题目分页列表（按日期与学科筛选）、详情、编辑与删除
+ * 题目记录（PRD §3.3 + §8）：拍照题目与 AI 生成的相似题合并列表（相似题标注「AI 生成」）、
+ * 按日期与学科筛选、详情、编辑与删除
  */
 const PAGE_SIZE = 10
 
-const records = ref<QuestionRecordInfo[]>([])
+const records = ref<QuestionItemInfo[]>([])
 const loading = ref(false)
 const error = ref('')
 const page = ref(1)
@@ -23,12 +24,13 @@ const dateFilter = ref('')
 /** 按学科筛选，空为全部 */
 const subjectFilter = ref('')
 /** 当前查看 / 编辑的记录 */
-const active = ref<QuestionRecordInfo | null>(null)
+const active = ref<QuestionItemInfo | null>(null)
 const editMode = ref(false)
 const editForm = reactive({
   questionText: '',
   userAnswer: '',
   correctAnswer: '',
+  analysis: '',
   userNote: '',
   subject: '',
 })
@@ -37,10 +39,10 @@ const route = useRoute()
 
 onMounted(async () => {
   await load()
-  // 支持从笔记知识联系跳转：/questions?open=3 → 自动弹出该题详情
+  // 支持从笔记知识联系跳转：/questions?open=3 → 自动弹出该题详情（知识联系只指向拍照题目）
   const openId = Number(route.query.open)
   if (openId) {
-    const target = records.value.find((r) => r.id === openId)
+    const target = records.value.find((r) => r.id === openId && r.source === 'photo')
     if (target) {
       openDetail(target)
     }
@@ -86,7 +88,7 @@ function goPage(target: number) {
   load()
 }
 
-function openDetail(record: QuestionRecordInfo) {
+function openDetail(record: QuestionItemInfo) {
   active.value = record
   editMode.value = false
 }
@@ -98,6 +100,7 @@ function startEdit() {
   editForm.questionText = active.value.questionText ?? ''
   editForm.userAnswer = active.value.userAnswer ?? ''
   editForm.correctAnswer = active.value.correctAnswer ?? ''
+  editForm.analysis = active.value.analysis ?? ''
   editForm.userNote = active.value.userNote ?? ''
   editForm.subject = active.value.subject ?? ''
   editMode.value = true
@@ -108,7 +111,7 @@ async function saveEdit() {
     return
   }
   try {
-    const updated = await questionApi.updateQuestion(active.value.id, { ...editForm })
+    const updated = await questionApi.updateQuestion(active.value.id, active.value.source, { ...editForm })
     active.value = updated
     editMode.value = false
     load()
@@ -122,7 +125,7 @@ async function removeActive() {
     return
   }
   try {
-    await questionApi.deleteQuestion(active.value.id)
+    await questionApi.deleteQuestion(active.value.id, active.value.source)
     const wasLastOnPage = records.value.length === 1 && page.value > 1
     active.value = null
     if (wasLastOnPage) {
@@ -216,6 +219,13 @@ const pageLabel = computed(() => `第 ${page.value} / ${pages.value} 页 · 共 
             <p class="mt-1.5 text-[12px] text-ink-2">{{ formatTime(r.createdAt) }}</p>
           </div>
           <span
+            v-if="r.source === 'similar_ai'"
+            class="flex shrink-0 items-center gap-1 self-start rounded-md bg-violet-50 px-2 py-0.5 text-[11px] text-violet-600"
+          >
+            <Sparkles :size="11" />
+            AI 生成
+          </span>
+          <span
             v-if="r.subject"
             class="shrink-0 self-start rounded-md bg-primary-soft px-2 py-0.5 text-[11px] text-primary"
           >
@@ -283,6 +293,13 @@ const pageLabel = computed(() => `第 ${page.value} / ${pages.value} 页 · 共 
           </div>
           <p class="mt-1 text-[12px] text-ink-2">
             {{ formatTime(active.createdAt) }}
+            <span
+              v-if="active.source === 'similar_ai'"
+              class="ml-2 inline-flex items-center gap-1 rounded-md bg-violet-50 px-1.5 py-0.5 text-violet-600"
+            >
+              <Sparkles :size="11" />
+              AI 生成
+            </span>
             <span v-if="active.subject" class="ml-2 rounded-md bg-primary-soft px-1.5 py-0.5 text-primary">{{ active.subject }}</span>
           </p>
 
@@ -307,7 +324,7 @@ const pageLabel = computed(() => `第 ${page.value} / ${pages.value} 页 · 共 
           </template>
 
           <template v-if="active.analysis">
-            <h3 class="mt-5 text-[13px] font-semibold text-ink-2">错因分析</h3>
+            <h3 class="mt-5 text-[13px] font-semibold text-ink-2">{{ active.source === 'similar_ai' ? '解析' : '错因分析' }}</h3>
             <div class="markdown-body mt-1 text-[14px]" v-html="renderMarkdown(active.analysis)"></div>
           </template>
 
@@ -358,6 +375,14 @@ const pageLabel = computed(() => `第 ${page.value} / ${pages.value} 页 · 共 
               ></textarea>
             </label>
             <label class="block">
+              <span class="mb-1 block text-[12px] text-ink-2">{{ active.source === 'similar_ai' ? '解析' : '错因分析' }}</span>
+              <textarea
+                v-model="editForm.analysis"
+                rows="4"
+                class="w-full resize-y rounded-xl border border-line px-3 py-2 text-[14px] outline-none focus:border-primary"
+              ></textarea>
+            </label>
+            <label v-if="active.source !== 'similar_ai'" class="block">
               <span class="mb-1 block text-[12px] text-ink-2">我的作答</span>
               <textarea
                 v-model="editForm.userAnswer"
@@ -365,7 +390,7 @@ const pageLabel = computed(() => `第 ${page.value} / ${pages.value} 页 · 共 
                 class="w-full resize-y rounded-xl border border-line px-3 py-2 text-[14px] outline-none focus:border-primary"
               ></textarea>
             </label>
-            <label class="block">
+            <label v-if="active.source !== 'similar_ai'" class="block">
               <span class="mb-1 block text-[12px] text-ink-2">笔记</span>
               <textarea
                 v-model="editForm.userNote"

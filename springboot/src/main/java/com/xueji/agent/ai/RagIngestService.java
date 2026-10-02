@@ -5,10 +5,12 @@ import com.xueji.agent.domain.entity.Course;
 import com.xueji.agent.domain.entity.CourseTranscriptSegment;
 import com.xueji.agent.domain.entity.Note;
 import com.xueji.agent.domain.entity.QuestionRecord;
+import com.xueji.agent.domain.entity.SimilarQuestion;
 import com.xueji.agent.mapper.CourseMapper;
 import com.xueji.agent.mapper.CourseTranscriptSegmentMapper;
 import com.xueji.agent.mapper.NoteMapper;
 import com.xueji.agent.mapper.QuestionRecordMapper;
+import com.xueji.agent.mapper.SimilarQuestionMapper;
 import com.xueji.agent.service.impl.QuestionVectorStoreService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -28,8 +30,8 @@ import java.util.concurrent.ThreadPoolExecutor;
 
 /**
  * RAG 学习资料统一摄取（PRD §3.6 入库范围）：题目（QuestionVectorStoreService）、
- * 笔记（按小节切块）、网课转写分段（带时间戳元数据）。
- * 文档 ID 约定：题目 = 数字主键；笔记 = note:{id}:{块序号}；转写 = transcript:c{课程ID}:{分段ID}。
+ * 相似题（similar_question，文档 ID sq: 前缀）、笔记（按小节切块）、网课转写分段（带时间戳元数据）。
+ * 文档 ID 约定：题目 = q:{主键}；相似题 = sq:{主键}；笔记 = note:{id}:{块序号}；转写 = transcript:c{课程ID}:{分段ID}。
  * 所有展示信息（标题 / 时间戳）直接内嵌在向量化文本中，元数据只承载过滤与来源标记。
  */
 @Slf4j
@@ -47,6 +49,7 @@ public class RagIngestService {
 
     private static final String DOC_PREFIX_NOTE = "note:";
     private static final String DOC_PREFIX_TRANSCRIPT = "transcript:c";
+    private static final String DOC_PREFIX_SIMILAR = "sq:";
 
     @Resource
     private VectorStore vectorStore;
@@ -59,6 +62,9 @@ public class RagIngestService {
 
     @Resource
     private QuestionRecordMapper questionRecordMapper;
+
+    @Resource
+    private SimilarQuestionMapper similarQuestionMapper;
 
     @Resource
     private NoteMapper noteMapper;
@@ -167,6 +173,60 @@ public class RagIngestService {
         }
     }
 
+    // ---- 相似题（AI 生成）----
+
+    /** 异步入库 / 重建一条相似题 */
+    public void ingestSimilarQuestionAsync(SimilarQuestion similar) {
+        courseExecutor.execute(() -> {
+            try {
+                ingestSimilarQuestion(similar);
+            } catch (Exception e) {
+                log.warn("相似题向量化入库失败, similarQuestionId={}", similar.getId(), e);
+            }
+        });
+    }
+
+    public void ingestSimilarQuestion(SimilarQuestion similar) {
+        if (similar.getId() == null) {
+            return;
+        }
+        String text = buildSimilarText(similar);
+        if (text.isBlank()) {
+            return;
+        }
+        Document document = new Document(DOC_PREFIX_SIMILAR + similar.getId(), text, Map.of(
+                "userId", String.valueOf(similar.getUserId()),
+                "type", "question",
+                "subject", similar.getSubject() == null || similar.getSubject().isBlank() ? "未分类" : similar.getSubject(),
+                "isWrong", "未判定"));
+        vectorStore.add(List.of(document));
+        log.info("相似题已向量化入库, similarQuestionId={}", similar.getId());
+    }
+
+    public void removeSimilar(Long similarId) {
+        if (similarId == null) {
+            return;
+        }
+        try {
+            vectorStore.delete(List.of(DOC_PREFIX_SIMILAR + similarId));
+        } catch (Exception e) {
+            log.warn("相似题向量删除失败, similarQuestionId={}", similarId, e);
+        }
+    }
+
+    /** 相似题向量化文本：与拍照题目同构（题目 / 解答 / 解析），供 rag_search 生成更多相似题时召回 */
+    public static String buildSimilarText(SimilarQuestion similar) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("题目：").append(QuestionVectorStoreService.stripMarks(similar.getQuestionText()));
+        if (similar.getAnswer() != null && !similar.getAnswer().isBlank()) {
+            sb.append("\n解答：").append(QuestionVectorStoreService.stripMarks(similar.getAnswer()));
+        }
+        if (similar.getAnalysis() != null && !similar.getAnalysis().isBlank()) {
+            sb.append("\n解析：").append(QuestionVectorStoreService.stripMarks(similar.getAnalysis()));
+        }
+        return sb.toString();
+    }
+
     // ---- 补漏（定时任务调用）----
 
     /**
@@ -183,6 +243,17 @@ public class RagIngestService {
                 questionVectorStoreService.remove(record.getId());
             } else {
                 questionVectorStoreService.ingest(record);
+            }
+            processed++;
+        }
+
+        List<SimilarQuestion> similars = similarQuestionMapper.selectList(new QueryWrapper<SimilarQuestion>()
+                .gt(checkpoint != null, "updated_at", checkpoint));
+        for (SimilarQuestion similar : similars) {
+            if (Integer.valueOf(1).equals(similar.getDeleted())) {
+                removeSimilar(similar.getId());
+            } else {
+                ingestSimilarQuestion(similar);
             }
             processed++;
         }

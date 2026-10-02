@@ -49,20 +49,17 @@ export interface MessageInfo {
   createdAt: string
 }
 
-/** 题目记录（对应后端 domain/entity/QuestionRecord；纯文字题目如相似题无图片） */
-export interface QuestionRecordInfo {
+/** 题目记录统一视图（拍照题目 + AI 生成的相似题合并列表，source 区分；相似题无图 / 无作答字段） */
+export interface QuestionItemInfo {
   id: number
-  userId: number
-  imageOssKey: string | null
-  ocrText: string | null
+  source: 'photo' | 'similar_ai'
   questionText: string | null
   subject: string | null
-  userAnswer: string | null
+  imageOssKey: string | null
   correctAnswer: string | null
   analysis: string | null
   isWrong: number | null
-  aiStatus: string
-  recordStatus: string
+  userAnswer: string | null
   userNote: string | null
   createdAt: string
   updatedAt: string
