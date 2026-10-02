@@ -112,6 +112,9 @@ public class CourseServiceImpl implements CourseService {
         if (dto.getSubject() != null) {
             course.setSubject(dto.getSubject().isBlank() ? null : dto.getSubject().trim());
         }
+        if (dto.getStudyNote() != null) {
+            course.setStudyNote(dto.getStudyNote());
+        }
         course.setUpdatedAt(LocalDateTime.now());
         courseMapper.updateById(course);
         return course;

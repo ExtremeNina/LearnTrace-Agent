@@ -11,4 +11,7 @@ public class CourseUpdateDto {
     private String title;
 
     private String subject;
+
+    /** 学习笔记（网课页随想，富文本 HTML） */
+    private String studyNote;
 }

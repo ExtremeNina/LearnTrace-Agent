@@ -1,17 +1,22 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { Download, ArrowLeft, CircleCheck, LoaderCircle, Pencil, Save, X } from 'lucide-vue-next'
+import {
+  Download, ArrowLeft, CircleCheck, LoaderCircle, Pencil, Save, X,
+  Bold, Italic, Underline, Clock,
+} from 'lucide-vue-next'
 import { getCourseDetail, updateCourse } from '../api/course'
 import type { CourseDetailData } from '../api/course'
 import { updateNoteContent } from '../api/note'
 import { renderNoteHtml } from '../utils/markdown'
+import DOMPurify from 'dompurify'
 import { SUBJECTS } from '../constants/subjects'
 import MdSourceEditor from '../components/notes/MdSourceEditor.vue'
 
 /**
  * 网课详情（PRD §4.1 + §3.2 时间戳同步观看）：
- * 笔记在左（宽，整页左对齐不留白）、视频在右（宽列，方便观看）；三标签：AI 笔记 / 转写对照 / 关键帧识别。
+ * 左列视频 + 学习笔记（用户随想，工具栏含时间戳插入）；右列 AI 笔记 / 转写对照（整合关键帧与时间轴）。
+ * 色彩与字号沿用全局规范，仅调整布局。
  */
 const route = useRoute()
 const courseId = Number(route.params.id)
@@ -19,8 +24,10 @@ const courseId = Number(route.params.id)
 const data = ref<CourseDetailData | null>(null)
 const loading = ref(true)
 const error = ref('')
-const activeTab = ref<'note' | 'transcript' | 'frames'>('note')
+const activeTab = ref<'note' | 'transcript'>('note')
 const videoRef = ref<HTMLVideoElement | null>(null)
+/** 视频元数据时长（老数据 duration 字段可能为空，用播放器时长兜底） */
+const videoDuration = ref(0)
 
 onMounted(async () => {
   try {
@@ -31,6 +38,11 @@ onMounted(async () => {
       const seek = () => seekTo(parseTs(String(t)))
       videoRef.value.addEventListener('loadedmetadata', seek, { once: true })
     }
+    videoRef.value?.addEventListener('loadedmetadata', () => {
+      videoDuration.value = Math.floor(videoRef.value?.duration ?? 0)
+    })
+    // 学习笔记初始内容在 DOM 挂载后灌入（不绑定响应式，避免保存后光标重置）
+    nextTick(() => initStudyBox())
   } catch (e) {
     error.value = e instanceof Error ? e.message : '加载失败'
   } finally {
@@ -73,7 +85,7 @@ function formatSize(bytes: number | null | undefined): string {
   return Math.round(bytes / 1024 / 1024) + 'MB'
 }
 
-/** 笔记渲染：与编辑预览共用同一管线（块级空行归一化 → Markdown → [mm:ss] 时间戳胶囊） */
+/** 笔记渲染：与笔记整理页同一管线（归一化 → Markdown → [mm:ss] 时间戳胶囊） */
 const noteHtml = computed(() => {
   const note = data.value?.note
   return note ? renderNoteHtml(note.content) : ''
@@ -86,11 +98,11 @@ function onNoteClick(e: MouseEvent) {
   }
 }
 
-function onTabChange(tab: 'note' | 'transcript' | 'frames') {
+function onTabChange(tab: 'note' | 'transcript') {
   activeTab.value = tab
 }
 
-// 在线编辑（标题 / 学科）
+// 在线编辑标题 / 学科
 const editMode = ref(false)
 const editForm = reactive({ title: '', subject: '' })
 const saving = ref(false)
@@ -151,6 +163,119 @@ async function saveNoteEdit() {
     noteSaving.value = false
   }
 }
+
+// ---- 学习笔记（视频下方随想区，富文本 + 时间戳插入） ----
+const studyRef = ref<HTMLDivElement | null>(null)
+const studyDirty = ref(false)
+let studySavedHtml = ''
+
+function initStudyBox() {
+  if (!studyRef.value) {
+    return
+  }
+  studySavedHtml = DOMPurify.sanitize(data.value?.course.studyNote ?? '')
+  studyRef.value.innerHTML = studySavedHtml
+  studyDirty.value = false
+}
+
+function onStudyInput() {
+  if (studyRef.value) {
+    studyDirty.value = studyRef.value.innerHTML !== studySavedHtml
+  }
+}
+
+async function saveStudyNote() {
+  if (!studyRef.value || !studyDirty.value) {
+    return
+  }
+  const html = studyRef.value.innerHTML
+  try {
+    const updated = await updateCourse(courseId, { studyNote: html })
+    if (data.value) {
+      data.value.course.studyNote = html
+    }
+    studySavedHtml = updated.studyNote ?? html
+    studyDirty.value = false
+  } catch (e) {
+    window.alert(e instanceof Error ? e.message : '保存失败，请稍后重试')
+  }
+}
+
+function execStudy(command: string) {
+  document.execCommand('styleWithCSS', false, 'true')
+  document.execCommand(command, false)
+  studyRef.value?.focus()
+}
+
+/** 在光标处插入当前播放进度的时间戳胶囊（保存后可点击跳回该片段） */
+function insertStudyTs() {
+  const video = videoRef.value
+  const box = studyRef.value
+  if (!video || !box) {
+    return
+  }
+  const ts = formatTs(video.currentTime)
+  box.focus()
+  document.execCommand('insertHTML', false, `<span class="ts-chip" data-ts="${ts}">${ts}</span>&nbsp;`)
+  onStudyInput()
+}
+
+/** 学习笔记内点击时间戳胶囊 → 跳回视频对应位置 */
+function onStudyClick(e: MouseEvent) {
+  const chip = (e.target as HTMLElement).closest('[data-ts]')
+  if (chip) {
+    seekTo(parseTs(chip.getAttribute('data-ts') || ''))
+  }
+}
+
+// ---- 转写对照：段落与关键帧整合 ----
+const duration = computed(() => {
+  if (data.value?.course.duration) {
+    return data.value.course.duration
+  }
+  if (videoDuration.value) {
+    return videoDuration.value
+  }
+  const maxSeg = Math.max(0, ...(data.value?.transcript ?? []).map((s) => s.endSec))
+  const maxFrame = Math.max(0, ...(data.value?.frames ?? []).map((f) => f.timeSec))
+  return Math.max(maxSeg, maxFrame)
+})
+
+/** 转写段落 + 落在该时间段内的关键帧（未落段的帧挂到最后一段） */
+const segmentsWithFrames = computed(() => {
+  const frames = [...(data.value?.frames ?? [])].sort((a, b) => a.timeSec - b.timeSec)
+  const used = new Set<number>()
+  const rows = (data.value?.transcript ?? []).map((seg) => {
+    const segFrames = frames.filter((f) => f.timeSec >= seg.startSec && f.timeSec < seg.endSec && !used.has(f.id))
+    segFrames.forEach((f) => used.add(f.id))
+    return { seg, frames: segFrames }
+  })
+  const rest = frames.filter((f) => !used.has(f.id))
+  if (rest.length && rows.length) {
+    rows[rows.length - 1].frames.push(...rest)
+  }
+  return rows
+})
+
+/** 时间轴刻度：转写段起点 + 关键帧位置 */
+const timelineTicks = computed(() => {
+  const total = duration.value
+  if (!total) {
+    return []
+  }
+  const ticks: { t: number; kind: 'transcript' | 'frame'; pct: number }[] = []
+  for (const seg of data.value?.transcript ?? []) {
+    if (seg.startSec <= total) {
+      ticks.push({ t: seg.startSec, kind: 'transcript', pct: (seg.startSec / total) * 100 })
+    }
+  }
+  for (const f of data.value?.frames ?? []) {
+    if (f.timeSec <= total) {
+      ticks.push({ t: f.timeSec, kind: 'frame', pct: (f.timeSec / total) * 100 })
+    }
+  }
+  return ticks
+})
 </script>
 
 <template>
@@ -201,42 +326,108 @@ async function saveNoteEdit() {
           </div>
         </div>
 
-        <div class="mt-5 flex flex-col-reverse gap-5 lg:h-[calc(100%-72px)] lg:flex-row">
-          <!-- 左：AI 笔记（主区，宽） -->
-          <div class="flex min-w-0 flex-1 flex-col">
-            <div class="flex shrink-0 items-center gap-2">
-              <div class="flex flex-1 gap-1 rounded-xl bg-panel p-1">
-                <button
-                  v-for="tab in [
-                    { key: 'note', label: 'AI 笔记' },
-                    { key: 'transcript', label: '转写对照' },
-                    { key: 'frames', label: '关键帧识别' },
-                  ]"
-                  :key="tab.key"
-                  class="flex-1 rounded-lg py-1.5 text-[14px] transition-colors"
-                  :class="activeTab === tab.key ? 'bg-white font-medium text-ink shadow-sm' : 'text-ink-2 hover:text-ink'"
-                  @click="onTabChange(tab.key as 'note' | 'transcript' | 'frames')"
-                >
-                  {{ tab.label }}
-                </button>
+        <div class="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_420px] lg:h-[calc(100%-72px)]">
+          <!-- 左：视频 + 学习笔记 -->
+          <div class="flex min-h-0 flex-col">
+            <video
+              v-if="data.course.videoOssKey"
+              ref="videoRef"
+              class="aspect-video w-full rounded-2xl border border-line bg-black"
+              controls
+              preload="metadata"
+              :src="data.course.videoOssKey"
+            />
+            <div v-else class="flex aspect-video w-full items-center justify-center rounded-2xl border border-line bg-panel text-[14px] text-ink-2">
+              视频处理中，稍后可在线观看
+            </div>
+
+            <div class="mt-3 flex items-center gap-1.5 rounded-xl border border-line bg-primary-soft/60 px-3 py-2 text-[12px] text-ink-2">
+              <template v-if="data.course.status === 'SUCCESS'">
+                <CircleCheck :size="14" class="shrink-0 text-green-600" />
+                AI 笔记由转写与画面识别生成，点击时间戳可跳回原片段核对。
+              </template>
+              <template v-else>
+                <LoaderCircle :size="14" class="shrink-0 animate-spin text-amber-600" />
+                网课正在流水线处理中，完成后可在线观看并生成 AI 笔记。
+              </template>
+            </div>
+
+            <!-- 学习笔记（用户随想） -->
+            <div class="mt-4 flex min-h-[220px] flex-1 flex-col rounded-2xl border border-line bg-white">
+              <div class="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2">
+                <p class="text-[13px] font-semibold text-ink">学习笔记</p>
+                <div class="ml-auto flex items-center gap-1">
+                  <button class="flex h-7 w-7 items-center justify-center rounded-lg text-ink hover:bg-line/60" title="加粗" @mousedown.prevent @click="execStudy('bold')">
+                    <Bold :size="14" />
+                  </button>
+                  <button class="flex h-7 w-7 items-center justify-center rounded-lg text-ink hover:bg-line/60" title="斜体" @mousedown.prevent @click="execStudy('italic')">
+                    <Italic :size="14" />
+                  </button>
+                  <button class="flex h-7 w-7 items-center justify-center rounded-lg text-ink hover:bg-line/60" title="下划线" @mousedown.prevent @click="execStudy('underline')">
+                    <Underline :size="14" />
+                  </button>
+                  <button
+                    class="flex h-7 items-center gap-1 rounded-lg px-2 text-[12px] text-ink hover:bg-line/60"
+                    title="插入当前播放进度的时间戳"
+                    :disabled="!data.course.videoOssKey"
+                    @mousedown.prevent
+                    @click="insertStudyTs"
+                  >
+                    <Clock :size="14" />
+                    时间戳
+                  </button>
+                  <button
+                    class="ml-1 flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[12px]"
+                    :class="studyDirty ? 'bg-primary text-white hover:opacity-90' : 'border border-line text-ink-2 opacity-50 cursor-not-allowed'"
+                    :disabled="!studyDirty"
+                    @click="saveStudyNote"
+                  >
+                    <Save :size="13" />
+                    保存
+                  </button>
+                </div>
               </div>
-              <!-- AI 笔记在线编辑入口（编辑态的保存/取消在编辑器工具栏内） -->
+              <div
+                ref="studyRef"
+                class="study-view min-h-0 flex-1 overflow-y-auto px-4 py-3 text-[14px] leading-7 text-ink outline-none"
+                contenteditable="true"
+                @input="onStudyInput"
+                @click="onStudyClick"
+              ></div>
+              <p class="border-t border-line px-4 py-1.5 text-[11px] text-ink-2">
+                记录观看感想；点「时间戳」插入当前进度，保存后点击胶囊可跳回该片段。
+              </p>
+            </div>
+          </div>
+
+          <!-- 右：AI 笔记 / 转写对照 -->
+          <div class="flex min-h-0 flex-col rounded-2xl border border-line bg-white">
+            <div class="flex shrink-0 items-center gap-1 border-b border-line p-2">
               <button
-                v-if="activeTab === 'note' && data.note && !noteEditing"
-                class="flex shrink-0 items-center gap-1.5 rounded-xl border border-line bg-white px-3 py-1.5 text-[13px] text-ink hover:bg-panel"
-                @click="startNoteEdit"
+                v-for="tab in [
+                  { key: 'note', label: 'AI 笔记' },
+                  { key: 'transcript', label: '转写对照' },
+                ]"
+                :key="tab.key"
+                class="flex-1 rounded-lg py-1.5 text-[14px] transition-colors"
+                :class="activeTab === tab.key ? 'bg-panel font-medium text-ink shadow-sm' : 'text-ink-2 hover:text-ink'"
+                @click="onTabChange(tab.key as 'note' | 'transcript')"
               >
-                <Pencil :size="14" />
-                编辑笔记
+                {{ tab.label }}
               </button>
             </div>
 
-            <div class="mt-4 min-h-0 flex-1 overflow-y-auto lg:pr-2">
-              <!-- AI 笔记：编辑态为 Markdown 源码，阅读态渲染并转换时间戳胶囊 -->
+            <div class="min-h-0 flex-1 overflow-y-auto p-3">
+              <!-- AI 笔记 -->
               <template v-if="activeTab === 'note'">
-                <div v-if="noteEditing">
+                <div v-if="data.course.expectations" class="mb-3 rounded-xl border border-line bg-panel px-3 py-2">
+                  <p class="text-[12px] font-semibold text-ink">您希望的内容</p>
+                  <p class="mt-1 text-[12px] leading-5 text-ink-2">{{ data.course.expectations }}</p>
+                </div>
+
+                <div v-if="noteEditing" class="px-1 pb-3">
                   <p v-if="noteError" class="mb-2 text-[12px] text-red-600">{{ noteError }}</p>
-                  <MdSourceEditor v-model="noteDraft" @chip="onEditorChip">
+                  <MdSourceEditor v-model="noteDraft" height-class="h-[420px]" @chip="onEditorChip">
                     <template #actions>
                       <button
                         class="flex items-center gap-1 rounded-lg bg-ink px-3 py-1.5 text-[13px] text-white hover:opacity-80 disabled:opacity-50"
@@ -256,131 +447,133 @@ async function saveNoteEdit() {
                     </template>
                   </MdSourceEditor>
                 </div>
-                <div v-else class="note-view rounded-2xl border border-line bg-white p-6 text-[14px] leading-7 text-ink" v-html="noteHtml" @click="onNoteClick" />
+                <template v-else>
+                  <button
+                    v-if="data.note"
+                    class="mb-3 flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-line py-2 text-[13px] text-ink-2 hover:border-primary hover:text-primary"
+                    @click="startNoteEdit"
+                  >
+                    <Pencil :size="14" />
+                    编辑 AI 笔记（Markdown 源码）
+                  </button>
+                  <div class="note-view rounded-xl border border-line bg-white p-3 text-[14px] leading-7 text-ink" v-html="noteHtml" @click="onNoteClick"></div>
+                  <p v-if="!data.note" class="rounded-xl border border-dashed border-line py-8 text-center text-[13px] text-ink-2">
+                    AI 笔记生成中，完成后展示在这里
+                  </p>
+                  <p class="mt-2 text-[11px] text-ink-2">AI 笔记由转写与画面识别生成，点击时间戳可跳回原片段核对。</p>
+                </template>
               </template>
 
-              <!-- 转写对照 -->
-              <div v-else-if="activeTab === 'transcript'" class="flex flex-col gap-3 rounded-2xl border border-line bg-white p-6">
-                <div v-for="seg in data.transcript" :key="seg.id" class="flex gap-3 text-[14px] leading-7">
-                  <button class="shrink-0 pt-0.5 text-[12px] text-primary hover:underline" @click="seekTo(seg.startSec)">
-                    {{ formatTs(seg.startSec) }}
-                  </button>
-                  <p class="text-ink">{{ seg.text }}</p>
-                </div>
-                <p v-if="data.transcript.length === 0" class="text-[13px] text-ink-2">未获得语音转写结果</p>
-              </div>
-
-              <!-- 关键帧识别 -->
-              <div v-else class="grid grid-cols-1 gap-4 xl:grid-cols-2">
-                <div v-for="frame in data.frames" :key="frame.id" class="overflow-hidden rounded-2xl border border-line bg-white">
-                  <button class="relative block w-full" @click="seekTo(frame.timeSec)">
-                    <img :src="frame.ossKey" :alt="'第 ' + frame.timeSec + 's 画面'" class="aspect-video w-full object-cover" />
-                    <span class="absolute bottom-1.5 left-1.5 rounded-md bg-black/60 px-1.5 py-0.5 text-[11px] text-white">
-                      {{ formatTs(frame.timeSec) }}
-                    </span>
-                  </button>
-                  <div class="px-3.5 py-3">
-                    <p class="line-clamp-4 whitespace-pre-wrap text-[13px] leading-6 text-ink">
-                      {{ frame.ocrStatus === 'SUCCESS' ? frame.ocrText : '（该帧识别失败）' }}
-                    </p>
+              <!-- 转写对照（整合关键帧） -->
+              <template v-else>
+                <div v-if="timelineTicks.length" class="mb-3 px-1 pt-1">
+                  <div class="relative h-2 rounded-full bg-line/70">
+                    <button
+                      v-for="(tick, i) in timelineTicks"
+                      :key="i"
+                      class="absolute top-1/2 h-3 w-[3px] -translate-y-1/2 rounded-full"
+                      :class="tick.kind === 'frame' ? 'bg-primary' : 'bg-ink-2/60'"
+                      :style="{ left: tick.pct + '%' }"
+                      :title="formatTs(tick.t) + (tick.kind === 'frame' ? ' · 关键帧' : ' · 转写段')"
+                      @click="seekTo(tick.t)"
+                    ></button>
+                  </div>
+                  <div class="mt-1 flex justify-between text-[11px] text-ink-2">
+                    <span>00:00</span>
+                    <span>{{ formatTs(duration) }}</span>
+                  </div>
+                  <div class="mt-1 flex gap-3 text-[11px] text-ink-2">
+                    <span class="flex items-center gap-1"><span class="h-1.5 w-1.5 rounded-full bg-ink-2/60"></span>转写段落</span>
+                    <span class="flex items-center gap-1"><span class="h-1.5 w-1.5 rounded-full bg-primary"></span>关键帧</span>
+                    <span class="ml-auto">点击刻度跳转</span>
                   </div>
                 </div>
-                <p v-if="data.frames.length === 0" class="col-span-full rounded-2xl border border-dashed border-line py-10 text-center text-[13px] text-ink-2">
-                  未获得关键帧识别结果
-                </p>
-              </div>
-            </div>
-          </div>
 
-          <!-- 右：视频 + 期望（右对齐） -->
-          <div class="course-video-col w-full shrink-0">
-            <div class="lg:sticky lg:top-0 lg:pb-4">
-              <video
-                v-if="data.course.videoOssKey"
-                ref="videoRef"
-                class="w-full rounded-2xl border border-line bg-black"
-                controls
-                preload="metadata"
-                :src="data.course.videoOssKey"
-              />
-              <div v-else class="flex aspect-video w-full items-center justify-center rounded-2xl border border-line bg-panel text-[14px] text-ink-2">
-                视频处理中，稍后可在线观看
-              </div>
-
-              <!-- 用户的特别要求 -->
-              <div v-if="data.course.expectations" class="mt-3 rounded-2xl border border-line bg-panel px-4 py-3">
-                <p class="text-[13px] font-semibold text-ink">您希望的内容</p>
-                <p class="mt-1.5 text-[13px] leading-6 text-ink-2">{{ data.course.expectations }}</p>
-              </div>
-              <div class="mt-3 flex items-center gap-1.5 rounded-xl border border-line bg-primary-soft/60 px-3 py-2 text-[12px] text-ink-2">
-                <template v-if="data.course.status === 'SUCCESS'">
-                  <CircleCheck :size="14" class="shrink-0 text-green-600" />
-                  AI 笔记由转写与画面识别生成，点击时间戳可跳转原片段核对。
-                </template>
-                <template v-else>
-                  <LoaderCircle :size="14" class="animate-spin text-amber-600" />
-                  网课正在流水线处理中，完成后可在线观看并生成 AI 笔记。
-                </template>
-              </div>
+                <div class="flex flex-col gap-2">
+                  <div v-for="row in segmentsWithFrames" :key="row.seg.id" class="rounded-xl border border-line bg-white px-3 py-2.5">
+                    <div class="flex gap-3">
+                      <button class="shrink-0 pt-0.5 text-[12px] text-primary hover:underline" @click="seekTo(row.seg.startSec)">
+                        {{ formatTs(row.seg.startSec) }}
+                      </button>
+                      <p class="min-w-0 flex-1 text-[13px] leading-6 text-ink">{{ row.seg.text }}</p>
+                    </div>
+                    <div v-if="row.frames.length" class="mt-2 flex gap-2 overflow-x-auto pb-1">
+                      <button
+                        v-for="f in row.frames"
+                        :key="f.id"
+                        class="relative shrink-0"
+                        :title="f.ocrText || '关键帧 ' + formatTs(f.timeSec)"
+                        @click="seekTo(f.timeSec)"
+                      >
+                        <img :src="f.ossKey" :alt="'第 ' + f.timeSec + 's 画面'" class="h-14 w-24 rounded-lg border border-line object-cover" />
+                        <span class="absolute bottom-0.5 right-0.5 rounded bg-black/60 px-1 text-[10px] text-white">{{ formatTs(f.timeSec) }}</span>
+                      </button>
+                    </div>
+                  </div>
+                  <p v-if="!(data.transcript.length || data.frames.length)" class="rounded-xl border border-dashed border-line py-8 text-center text-[13px] text-ink-2">
+                    未获得转写与关键帧数据
+                  </p>
+                </div>
+              </template>
             </div>
           </div>
         </div>
       </template>
-    </div>
 
-    <!-- 编辑弹窗（标题 / 学科） -->
-    <div
-      v-if="editMode"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-ink/25 px-4 backdrop-blur-sm"
-      @click.self="editMode = false"
-    >
-      <div class="w-full max-w-md rounded-3xl border border-line bg-white p-6 shadow-xl">
-        <div class="flex items-start justify-between">
-          <h2 class="text-[16px] font-semibold">编辑网课</h2>
-          <button
-            class="flex h-8 w-8 items-center justify-center rounded-lg text-ink-2 hover:bg-line/60 hover:text-ink"
-            title="关闭"
-            @click="editMode = false"
-          >
-            <X :size="16" />
-          </button>
-        </div>
-
-        <div class="mt-4 flex flex-col gap-4">
-          <label class="block">
-            <span class="mb-1 block text-[12px] text-ink-2">标题</span>
-            <input
-              v-model="editForm.title"
-              type="text"
-              class="w-full rounded-xl border border-line px-3 py-2 text-[14px] outline-none focus:border-primary"
-            />
-          </label>
-          <label class="block">
-            <span class="mb-1 block text-[12px] text-ink-2">学科</span>
-            <select
-              v-model="editForm.subject"
-              class="w-full rounded-xl border border-line bg-white px-3 py-2 text-[14px] outline-none focus:border-primary"
+      <!-- 编辑标题 / 学科弹窗 -->
+      <div
+        v-if="editMode"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-ink/25 px-4 backdrop-blur-sm"
+        @click.self="editMode = false"
+      >
+        <div class="w-full max-w-md rounded-3xl border border-line bg-white p-6 shadow-xl">
+          <div class="flex items-start justify-between">
+            <h2 class="text-[16px] font-semibold">编辑网课</h2>
+            <button
+              class="flex h-8 w-8 items-center justify-center rounded-lg text-ink-2 hover:bg-line/60 hover:text-ink"
+              title="关闭"
+              @click="editMode = false"
             >
-              <option value="">不选择</option>
-              <option v-for="s in SUBJECTS" :key="s" :value="s">{{ s }}</option>
-            </select>
-          </label>
-        </div>
+              <X :size="16" />
+            </button>
+          </div>
 
-        <div class="mt-5 flex justify-end gap-2">
-          <button
-            class="rounded-xl border border-line px-4 py-2 text-[14px] text-ink hover:bg-line/60"
-            @click="editMode = false"
-          >
-            取消
-          </button>
-          <button
-            class="rounded-xl bg-primary px-4 py-2 text-[14px] text-white hover:opacity-90 disabled:opacity-50"
-            :disabled="saving || !editForm.title.trim()"
-            @click="saveEdit"
-          >
-            保存修改
-          </button>
+          <div class="mt-4 flex flex-col gap-4">
+            <label class="block">
+              <span class="mb-1 block text-[12px] text-ink-2">标题</span>
+              <input
+                v-model="editForm.title"
+                type="text"
+                class="w-full rounded-xl border border-line px-3 py-2 text-[14px] outline-none focus:border-primary"
+              />
+            </label>
+            <label class="block">
+              <span class="mb-1 block text-[12px] text-ink-2">学科</span>
+              <select
+                v-model="editForm.subject"
+                class="w-full rounded-xl border border-line bg-white px-3 py-2 text-[14px] outline-none focus:border-primary"
+              >
+                <option value="">不选择</option>
+                <option v-for="s in SUBJECTS" :key="s" :value="s">{{ s }}</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="mt-5 flex justify-end gap-2">
+            <button
+              class="rounded-xl border border-line px-4 py-2 text-[14px] text-ink hover:bg-line/60"
+              @click="editMode = false"
+            >
+              取消
+            </button>
+            <button
+              class="rounded-xl bg-primary px-4 py-2 text-[14px] text-white hover:opacity-90 disabled:opacity-50"
+              :disabled="saving || !editForm.title.trim()"
+              @click="saveEdit"
+            >
+              保存修改
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -388,11 +581,24 @@ async function saveNoteEdit() {
 </template>
 
 <style scoped>
-@media (min-width: 64rem) {
-  .course-video-col {
-    width: 560px;
-    margin-left: auto;
-  }
+.study-view :deep(.ts-chip) {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.25rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 0.375rem;
+  background: #eff6ff;
+  color: #2563eb;
+  font-size: 12px;
+  cursor: pointer;
+  vertical-align: middle;
+}
+.study-view :deep(.ts-chip:hover) {
+  text-decoration: underline;
+}
+.study-view:empty::before {
+  content: '记录这一节课的感想与疑问…';
+  color: #9ca3af;
 }
 
 .note-view :deep(h1),

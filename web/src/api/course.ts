@@ -5,6 +5,7 @@ export interface CourseInfo {
   userId: number
   title: string
   subject?: string | null
+  studyNote?: string | null
   expectations?: string | null
   videoOssKey?: string | null
   videoSize?: number | null
@@ -77,7 +78,7 @@ export function getCourseDetail(id: number): Promise<CourseDetailData> {
   return request<CourseDetailData>({ method: 'GET', url: `/courses/${id}` })
 }
 
-export function updateCourse(id: number, data: { title?: string; subject?: string }): Promise<CourseInfo> {
+export function updateCourse(id: number, data: { title?: string; subject?: string; studyNote?: string }): Promise<CourseInfo> {
   return request<CourseInfo>({ method: 'PUT', url: `/courses/${id}`, data })
 }
 

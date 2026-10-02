@@ -29,6 +29,9 @@ public class Course {
     /** 用户期望（上传时填写，注入笔记生成提示词） */
     private String expectations;
 
+    /** 用户学习笔记（网课页随想，富文本 HTML，可选） */
+    private String studyNote;
+
     /** 视频在 OSS 上的对象键 */
     private String videoOssKey;
 
