@@ -1,14 +1,30 @@
 <script setup lang="ts">
+import { onMounted, onUnmounted } from 'vue'
 import { Menu } from 'lucide-vue-next'
 import { useUiStore } from '../stores/ui'
+import { useUserStore } from '../stores/user'
+import { useToastStore } from '../stores/toast'
 import IconRail from '../components/layout/IconRail.vue'
 import SidebarContent from '../components/layout/SidebarContent.vue'
+import ToastHost from '../components/ToastHost.vue'
 
 const ui = useUiStore()
+const userStore = useUserStore()
+const toast = useToastStore()
+
+onMounted(() => {
+  // 个人页面数据 + 网课任务状态轮询（任务完成 / 失败右上角通知）
+  userStore.loadMe()
+  toast.startTaskWatcher()
+})
+
+onUnmounted(() => {
+  toast.stopTaskWatcher()
+})
 </script>
 
 <template>
-  <div class="flex h-full overflow-hidden bg-white text-ink">
+  <div class="flex h-full overflow-hidden bg-surface text-ink">
     <!-- 图标栏：桌面端 -->
     <IconRail class="hidden md:flex" />
 
@@ -55,6 +71,9 @@ const ui = useUiStore()
         </router-view>
       </main>
     </div>
+
+    <!-- 全局轻提示：任务完成 / 失败通知 -->
+    <ToastHost />
   </div>
 </template>
 

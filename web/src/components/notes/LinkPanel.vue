@@ -194,7 +194,7 @@ async function confirmAdd() {
 
     <!-- 联系卡片列表 -->
     <div class="mt-3 flex flex-col gap-2">
-      <div v-for="link in links" :key="link.id" class="rounded-xl border border-line bg-white px-3 py-2.5">
+      <div v-for="link in links" :key="link.id" class="rounded-xl border border-line bg-surface px-3 py-2.5">
         <div class="flex items-start gap-2">
           <component :is="typeIcon(link.linkType)" :size="15" class="mt-1 shrink-0 text-ink-2" />
           <button class="min-w-0 flex-1 text-left" :title="TYPE_LABEL[link.linkType]" @click="emit('jump', link)">
@@ -245,7 +245,7 @@ async function confirmAdd() {
       class="fixed inset-0 z-50 flex items-center justify-center bg-ink/25 px-4 backdrop-blur-sm"
       @click.self="closeAdd"
     >
-      <div class="flex max-h-[80vh] w-full max-w-lg flex-col rounded-3xl border border-line bg-white p-6 shadow-xl">
+      <div class="flex max-h-[80vh] w-full max-w-lg flex-col rounded-3xl border border-line bg-surface p-6 shadow-xl">
         <div class="flex items-start justify-between">
           <div>
             <h2 class="flex items-center gap-1.5 text-[16px] font-semibold">
@@ -266,7 +266,7 @@ async function confirmAdd() {
             v-model="keyword"
             type="text"
             placeholder="搜索网课 / 题目 / 笔记…"
-            class="w-full rounded-xl border border-line bg-white py-2.5 pl-9 pr-3 text-[13px] text-ink outline-none focus:border-primary"
+            class="w-full rounded-xl border border-line bg-surface py-2.5 pl-9 pr-3 text-[13px] text-ink outline-none focus:border-primary"
           />
         </div>
 
@@ -274,9 +274,9 @@ async function confirmAdd() {
           <!-- 选中目标，补充说明后挂链 -->
           <div v-if="selected" class="rounded-xl border border-primary bg-primary-soft/40 p-3">
             <div class="flex items-center gap-2">
-              <span class="shrink-0 rounded border border-line bg-white px-1.5 py-0.5 text-[11px] text-ink-2">{{ TYPE_LABEL[selected.linkType] }}</span>
+              <span class="shrink-0 rounded border border-line bg-surface px-1.5 py-0.5 text-[11px] text-ink-2">{{ TYPE_LABEL[selected.linkType] }}</span>
               <span class="min-w-0 flex-1 truncate text-[13px] text-ink" :title="selected.title">{{ selected.title }}</span>
-              <button class="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-ink-2 hover:bg-white" title="重新选择" @click="selected = null">
+              <button class="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-ink-2 hover:bg-surface" title="重新选择" @click="selected = null">
                 <X :size="14" />
               </button>
             </div>
@@ -285,14 +285,14 @@ async function confirmAdd() {
               v-model="remarkDraft"
               type="text"
               placeholder="关联说明（可选）：这里和知识点的关系…"
-              class="mt-2.5 w-full rounded-lg border border-line bg-white px-2.5 py-2 text-[13px] outline-none focus:border-primary"
+              class="mt-2.5 w-full rounded-lg border border-line bg-surface px-2.5 py-2 text-[13px] outline-none focus:border-primary"
             />
             <input
               v-if="selected.linkType === 'course'"
               v-model="tsDraft"
               type="text"
               placeholder="跳转时间戳（可选），如 02:27"
-              class="mt-1.5 w-full rounded-lg border border-line bg-white px-2.5 py-2 text-[13px] outline-none focus:border-primary"
+              class="mt-1.5 w-full rounded-lg border border-line bg-surface px-2.5 py-2 text-[13px] outline-none focus:border-primary"
             />
             <p v-if="addError" class="mt-1.5 text-[12px] text-red-600">{{ addError }}</p>
             <button

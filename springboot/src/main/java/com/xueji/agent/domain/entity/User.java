@@ -35,7 +35,19 @@ public class User {
 
     private String avatarUrl;
 
+    /** 个人简介（选填） */
+    private String bio;
+
+    /** 界面主题：LIGHT / DARK */
+    private String theme;
+
+    /** 任务完成/失败通知开关：0 关 / 1 开 */
+    private Integer notifyTaskEnabled;
+
     private Integer status;
+
+    /** 0 正常 / 1 已注销 */
+    private Integer deleted;
 
     private LocalDateTime createdAt;
 

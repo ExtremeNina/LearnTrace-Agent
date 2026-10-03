@@ -296,14 +296,14 @@ const heightClass = computed(() => props.heightClass || 'h-[60vh]')
       v-if="!preview"
       ref="taRef"
       :value="modelValue"
-      class="w-full resize-y rounded-2xl border border-primary bg-white p-4 font-mono text-[13px] leading-6 text-ink outline-none"
+      class="w-full resize-y rounded-2xl border border-primary bg-surface p-4 font-mono text-[13px] leading-6 text-ink outline-none"
       :class="heightClass"
       @input="onInput"
     ></textarea>
     <div
       v-else
       ref="previewRef"
-      class="note-view w-full overflow-y-auto rounded-2xl border border-primary bg-white p-4 text-[14px] leading-7 text-ink"
+      class="note-view w-full overflow-y-auto rounded-2xl border border-primary bg-surface p-4 text-[14px] leading-7 text-ink"
       :class="heightClass"
       v-html="previewHtml"
       @click="onPreviewClick"

@@ -38,6 +38,9 @@ public class AuthServiceImpl implements AuthService {
         if (user == null || !BCrypt.checkpw(request.getPassword(), user.getPasswordHash())) {
             throw new BusinessException("用户名或密码错误");
         }
+        if (Integer.valueOf(1).equals(user.getDeleted())) {
+            throw new BusinessException("该账号已注销");
+        }
         StpUtil.login(user.getId());
         return StpUtil.getTokenInfo();
     }

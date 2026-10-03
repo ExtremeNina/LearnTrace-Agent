@@ -410,7 +410,7 @@ const timelineTicks = computed(() => {
                 ]"
                 :key="tab.key"
                 class="flex-1 rounded-lg py-1.5 text-[14px] transition-colors"
-                :class="activeTab === tab.key ? 'bg-white font-medium text-ink shadow-sm' : 'text-ink-2 hover:text-ink'"
+                :class="activeTab === tab.key ? 'bg-surface font-medium text-ink shadow-sm' : 'text-ink-2 hover:text-ink'"
                 @click="onTabChange(tab.key as 'note' | 'transcript')"
               >
                 {{ tab.label }}
@@ -456,7 +456,7 @@ const timelineTicks = computed(() => {
                     <Pencil :size="14" />
                     编辑 AI 笔记（Markdown 源码）
                   </button>
-                  <div class="note-view rounded-xl border border-line bg-white p-3 text-[14px] leading-7 text-ink" v-html="noteHtml" @click="onNoteClick"></div>
+                  <div class="note-view rounded-xl border border-line bg-surface p-3 text-[14px] leading-7 text-ink" v-html="noteHtml" @click="onNoteClick"></div>
                   <p v-if="!data.note" class="rounded-xl border border-dashed border-line py-8 text-center text-[13px] text-ink-2">
                     AI 笔记生成中，完成后展示在这里
                   </p>
@@ -490,7 +490,7 @@ const timelineTicks = computed(() => {
                 </div>
 
                 <div class="flex flex-col gap-2">
-                  <div v-for="row in segmentsWithFrames" :key="row.seg.id" class="rounded-xl border border-line bg-white px-3 py-2.5">
+                  <div v-for="row in segmentsWithFrames" :key="row.seg.id" class="rounded-xl border border-line bg-surface px-3 py-2.5">
                     <div class="flex gap-3">
                       <button class="shrink-0 pt-0.5 text-[12px] text-primary hover:underline" @click="seekTo(row.seg.startSec)">
                         {{ formatTs(row.seg.startSec) }}
@@ -526,7 +526,7 @@ const timelineTicks = computed(() => {
         class="fixed inset-0 z-50 flex items-center justify-center bg-ink/25 px-4 backdrop-blur-sm"
         @click.self="editMode = false"
       >
-        <div class="w-full max-w-md rounded-3xl border border-line bg-white p-6 shadow-xl">
+        <div class="w-full max-w-md rounded-3xl border border-line bg-surface p-6 shadow-xl">
           <div class="flex items-start justify-between">
             <h2 class="text-[16px] font-semibold">编辑网课</h2>
             <button
@@ -551,7 +551,7 @@ const timelineTicks = computed(() => {
               <span class="mb-1 block text-[12px] text-ink-2">学科</span>
               <select
                 v-model="editForm.subject"
-                class="w-full rounded-xl border border-line bg-white px-3 py-2 text-[14px] outline-none focus:border-primary"
+                class="w-full rounded-xl border border-line bg-surface px-3 py-2 text-[14px] outline-none focus:border-primary"
               >
                 <option value="">不选择</option>
                 <option v-for="s in SUBJECTS" :key="s" :value="s">{{ s }}</option>

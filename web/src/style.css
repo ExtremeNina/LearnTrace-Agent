@@ -1,6 +1,10 @@
 @import "tailwindcss";
 
-/* PRD §5 视觉规范：Light 主题 + 桌面端 AI 工作台（参照 ChatGPT 桌面版） */
+/* 类名驱动的暗色变体：html.dark 下启用 */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* PRD §5 视觉规范：Light 主题（默认）+ 桌面端 AI 工作台（参照 ChatGPT 桌面版）；
+   深色主题由 html.dark 翻转同名令牌实现，组件无需区分主题 */
 @theme {
   --color-ink: #0d0d0d;         /* 主文字 */
   --color-ink-2: #6b7280;       /* 次要文字 */
@@ -8,6 +12,18 @@
   --color-line: #e5e7eb;        /* 边框 / 分隔线 */
   --color-primary: #2563eb;     /* 强调色 */
   --color-primary-soft: #eff6ff; /* 选中 / 悬停浅底 */
+  --color-surface: #ffffff;     /* 卡片 / 弹层表面 */
+}
+
+/* 深色主题令牌翻转（个人页面偏好设置；写入 html.dark） */
+.dark {
+  --color-ink: #ececec;
+  --color-ink-2: #9ca3af;
+  --color-panel: #17181a;
+  --color-line: #2e3035;
+  --color-primary: #3b82f6;
+  --color-primary-soft: #1c2a45;
+  --color-surface: #1e1f23;
 }
 
 html,
@@ -16,9 +32,17 @@ body,
   height: 100%;
 }
 
+.dark body {
+  background: #17181a;
+}
+
 /* Sidebar 暖色渐变（参照 ChatGPT 桌面版侧栏：米白 → 白 → 淡蜜桃） */
 .panel-gradient {
   background: linear-gradient(165deg, #fbf6ee 0%, #ffffff 42%, #fdf2ea 100%);
+}
+
+.dark .panel-gradient {
+  background: linear-gradient(165deg, #1b1b1e 0%, #17181a 42%, #1e1b19 100%);
 }
 
 body {
@@ -68,12 +92,18 @@ body {
   padding: 0.1em 0.35em;
   font-size: 0.9em;
 }
+.dark .markdown-body code {
+  background: #26272b;
+}
 .markdown-body pre {
   background: #f3f4f6;
   border-radius: 8px;
   padding: 0.8em 1em;
   overflow-x: auto;
   margin: 0.6em 0;
+}
+.dark .markdown-body pre {
+  background: #26272b;
 }
 .markdown-body pre code {
   background: none;

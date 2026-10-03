@@ -70,7 +70,7 @@ function onSend() {
 </script>
 
 <template>
-  <div class="relative flex h-full flex-col bg-white">
+  <div class="relative flex h-full flex-col bg-surface">
     <!-- 消息流 / 空状态 -->
     <div ref="scrollBox" class="min-h-0 flex-1 overflow-y-auto">
       <div v-if="agent.messages.length === 0" class="flex h-full flex-col items-center justify-center gap-5 px-4">
@@ -157,7 +157,7 @@ function onSend() {
     <!-- 底部：居中输入框 -->
     <div class="shrink-0 px-4 pb-6">
       <div class="mx-auto w-full max-w-3xl">
-        <div class="rounded-[24px] border border-line bg-white px-4 py-3.5 shadow-sm focus-within:border-ink-2/50">
+        <div class="rounded-[24px] border border-line bg-surface px-4 py-3.5 shadow-sm focus-within:border-ink-2/50">
           <!-- 待发送图片预览位（截图中的图片位置） -->
           <div v-if="agent.pendingImage" class="mb-3 flex">
             <div class="relative">

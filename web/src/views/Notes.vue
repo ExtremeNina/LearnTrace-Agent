@@ -551,7 +551,7 @@ const groupPathOptions = computed(() => {
   <div class="flex h-full overflow-hidden">
     <!-- 左：分层树 -->
     <aside
-      class="w-72 shrink-0 flex-col border-l border-line bg-white md:flex"
+      class="w-72 shrink-0 flex-col border-l border-line bg-surface md:flex"
       :class="selectedId === null ? 'flex' : 'hidden'"
     >
       <div class="flex items-center justify-between px-4 pt-5 pb-2">
@@ -570,7 +570,7 @@ const groupPathOptions = computed(() => {
       </p>
 
       <!-- 内联新建输入 -->
-      <div v-if="creatingType" class="mx-3 mb-2 flex items-center gap-1.5 rounded-xl border border-primary bg-white px-2.5 py-1.5">
+      <div v-if="creatingType" class="mx-3 mb-2 flex items-center gap-1.5 rounded-xl border border-primary bg-surface px-2.5 py-1.5">
         <NotebookPen :size="14" class="text-ink-2" />
         <input
           id="new-name-input"
@@ -675,7 +675,7 @@ const groupPathOptions = computed(() => {
             <button class="flex h-7 w-7 items-center justify-center rounded-lg text-ink hover:bg-line/60" title="下划线" @mousedown.prevent @click="exec('underline')">
               <Underline :size="14" />
             </button>
-            <select class="h-7 rounded-lg border border-line bg-white px-1 text-[12px] text-ink outline-none" title="字号" @change="onFontSizeChange">
+            <select class="h-7 rounded-lg border border-line bg-surface px-1 text-[12px] text-ink outline-none" title="字号" @change="onFontSizeChange">
               <option value="2">小</option>
               <option value="3" selected>标准</option>
               <option value="5">大</option>
@@ -695,7 +695,7 @@ const groupPathOptions = computed(() => {
           </div>
           <select
             :class="editing && !isAiNote ? 'shrink-0' : 'ml-auto shrink-0'"
-            class="rounded-lg border border-line bg-white px-2 py-1 text-[12px] text-ink outline-none"
+            class="rounded-lg border border-line bg-surface px-2 py-1 text-[12px] text-ink outline-none"
             @change="onMoveChange"
           >
             <option value="" disabled selected>移动到分组…</option>
@@ -734,7 +734,7 @@ const groupPathOptions = computed(() => {
                 v-else
                 ref="editorRef"
                 class="note-view px-5 py-4 text-[14px] leading-7 text-ink outline-none focus:outline-none focus-visible:outline-none"
-                :class="editing ? 'rounded-xl bg-white shadow-[0_0_0_1.5px_rgba(59,130,246,0.45)]' : ''"
+                :class="editing ? 'rounded-xl bg-surface shadow-[0_0_0_1.5px_rgba(59,130,246,0.45)]' : ''"
                 :contenteditable="editing"
                 v-html="noteHtml"
               ></div>
@@ -745,7 +745,7 @@ const groupPathOptions = computed(() => {
 
             <!-- 知识联系（移动端折叠区；桌面端在右侧栏） -->
             <div v-if="!editing" class="ml-6 max-w-3xl px-4 pb-6 lg:hidden">
-              <details class="rounded-2xl border border-line bg-white px-4 py-3">
+              <details class="rounded-2xl border border-line bg-surface px-4 py-3">
                 <summary class="cursor-pointer text-[13px] font-semibold text-ink">
                   知识联系（{{ selectedNote.links.length }}）
                 </summary>

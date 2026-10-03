@@ -214,7 +214,7 @@ const pageLabel = computed(() => `第 ${page.value} / ${pages.value} 页 · 共 
         <div class="flex items-center gap-2 text-[13px]">
           <select
             v-model="subjectFilter"
-            class="rounded-lg border border-line bg-white px-2.5 py-1.5 outline-none focus:border-primary"
+            class="rounded-lg border border-line bg-surface px-2.5 py-1.5 outline-none focus:border-primary"
             @change="onFilterChange"
           >
             <option value="">全部学科</option>
@@ -251,7 +251,7 @@ const pageLabel = computed(() => `第 ${page.value} / ${pages.value} 页 · 共 
         <button
           v-for="r in records"
           :key="r.id"
-          class="flex items-start gap-3 rounded-2xl border border-line bg-white p-4 text-left transition-colors hover:border-ink-2/40"
+          class="flex items-start gap-3 rounded-2xl border border-line bg-surface p-4 text-left transition-colors hover:border-ink-2/40"
           @click="openDetail(r)"
         >
           <img
@@ -311,7 +311,7 @@ const pageLabel = computed(() => `第 ${page.value} / ${pages.value} 页 · 共 
       class="fixed inset-0 z-50 flex items-center justify-center bg-ink/25 px-4 backdrop-blur-sm"
       @click.self="active = null; editMode = false"
     >
-      <div class="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-line bg-white p-6 shadow-xl">
+      <div class="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-line bg-surface p-6 shadow-xl">
         <!-- 查看态 -->
         <template v-if="!editMode">
           <div class="flex items-start justify-between">
@@ -410,7 +410,7 @@ const pageLabel = computed(() => `第 ${page.value} / ${pages.value} 页 · 共 
               <span class="mb-1 block text-[12px] text-ink-2">学科</span>
               <select
                 v-model="editForm.subject"
-                class="w-full rounded-xl border border-line bg-white px-3 py-2 text-[14px] outline-none focus:border-primary"
+                class="w-full rounded-xl border border-line bg-surface px-3 py-2 text-[14px] outline-none focus:border-primary"
               >
                 <option value="">未分类</option>
                 <option v-for="s in SUBJECTS" :key="s" :value="s">{{ s }}</option>
@@ -481,7 +481,7 @@ const pageLabel = computed(() => `第 ${page.value} / ${pages.value} 页 · 共 
       class="fixed inset-0 z-[60] flex items-center justify-center bg-ink/25 px-4 backdrop-blur-sm"
       @click.self="similarOpen = false"
     >
-      <div class="w-full max-w-sm rounded-3xl border border-line bg-white p-6 shadow-xl">
+      <div class="w-full max-w-sm rounded-3xl border border-line bg-surface p-6 shadow-xl">
         <div class="flex items-start justify-between">
           <h3 class="flex items-center gap-1.5 text-[15px] font-semibold">
             <Sparkles :size="15" class="text-primary" />

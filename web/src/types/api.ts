@@ -23,10 +23,30 @@ export interface UserInfo {
   phone: string | null
   email: string | null
   avatarUrl: string | null
+  bio?: string | null
+  /** 界面主题：LIGHT / DARK */
+  theme?: 'LIGHT' | 'DARK'
+  /** 任务完成/失败通知开关 */
+  notifyTaskEnabled?: boolean
   status: number
+  deleted?: number
   createdAt: string
   updatedAt: string
 }
+
+/** 个人页面资料（GET/PUT /users/me 返回，对应后端 UserProfileVO） */
+export interface UserProfileInfo {
+  id: number
+  username: string
+  nickname: string | null
+  email: string | null
+  bio: string | null
+  avatarUrl: string | null
+  theme: 'LIGHT' | 'DARK'
+  notifyTaskEnabled: boolean
+  createdAt: string
+}
+
 
 /** 会话（对应后端 domain/entity/Conversation） */
 export interface ConversationInfo {

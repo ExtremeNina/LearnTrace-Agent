@@ -32,7 +32,7 @@ async function onSubmit() {
 <template>
   <!-- 居中弹窗样式：全屏遮罩 + 居中卡片 -->
   <div class="fixed inset-0 z-50 flex items-center justify-center bg-ink/25 px-4 backdrop-blur-sm">
-    <div class="w-full max-w-sm rounded-3xl border border-line bg-white p-8 shadow-xl">
+    <div class="w-full max-w-sm rounded-3xl border border-line bg-surface p-8 shadow-xl">
       <h1 class="text-center text-[22px] font-semibold">登录学迹</h1>
       <p class="mt-1 text-center text-[12px] text-ink-2">记录你与知识发生过什么</p>
 

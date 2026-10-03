@@ -250,7 +250,7 @@ async function batchDelete() {
             v-model="keyword"
             type="text"
             placeholder="按标题过滤…"
-            class="w-64 rounded-xl border border-line bg-white py-2 pl-9 pr-3 text-[13px] text-ink outline-none focus:border-primary"
+            class="w-64 rounded-xl border border-line bg-surface py-2 pl-9 pr-3 text-[13px] text-ink outline-none focus:border-primary"
           />
         </div>
         <div class="flex gap-1 rounded-xl bg-panel p-1">
@@ -263,7 +263,7 @@ async function batchDelete() {
             ]"
             :key="f.key"
             class="rounded-lg px-3.5 py-1.5 text-[13px] transition-colors"
-            :class="statusFilter === f.key ? 'bg-white font-medium text-ink shadow-sm' : 'text-ink-2 hover:text-ink'"
+            :class="statusFilter === f.key ? 'bg-surface font-medium text-ink shadow-sm' : 'text-ink-2 hover:text-ink'"
             @click="statusFilter = f.key as typeof statusFilter"
           >
             {{ f.label }}
@@ -271,7 +271,7 @@ async function batchDelete() {
         </div>
         <select
           v-model="subjectFilter"
-          class="rounded-xl border border-line bg-white px-3 py-2 text-[13px] text-ink outline-none focus:border-primary"
+          class="rounded-xl border border-line bg-surface px-3 py-2 text-[13px] text-ink outline-none focus:border-primary"
         >
           <option value="">全部学科</option>
           <option v-for="s in SUBJECTS" :key="s" :value="s">{{ s }}</option>
@@ -279,7 +279,7 @@ async function batchDelete() {
         <input
           v-model="dateFilter"
           type="date"
-          class="rounded-xl border border-line bg-white px-3 py-2 text-[13px] text-ink outline-none focus:border-primary"
+          class="rounded-xl border border-line bg-surface px-3 py-2 text-[13px] text-ink outline-none focus:border-primary"
         />
         <button
           v-if="dateFilter || subjectFilter"
@@ -295,7 +295,7 @@ async function batchDelete() {
         <div
           v-for="c in filtered"
           :key="c.id"
-          class="relative overflow-hidden rounded-2xl border bg-white transition-shadow"
+          class="relative overflow-hidden rounded-2xl border bg-surface transition-shadow"
           :class="[
             selectMode && selectable(c) && selectedIds.includes(c.id) ? 'border-primary ring-2 ring-primary/30' : 'border-line',
             c.status === 'SUCCESS' && !selectMode ? 'cursor-pointer hover:shadow-md' : 'opacity-95',
@@ -306,7 +306,7 @@ async function batchDelete() {
           <!-- 批量选择勾选框 -->
           <span
             v-if="selectMode && selectable(c)"
-            class="absolute right-1.5 top-1.5 z-20 flex h-6 w-6 items-center justify-center rounded-md border-2 bg-white/90"
+            class="absolute right-1.5 top-1.5 z-20 flex h-6 w-6 items-center justify-center rounded-md border-2 bg-surface/90"
             :class="selectedIds.includes(c.id) ? 'border-primary bg-primary text-white' : 'border-line'"
           >
             <Check v-if="selectedIds.includes(c.id)" :size="14" />
@@ -375,7 +375,7 @@ async function batchDelete() {
     <!-- 批量管理操作栏 -->
     <div
       v-if="selectMode"
-      class="fixed bottom-6 left-1/2 z-30 flex -translate-x-1/2 items-center gap-3 rounded-2xl border border-line bg-white px-4 py-2.5 shadow-lg"
+      class="fixed bottom-6 left-1/2 z-30 flex -translate-x-1/2 items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-2.5 shadow-lg"
     >
       <button
         class="rounded-lg px-2.5 py-1.5 text-[13px] text-ink-2 hover:bg-line/60 hover:text-ink"
@@ -397,7 +397,7 @@ async function batchDelete() {
     <!-- 上传弹窗 -->
     <template v-if="showUpload">
       <div class="fixed inset-0 z-40 bg-black/40" @click="showUpload = false" />
-      <div class="fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-line bg-white p-6 shadow-xl">
+      <div class="fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-line bg-surface p-6 shadow-xl">
         <div class="flex items-center justify-between">
           <h2 class="text-[16px] font-semibold text-ink">上传网课</h2>
           <button class="flex h-8 w-8 items-center justify-center rounded-lg text-ink-2 hover:bg-line/60" @click="showUpload = false">
@@ -433,7 +433,7 @@ async function batchDelete() {
             <label class="mb-1 block text-[12px] text-ink-2">学科（可选）</label>
             <select
               v-model="uploadSubject"
-              class="w-full rounded-xl border border-line bg-white px-3 py-2 text-[13px] text-ink outline-none focus:border-primary"
+              class="w-full rounded-xl border border-line bg-surface px-3 py-2 text-[13px] text-ink outline-none focus:border-primary"
             >
               <option value="">不选择</option>
               <option v-for="s in SUBJECTS" :key="s" :value="s">{{ s }}</option>

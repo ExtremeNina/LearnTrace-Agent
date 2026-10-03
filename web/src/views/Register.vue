@@ -42,7 +42,7 @@ async function onSubmit() {
 
 <template>
   <div class="flex h-full items-center justify-center bg-panel px-4">
-    <div class="w-full max-w-sm rounded-3xl border border-line bg-white p-8">
+    <div class="w-full max-w-sm rounded-3xl border border-line bg-surface p-8">
       <h1 class="text-center text-[22px] font-semibold">创建账号</h1>
       <p class="mt-1 text-center text-[12px] text-ink-2">开始记录你的学习轨迹</p>
 

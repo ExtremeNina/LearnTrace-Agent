@@ -1,13 +1,15 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import { House, History, CircleHelp, Settings, LogIn } from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../../stores/auth'
+import ProfileModal from '../ProfileModal.vue'
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 const showSettings = ref(false)
+const showProfile = ref(false)
 
 /** 未登录时从弹窗直达登录页（先清除失效 token，避免路由守卫拦截） */
 function goLogin() {
@@ -26,6 +28,29 @@ async function toggleSettings() {
 function closeSettings() {
   showSettings.value = false
 }
+
+/** 设置项 → 打开个人页面弹窗 */
+function openProfile() {
+  if (!auth.isLoggedIn) {
+    return
+  }
+  showSettings.value = false
+  showProfile.value = true
+}
+
+/** Ctrl+, / Cmd+, 打开个人页面 */
+function onGlobalKeydown(e: KeyboardEvent) {
+  if ((e.ctrlKey || e.metaKey) && e.key === ',') {
+    e.preventDefault()
+    if (auth.isLoggedIn) {
+      showSettings.value = false
+      showProfile.value = true
+    }
+  }
+}
+
+onMounted(() => window.addEventListener('keydown', onGlobalKeydown))
+onUnmounted(() => window.removeEventListener('keydown', onGlobalKeydown))
 </script>
 
 <template>
@@ -69,7 +94,7 @@ function closeSettings() {
     <!-- 设置弹窗：展示当前用户信息 -->
     <template v-if="showSettings">
       <div class="fixed inset-0 z-40" @click="closeSettings" />
-      <div class="absolute bottom-16 left-16 z-50 w-64 rounded-2xl border border-line bg-white p-4 shadow-lg">
+      <div class="absolute bottom-16 left-16 z-50 w-64 rounded-2xl border border-line bg-surface p-4 shadow-lg">
         <p class="text-[16px] font-medium text-ink">
           {{ auth.user?.nickname || auth.user?.username || (auth.userLoadFailed ? '未登录' : '加载中…') }}
         </p>
@@ -83,13 +108,17 @@ function closeSettings() {
         </button>
         <p v-if="auth.user" class="mt-0.5 text-[12px] text-ink-2">@{{ auth.user.username }}</p>
         <div class="my-3 h-px bg-line" />
-        <div class="flex items-center justify-between rounded-xl px-3 py-2 text-[14px] text-ink hover:bg-panel">
+        <button
+          class="flex w-full items-center justify-between rounded-xl px-3 py-2 text-[14px] text-ink hover:bg-panel"
+          :class="auth.user ? '' : 'pointer-events-none opacity-40'"
+          @click="openProfile"
+        >
           <span class="flex items-center gap-2.5">
             <Settings :size="16" class="text-ink-2" />
             设置
           </span>
           <span class="text-[12px] text-ink-2">Ctrl+,</span>
-        </div>
+        </button>
         <div
           v-if="auth.user"
           class="flex items-center justify-between rounded-xl px-3 py-2 text-[14px] text-ink-2"
@@ -99,5 +128,8 @@ function closeSettings() {
         </div>
       </div>
     </template>
+
+    <!-- 个人页面弹窗：资料 / 偏好 / 账号 -->
+    <ProfileModal v-model:open="showProfile" />
   </nav>
 </template>
