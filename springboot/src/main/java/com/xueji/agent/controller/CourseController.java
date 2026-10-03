@@ -88,4 +88,17 @@ public class CourseController {
         courseService.deleteByUser(userId, id);
         return Result.ok("已删除");
     }
+
+    /**
+     * 批量删除网课：处理中 / 不可删除的记录自动跳过
+     */
+    @PostMapping("/batch-delete")
+    public Result<String> batchDelete(@RequestBody List<Long> ids) {
+        Long userId = UserUtils.getCurrentLoginId();
+        int deleted = courseService.deleteByUserBatch(userId, ids);
+        if (deleted == ids.size()) {
+            return Result.ok("已删除 " + deleted + " 门网课");
+        }
+        return Result.ok("已删除 " + deleted + " 门网课，" + (ids.size() - deleted) + " 门跳过（处理中或不可删除）");
+    }
 }

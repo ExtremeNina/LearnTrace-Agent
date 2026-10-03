@@ -209,6 +209,24 @@ public class CourseServiceImpl implements CourseService {
     }
 
     @Override
+    public int deleteByUserBatch(Long userId, List<Long> courseIds) {
+        if (courseIds == null || courseIds.isEmpty()) {
+            return 0;
+        }
+        int deleted = 0;
+        for (Long courseId : courseIds) {
+            try {
+                deleteByUser(userId, courseId);
+                deleted++;
+            } catch (BusinessException e) {
+                // 处理中 / 不存在 / 非本人：跳过该条，不影响其余删除
+                log.info("批量删除跳过 courseId={},原因={}", courseId, e.getMessage());
+            }
+        }
+        return deleted;
+    }
+
+    @Override
     public int failStaleProcessing(long timeoutMinutes) {
         List<Course> stale = courseMapper.selectList(new QueryWrapper<Course>()
                 .eq("status", CourseStatus.PROCESSING)

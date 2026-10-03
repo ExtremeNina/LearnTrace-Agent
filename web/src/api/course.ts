@@ -89,3 +89,7 @@ export function retryCourse(id: number): Promise<void> {
 export function deleteCourse(id: number): Promise<void> {
   return request<void>({ method: 'DELETE', url: `/courses/${id}` })
 }
+
+export function batchDeleteCourses(ids: number[]): Promise<string> {
+  return request<string>({ method: 'POST', url: '/courses/batch-delete', data: ids })
+}

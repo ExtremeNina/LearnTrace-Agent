@@ -1,14 +1,15 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { Plus, AlertCircle, LoaderCircle, RotateCcw, Search, X } from 'lucide-vue-next'
-import { listCourses, uploadCourse, retryCourse } from '../api/course'
+import { Plus, AlertCircle, Check, LoaderCircle, RotateCcw, Search, Trash2, X } from 'lucide-vue-next'
+import { listCourses, uploadCourse, retryCourse, batchDeleteCourses } from '../api/course'
 import type { CourseInfo } from '../api/course'
 import { SUBJECTS } from '../constants/subjects'
 
 /**
  * 网课记录列表（PRD §3.2）：视频库式竖向卡片网格 + 上传弹窗（含"您希望的内容"）。
  * 数据来自后端 /courses；支持标题关键词、状态、日期与学科筛选，处理中的课程定时轮询状态。
+ * 支持批量管理模式：勾选多门网课一次性删除（处理中的不可选）。
  */
 const router = useRouter()
 const courses = ref<CourseInfo[]>([])
@@ -18,6 +19,11 @@ const statusFilter = ref<'ALL' | 'SUCCESS' | 'PROCESSING' | 'FAILED'>('ALL')
 const dateFilter = ref('')
 /** 按学科筛选，空为全部 */
 const subjectFilter = ref('')
+
+// 批量删除
+const selectMode = ref(false)
+const selectedIds = ref<number[]>([])
+const batchDeleting = ref(false)
 
 // 上传弹窗
 const showUpload = ref(false)
@@ -147,6 +153,65 @@ function openCourse(c: CourseInfo) {
     router.push(`/courses/${c.id}`)
   }
 }
+
+// ---- 批量删除 ----
+
+/** 只有处理完结（SUCCESS / FAILED）的网课可删，处理中的会与流水线并发冲突 */
+function selectable(c: CourseInfo): boolean {
+  return c.status === 'SUCCESS' || c.status === 'FAILED'
+}
+
+function toggleSelect(c: CourseInfo) {
+  if (!selectable(c)) {
+    return
+  }
+  const idx = selectedIds.value.indexOf(c.id)
+  if (idx >= 0) {
+    selectedIds.value.splice(idx, 1)
+  } else {
+    selectedIds.value.push(c.id)
+  }
+}
+
+function toggleSelectMode() {
+  selectMode.value = !selectMode.value
+  selectedIds.value = []
+}
+
+const selectableIds = computed(() => filtered.value.filter(selectable).map((c) => c.id))
+const allSelected = computed(
+  () => selectableIds.value.length > 0 && selectableIds.value.every((id) => selectedIds.value.includes(id))
+)
+
+function toggleSelectAll() {
+  if (allSelected.value) {
+    selectedIds.value = []
+  } else {
+    selectedIds.value = [...selectableIds.value]
+  }
+}
+
+async function batchDelete() {
+  const n = selectedIds.value.length
+  if (n === 0 || batchDeleting.value) {
+    return
+  }
+  if (!window.confirm(`确定删除选中的 ${n} 门网课吗？AI 笔记与相关记录会一并删除，视频文件不可恢复。`)) {
+    return
+  }
+  batchDeleting.value = true
+  try {
+    const message = await batchDeleteCourses([...selectedIds.value])
+    window.alert(message)
+    selectedIds.value = []
+    selectMode.value = false
+    await load()
+  } catch (e) {
+    window.alert(e instanceof Error ? e.message : '删除失败，请稍后重试')
+  } finally {
+    batchDeleting.value = false
+  }
+}
 </script>
 
 <template>
@@ -160,10 +225,21 @@ function openCourse(c: CourseInfo) {
             {{ courses.length }} 个网课 · {{ generatedCount }} 个已生成
           </span>
         </h1>
-        <button class="flex items-center gap-1.5 rounded-xl bg-primary px-3.5 py-2 text-[14px] text-white hover:opacity-90" @click="openUpload">
-          <Plus :size="16" />
-          上传视频
-        </button>
+        <div class="flex items-center gap-2">
+          <button
+            class="flex items-center gap-1.5 rounded-xl border px-3.5 py-2 text-[14px] transition-colors"
+            :class="selectMode ? 'border-primary bg-primary-soft text-primary' : 'border-line text-ink hover:bg-panel'"
+            @click="toggleSelectMode"
+          >
+            <Check v-if="selectMode" :size="16" />
+            <Trash2 v-else :size="16" />
+            {{ selectMode ? '退出批量管理' : '批量管理' }}
+          </button>
+          <button class="flex items-center gap-1.5 rounded-xl bg-primary px-3.5 py-2 text-[14px] text-white hover:opacity-90" @click="openUpload">
+            <Plus :size="16" />
+            上传视频
+          </button>
+        </div>
       </div>
 
       <!-- 过滤行 -->
@@ -219,10 +295,22 @@ function openCourse(c: CourseInfo) {
         <div
           v-for="c in filtered"
           :key="c.id"
-          class="overflow-hidden rounded-2xl border border-line bg-white transition-shadow"
-          :class="c.status === 'SUCCESS' ? 'cursor-pointer hover:shadow-md' : 'opacity-95'"
-          @click="openCourse(c)"
+          class="relative overflow-hidden rounded-2xl border bg-white transition-shadow"
+          :class="[
+            selectMode && selectable(c) && selectedIds.includes(c.id) ? 'border-primary ring-2 ring-primary/30' : 'border-line',
+            c.status === 'SUCCESS' && !selectMode ? 'cursor-pointer hover:shadow-md' : 'opacity-95',
+            selectMode && selectable(c) ? 'cursor-pointer' : '',
+          ]"
+          @click="selectMode ? toggleSelect(c) : openCourse(c)"
         >
+          <!-- 批量选择勾选框 -->
+          <span
+            v-if="selectMode && selectable(c)"
+            class="absolute right-1.5 top-1.5 z-20 flex h-6 w-6 items-center justify-center rounded-md border-2 bg-white/90"
+            :class="selectedIds.includes(c.id) ? 'border-primary bg-primary text-white' : 'border-line'"
+          >
+            <Check v-if="selectedIds.includes(c.id)" :size="14" />
+          </span>
           <div class="relative aspect-video bg-gradient-to-br from-panel to-primary-soft">
             <span
               v-if="c.subject"
@@ -282,6 +370,28 @@ function openCourse(c: CourseInfo) {
         <p class="text-[14px] text-ink-2">没有符合条件的网课</p>
         <p class="mt-1 text-[12px] text-ink-2">调整筛选条件，或点击右上角上传新视频</p>
       </div>
+    </div>
+
+    <!-- 批量管理操作栏 -->
+    <div
+      v-if="selectMode"
+      class="fixed bottom-6 left-1/2 z-30 flex -translate-x-1/2 items-center gap-3 rounded-2xl border border-line bg-white px-4 py-2.5 shadow-lg"
+    >
+      <button
+        class="rounded-lg px-2.5 py-1.5 text-[13px] text-ink-2 hover:bg-line/60 hover:text-ink"
+        @click="toggleSelectAll"
+      >
+        {{ allSelected ? '取消全选' : '全选（可删除项）' }}
+      </button>
+      <span class="text-[13px] text-ink-2">已选 {{ selectedIds.length }} 门</span>
+      <button
+        class="flex items-center gap-1.5 rounded-xl bg-red-500 px-3.5 py-2 text-[13px] text-white hover:opacity-90 disabled:opacity-40"
+        :disabled="selectedIds.length === 0 || batchDeleting"
+        @click="batchDelete"
+      >
+        <Trash2 :size="14" />
+        {{ batchDeleting ? '删除中…' : `删除所选（${selectedIds.length}）` }}
+      </button>
     </div>
 
     <!-- 上传弹窗 -->

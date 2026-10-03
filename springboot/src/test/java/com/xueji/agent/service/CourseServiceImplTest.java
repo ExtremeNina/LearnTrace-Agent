@@ -167,6 +167,26 @@ class CourseServiceImplTest {
         verify(aliUploadUtils, times(0)).deleteByPrefix(any());
     }
 
+    @Test
+    void deleteByUserBatch_shouldDeleteDeletableAndSkipRest() {
+        Course deletable = new Course().setId(15L).setUserId(1L).setDeleted(0).setStatus(CourseStatus.SUCCESS);
+        Course processing = new Course().setId(16L).setUserId(1L).setDeleted(0).setStatus(CourseStatus.PROCESSING);
+        Course foreign = new Course().setId(17L).setUserId(2L).setDeleted(0).setStatus(CourseStatus.SUCCESS);
+        when(courseMapper.selectById(15L)).thenReturn(deletable);
+        when(courseMapper.selectById(16L)).thenReturn(processing);
+        when(courseMapper.selectById(17L)).thenReturn(foreign);
+        when(courseMapper.updateById(any(Course.class))).thenReturn(1);
+        when(noteMapper.selectList(any())).thenReturn(List.of());
+
+        int deleted = service.deleteByUserBatch(1L, List.of(15L, 16L, 17L));
+
+        // 处理中与非本人的跳过（deleted 保持 0），可删的正常删除
+        assertEquals(1, deleted);
+        assertEquals(1, deletable.getDeleted());
+        assertEquals(0, processing.getDeleted());
+        assertEquals(0, foreign.getDeleted());
+    }
+
     // ---- 处理超时自愈 ----
 
     @Test

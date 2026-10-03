@@ -48,6 +48,11 @@ public interface CourseService {
     void deleteByUser(Long userId, Long courseId);
 
     /**
+     * 批量删除：逐个执行单删，处理中 / 不存在 / 非本人的记录跳过，返回成功删除的数量
+     */
+    int deleteByUserBatch(Long userId, List<Long> courseIds);
+
+    /**
      * 处理超时自愈：把长时间停留在 PROCESSING 的网课置为 FAILED
      * （流水线进程崩溃等中断场景，MQ 消息不重投），返回处理数量
      */
