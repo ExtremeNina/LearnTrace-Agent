@@ -32,6 +32,8 @@ onMounted(async () => {
   agent.ensureSocketConnected()
   // 刷新后恢复到上次的会话（本地无记录或会话已删除则保持新对话）
   await agent.restoreLastConversation()
+  // 跨页种子消息（题目详情页「生成相似题」）：切换目标会话后自动发出
+  await agent.applySeed()
 })
 
 watch(

@@ -33,7 +33,7 @@ public class QuestionSaveTool {
             String analysis,
             @ToolParam(description = "题目所属学科，根据题目内容判断，如：数学 / 语文 / 英语 / 物理 / 化学 / 生物 / 历史 / 地理 / 政治 / 计算机 / 其他", required = false)
             String subject,
-            @ToolParam(description = "仅当保存的相似题是基于 rag_search 召回的某道题生成时，提供该题的 ID（见召回结果中的题目ID）；其余情况留空", required = false)
+            @ToolParam(description = "仅当保存的相似题基于某道已有题目生成时，提供该题 ID（见 rag_search 结果中的题目ID，或对话中【原题】旁标注的来源题目ID）；其余情况留空", required = false)
             Long sourceQuestionId,
             ToolContext toolContext) {
         Long userId = ((Number) toolContext.getContext().get("userId")).longValue();

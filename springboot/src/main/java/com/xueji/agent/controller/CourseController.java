@@ -78,4 +78,14 @@ public class CourseController {
         courseService.retry(userId, id);
         return Result.ok("已重新提交处理");
     }
+
+    /**
+     * 删除网课（逻辑删除，连带清理 AI 笔记 / 知识联系 / RAG 向量 / OSS 文件）
+     */
+    @DeleteMapping("/{id}")
+    public Result<Void> delete(@PathVariable Long id) {
+        Long userId = UserUtils.getCurrentLoginId();
+        courseService.deleteByUser(userId, id);
+        return Result.ok("已删除");
+    }
 }

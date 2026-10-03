@@ -39,4 +39,17 @@ public interface CourseService {
      * 重试失败的处理任务
      */
     void retry(Long userId, Long courseId);
+
+    /**
+     * 删除网课（逻辑删除）：连带软删课程的 AI 笔记、清理指向该课的知识联系、
+     * 移除 RAG 转写向量，并异步删除 OSS 上的视频 / 音频 / 关键帧。
+     * 处理中（PROCESSING）的网课不可删除，避免与流水线并发写入
+     */
+    void deleteByUser(Long userId, Long courseId);
+
+    /**
+     * 处理超时自愈：把长时间停留在 PROCESSING 的网课置为 FAILED
+     * （流水线进程崩溃等中断场景，MQ 消息不重投），返回处理数量
+     */
+    int failStaleProcessing(long timeoutMinutes);
 }

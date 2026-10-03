@@ -32,6 +32,8 @@ export const useAgentStore = defineStore('agent', () => {
   /** 输入框上方待发送的图片（已上传到 OSS 的 URL），对应截图的预览位 */
   const pendingImage = ref('')
   const error = ref('')
+  /** 跨页种子消息（如题目详情页「生成相似题」），Agent 页挂载时消费并自动发出 */
+  const pendingSeed = ref<{ conversationId: number | null; content: string } | null>(null)
 
   function rememberActive(id: number | null) {
     if (id === null) {
@@ -124,6 +126,31 @@ export const useAgentStore = defineStore('agent', () => {
     } catch {
       rememberActive(null)
     }
+  }
+
+  /**
+   * 设置跨页种子消息（携带目标会话 ID，null 表示新开会话）
+   */
+  function setSeed(seed: { conversationId: number | null; content: string }) {
+    pendingSeed.value = seed
+  }
+
+  /**
+   * 消费种子消息：切换到目标会话（或新会话）后自动发出。
+   * WS 未就绪时由 agentSocket 暂存，OPEN 后冲刷，不丢失
+   */
+  async function applySeed() {
+    const seed = pendingSeed.value
+    if (!seed) {
+      return
+    }
+    pendingSeed.value = null
+    if (seed.conversationId != null) {
+      await openConversation(seed.conversationId)
+    } else {
+      startNew()
+    }
+    await send(seed.content)
   }
 
   /**
@@ -236,6 +263,8 @@ export const useAgentStore = defineStore('agent', () => {
     removeConversation,
     startNew,
     restoreLastConversation,
+    setSeed,
+    applySeed,
     uploadPendingImage,
     clearPendingImage,
     send,

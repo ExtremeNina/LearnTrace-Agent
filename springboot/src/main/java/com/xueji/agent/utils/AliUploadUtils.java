@@ -4,6 +4,9 @@ import com.aliyun.oss.ClientException;
 import com.aliyun.oss.OSS;
 import com.aliyun.oss.OSSClientBuilder;
 import com.aliyun.oss.OSSException;
+import com.aliyun.oss.model.ListObjectsV2Request;
+import com.aliyun.oss.model.ListObjectsV2Result;
+import com.aliyun.oss.model.OSSObjectSummary;
 import com.aliyun.oss.model.ObjectMetadata;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -16,6 +19,7 @@ import jakarta.annotation.PostConstruct;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
+import java.util.ArrayList;
 import java.util.Objects;
 import java.util.List;
 import java.util.UUID;
@@ -213,6 +217,40 @@ public class AliUploadUtils {
             ossClient.deleteObject(bucketName, filePath);
         } catch (OSSException | ClientException e) {
             log.error("无法从阿里云删除图片。错误消息： {} 错误类： {}", e.getMessage(), e.getClass());
+        } finally {
+            ossClient.shutdown();
+        }
+    }
+
+    /**
+     * 删除指定前缀下的所有对象（如 course/12/：视频、音频与关键帧），
+     * 供网课删除时清理 OSS 文件；列出为空时静默返回，删除失败仅记录日志
+     */
+    public void deleteByPrefix(final String keyPrefix) {
+        OSS ossClient = new OSSClientBuilder().build(endpoint, accessKey, secretKey);
+        try {
+            List<String> keys = new ArrayList<>();
+            String continuation = null;
+            do {
+                ListObjectsV2Request request = new ListObjectsV2Request(bucketName).withPrefix(keyPrefix);
+                if (continuation != null) {
+                    request.setContinuationToken(continuation);
+                }
+                ListObjectsV2Result listing = ossClient.listObjectsV2(request);
+                for (OSSObjectSummary summary : listing.getObjectSummaries()) {
+                    keys.add(summary.getKey());
+                }
+                continuation = listing.isTruncated() ? listing.getNextContinuationToken() : null;
+            } while (continuation != null);
+            if (keys.isEmpty()) {
+                return;
+            }
+            for (String key : keys) {
+                ossClient.deleteObject(bucketName, key);
+            }
+            log.info("OSS 前缀对象已删除, prefix={}, count={}", keyPrefix, keys.size());
+        } catch (OSSException | ClientException e) {
+            log.error("OSS 按前缀删除失败, prefix={}, 错误消息: {}", keyPrefix, e.getMessage());
         } finally {
             ossClient.shutdown();
         }

@@ -85,3 +85,7 @@ export function updateCourse(id: number, data: { title?: string; subject?: strin
 export function retryCourse(id: number): Promise<void> {
   return request<void>({ method: 'POST', url: `/courses/${id}/retry` })
 }
+
+export function deleteCourse(id: number): Promise<void> {
+  return request<void>({ method: 'DELETE', url: `/courses/${id}` })
+}

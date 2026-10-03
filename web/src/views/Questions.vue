@@ -1,17 +1,22 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { Camera, ImageOff, Pencil, Sparkles, Trash2, X } from 'lucide-vue-next'
 import * as questionApi from '../api/question'
+import * as conversationApi from '../api/conversation'
+import { useAgentStore } from '../stores/agent'
 import type { QuestionItemInfo } from '../types/api'
 import { SUBJECTS } from '../constants/subjects'
 import { renderMarkdown } from '../utils/markdown'
 
 /**
  * 题目记录（PRD §3.3 + §8）：拍照题目与 AI 生成的相似题合并列表（相似题标注「AI 生成」）、
- * 按日期与学科筛选、详情、编辑与删除
+ * 按日期与学科筛选、详情、编辑与删除、一键生成相似题
  */
 const PAGE_SIZE = 10
+
+const agentStore = useAgentStore()
+const router = useRouter()
 
 const records = ref<QuestionItemInfo[]>([])
 const loading = ref(false)
@@ -37,6 +42,10 @@ const editForm = reactive({
 
 const route = useRoute()
 
+/** 生成相似弹窗（PRD §8：在当前会话继续 / 创建新会话） */
+const similarOpen = ref(false)
+const generating = ref(false)
+
 onMounted(async () => {
   await load()
   // 支持从笔记知识联系跳转：/questions?open=3 → 自动弹出该题详情（知识联系只指向拍照题目）
@@ -48,6 +57,46 @@ onMounted(async () => {
     }
   }
 })
+
+/**
+ * 发起相似题生成（PRD §8）：把原题作为上下文写入跨页种子消息，
+ * 跳转 Agent 页自动发出；保存时模型凭「来源题目ID」回填 sourceQuestionId
+ */
+async function generateSimilar(mode: 'current' | 'new') {
+  const q = active.value
+  if (!q || generating.value) {
+    return
+  }
+  generating.value = true
+  error.value = ''
+  try {
+    const parts = [
+      '请基于下面这道题出一道同型的相似题：保持同一考点与难度，先给我题目让我作答，先不要公布解答。',
+      '',
+      '【原题】',
+      q.questionText ?? '（无题目文本）',
+    ]
+    if (q.correctAnswer) {
+      parts.push('', '【原题解答】', q.correctAnswer)
+    }
+    parts.push('', `（来源题目ID：${q.id}；用户确认保存相似题时请把它作为 sourceQuestionId 传入）`)
+
+    let conversationId: number | null = null
+    if (mode === 'current') {
+      // 最近活跃的会话；一个都没有时先创建
+      const list = await conversationApi.listConversations()
+      conversationId = list.length > 0 ? list[0].id : (await conversationApi.createConversation()).id
+    }
+    agentStore.setSeed({ conversationId, content: parts.join('\n') })
+    similarOpen.value = false
+    active.value = null
+    router.push({ name: 'agent' })
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : '发起失败，请稍后重试'
+  } finally {
+    generating.value = false
+  }
+}
 
 async function load() {
   loading.value = true
@@ -269,6 +318,15 @@ const pageLabel = computed(() => `第 ${page.value} / ${pages.value} 页 · 共 
             <h2 class="text-[16px] font-semibold">题目详情</h2>
             <div class="flex items-center gap-1">
               <button
+                v-if="active.source === 'photo'"
+                class="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[13px] text-primary hover:bg-primary-soft"
+                title="基于这道题生成相似题"
+                @click="similarOpen = true"
+              >
+                <Sparkles :size="14" />
+                生成相似题
+              </button>
+              <button
                 class="flex h-8 w-8 items-center justify-center rounded-lg text-ink-2 hover:bg-line/60 hover:text-ink"
                 title="编辑"
                 @click="startEdit"
@@ -415,6 +473,47 @@ const pageLabel = computed(() => `第 ${page.value} / ${pages.value} 页 · 共 
             </button>
           </div>
         </template>
+      </div>
+    </div>
+    <!-- 生成相似题：选择会话（PRD §8） -->
+    <div
+      v-if="similarOpen && active"
+      class="fixed inset-0 z-[60] flex items-center justify-center bg-ink/25 px-4 backdrop-blur-sm"
+      @click.self="similarOpen = false"
+    >
+      <div class="w-full max-w-sm rounded-3xl border border-line bg-white p-6 shadow-xl">
+        <div class="flex items-start justify-between">
+          <h3 class="flex items-center gap-1.5 text-[15px] font-semibold">
+            <Sparkles :size="15" class="text-primary" />
+            生成相似题
+          </h3>
+          <button
+            class="flex h-8 w-8 items-center justify-center rounded-lg text-ink-2 hover:bg-line/60 hover:text-ink"
+            title="关闭"
+            @click="similarOpen = false"
+          >
+            <X :size="16" />
+          </button>
+        </div>
+        <p class="mt-2 text-[13px] leading-6 text-ink-2">
+          Agent 会以「{{ excerpt(active.questionText) }}」为上下文出同型的相似题，确认满意后再保存。
+        </p>
+        <div class="mt-4 flex flex-col gap-2">
+          <button
+            class="rounded-xl border border-line px-4 py-2.5 text-[14px] text-ink hover:border-primary hover:bg-primary-soft/50 disabled:opacity-40"
+            :disabled="generating"
+            @click="generateSimilar('current')"
+          >
+            在当前会话继续
+          </button>
+          <button
+            class="rounded-xl bg-primary px-4 py-2.5 text-[14px] text-white hover:opacity-90 disabled:opacity-40"
+            :disabled="generating"
+            @click="generateSimilar('new')"
+          >
+            创建新会话
+          </button>
+        </div>
       </div>
     </div>
   </div>

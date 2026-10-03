@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, reactive, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import {
   Download, ArrowLeft, CircleCheck, LoaderCircle, Pencil, Save, X,
-  Bold, Italic, Underline, Clock,
+  Bold, Italic, Underline, Clock, Trash2,
 } from 'lucide-vue-next'
-import { getCourseDetail, updateCourse } from '../api/course'
+import { getCourseDetail, updateCourse, deleteCourse } from '../api/course'
 import type { CourseDetailData } from '../api/course'
 import { updateNoteContent } from '../api/note'
 import { renderNoteHtml } from '../utils/markdown'
@@ -19,6 +19,7 @@ import MdSourceEditor from '../components/notes/MdSourceEditor.vue'
  * 色彩与字号沿用全局规范，仅调整布局。
  */
 const route = useRoute()
+const router = useRouter()
 const courseId = Number(route.params.id)
 
 const data = ref<CourseDetailData | null>(null)
@@ -127,6 +128,18 @@ async function saveEdit() {
     editMode.value = false
   } finally {
     saving.value = false
+  }
+}
+
+async function removeCourse() {
+  if (!window.confirm('确定删除这门网课吗？AI 笔记与相关记录会一并删除，视频文件不可恢复。')) {
+    return
+  }
+  try {
+    await deleteCourse(courseId)
+    router.push({ name: 'courses' })
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : '删除失败，请稍后重试'
   }
 }
 
@@ -322,6 +335,14 @@ const timelineTicks = computed(() => {
             <button class="flex items-center gap-1.5 rounded-xl border border-line px-3 py-1.5 text-[13px] text-ink hover:bg-panel">
               <Download :size="15" />
               导出
+            </button>
+            <button
+              class="flex items-center gap-1.5 rounded-xl border border-line px-3 py-1.5 text-[13px] text-red-500 hover:bg-red-50"
+              title="删除网课"
+              @click="removeCourse"
+            >
+              <Trash2 :size="15" />
+              删除
             </button>
           </div>
         </div>

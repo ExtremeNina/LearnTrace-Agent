@@ -11,6 +11,8 @@ let listener: EventListener | null = null
 let lastToken = ''
 let attempts = 0
 let reconnectTimer: number | null = null
+/** 连接建立中 / 重连中暂存的上行消息，OPEN 后按序冲刷（跨页发起的种子消息依赖此保证） */
+let outbox: ClientMessage[] = []
 
 export function connect(token: string, onEvent: EventListener) {
   listener = onEvent
@@ -25,6 +27,13 @@ function open() {
   socket = new WebSocket(`ws://localhost:9090/ws/agent?token=${encodeURIComponent(lastToken)}`)
   socket.onopen = () => {
     attempts = 0
+    if (outbox.length > 0) {
+      const pending = outbox
+      outbox = []
+      for (const msg of pending) {
+        socket?.send(JSON.stringify(msg))
+      }
+    }
   }
   socket.onmessage = (e) => {
     if (listener) {
@@ -54,7 +63,9 @@ function scheduleReconnect() {
 export function sendMessage(msg: ClientMessage) {
   if (socket && socket.readyState === WebSocket.OPEN) {
     socket.send(JSON.stringify(msg))
+    return
   }
+  outbox.push(msg)
 }
 
 export function close() {

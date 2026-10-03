@@ -1,6 +1,7 @@
 package com.xueji.agent.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.xueji.agent.ai.RagIngestService;
 import com.xueji.agent.domain.enums.CourseStatus;
 import com.xueji.agent.common.MqKeys;
 import com.xueji.agent.common.OwnershipCheck;
@@ -8,13 +9,16 @@ import com.xueji.agent.domain.dto.CourseUpdateDto;
 import com.xueji.agent.domain.entity.Course;
 import com.xueji.agent.domain.entity.CourseFrame;
 import com.xueji.agent.domain.entity.CourseTranscriptSegment;
+import com.xueji.agent.domain.entity.Note;
+import com.xueji.agent.domain.entity.NoteLink;
 import com.xueji.agent.exception.BusinessException;
 import com.xueji.agent.mapper.CourseFrameMapper;
 import com.xueji.agent.mapper.CourseMapper;
 import com.xueji.agent.mapper.CourseTranscriptSegmentMapper;
+import com.xueji.agent.mapper.NoteLinkMapper;
 import com.xueji.agent.mapper.NoteMapper;
-import com.xueji.agent.domain.entity.Note;
 import com.xueji.agent.service.CourseService;
+import com.xueji.agent.utils.AliUploadUtils;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
@@ -29,6 +33,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ThreadPoolExecutor;
 
 @Slf4j
 @Service
@@ -48,6 +53,18 @@ public class CourseServiceImpl implements CourseService {
 
     @Resource
     private NoteMapper noteMapper;
+
+    @Resource
+    private NoteLinkMapper noteLinkMapper;
+
+    @Resource
+    private RagIngestService ragIngestService;
+
+    @Resource
+    private AliUploadUtils aliUploadUtils;
+
+    @Resource(name = "courseExecutor")
+    private ThreadPoolExecutor courseExecutor;
 
     @Resource
     private RabbitTemplate rabbitTemplate;
@@ -160,6 +177,60 @@ public class CourseServiceImpl implements CourseService {
                 .set("tempPath", "")
                 .toString();
         rabbitTemplate.convertAndSend(MqKeys.COURSE_EXCHANGE, MqKeys.COURSE_PROCESS_ROUTING, payload);
+    }
+
+    @Override
+    public void deleteByUser(Long userId, Long courseId) {
+        Course course = checkOwnership(userId, courseId);
+        if (CourseStatus.PROCESSING.equals(course.getStatus())) {
+            throw new BusinessException("网课正在处理中，暂不能删除；可等处理完成或失败后再删除");
+        }
+        course.setDeleted(1).setUpdatedAt(LocalDateTime.now());
+        courseMapper.updateById(course);
+
+        // 课程的 AI 笔记是派生产物，随课程一并软删并移出向量库
+        List<Note> aiNotes = noteMapper.selectList(new QueryWrapper<Note>()
+                .eq("course_id", courseId)
+                .eq("source_type", 1));
+        for (Note note : aiNotes) {
+            note.setDeleted(1).setUpdatedAt(LocalDateTime.now());
+            noteMapper.updateById(note);
+            ragIngestService.removeNote(note.getId());
+        }
+        // 其他笔记指向该课程的知识联系一并清理
+        noteLinkMapper.delete(new QueryWrapper<NoteLink>()
+                .eq("link_type", "course")
+                .eq("target_id", courseId));
+        // 转写分段向量移出 RAG
+        ragIngestService.removeCourseTranscripts(courseId);
+        // OSS 上的视频 / 音频 / 关键帧按前缀异步删除（网络 IO，不阻塞请求）
+        courseExecutor.execute(() -> aliUploadUtils.deleteByPrefix("course/" + courseId + "/"));
+        log.info("网课已删除, courseId={}, aiNotes={}, userId={}", courseId, aiNotes.size(), userId);
+    }
+
+    @Override
+    public int failStaleProcessing(long timeoutMinutes) {
+        List<Course> stale = courseMapper.selectList(new QueryWrapper<Course>()
+                .eq("status", CourseStatus.PROCESSING)
+                .eq("deleted", 0)
+                .lt("updated_at", LocalDateTime.now().minusMinutes(timeoutMinutes)));
+        for (Course course : stale) {
+            course.setStatus(CourseStatus.FAILED)
+                    .setErrorMsg("处理超时（任务中断），请重试")
+                    .setUpdatedAt(LocalDateTime.now());
+            courseMapper.updateById(course);
+        }
+        if (!stale.isEmpty()) {
+            StringBuilder ids = new StringBuilder();
+            for (Course course : stale) {
+                if (ids.length() > 0) {
+                    ids.append(',');
+                }
+                ids.append(course.getId());
+            }
+            log.warn("网课处理超时自愈, courseIds={}, 置为 FAILED", ids);
+        }
+        return stale.size();
     }
 
     private Course checkOwnership(Long userId, Long courseId) {
