@@ -4,12 +4,14 @@ import { useRouter } from 'vue-router'
 import DOMPurify from 'dompurify'
 import {
   Bold, Italic, Underline, Paintbrush, Highlighter, Eraser, Save, X,
-  NotebookPen, Download, PencilLine,
+  NotebookPen, Download, PencilLine, GraduationCap, Check,
   ArrowLeft, FolderPlus, FolderInput, FolderTree,
 } from 'lucide-vue-next'
 import TreeNode from '../components/notes/TreeNode.vue'
 import MdSourceEditor from '../components/notes/MdSourceEditor.vue'
 import LinkPanel from '../components/notes/LinkPanel.vue'
+import { getReviewStatus, addReviewCard } from '../api/review'
+import { useToastStore } from '../stores/toast'
 import type { TreeNodeData } from '../types/notes'
 import {
   createGroup, createNote, deleteNote, getNoteDetail, getNoteTree,
@@ -277,17 +279,39 @@ async function deleteNoteLeaf(noteId: number) {
 const selectedId = ref<number | null>(null)
 const selectedDetail = ref<NoteDetailInfo | null>(null)
 const router = useRouter()
+const toast = useToastStore()
 
 const selectedNote = computed(() => selectedDetail.value)
+
+/** 复习队列状态（打开笔记时查询，null = 查询中） */
+const noteInReview = ref<boolean | null>(null)
 
 async function openNote(id: number) {
   // 切换笔记时退出编辑态，避免编辑状态与未保存草稿被带进另一篇笔记
   editing.value = false
   selectedDetail.value = await getNoteDetail(id)
   selectedId.value = id
+  noteInReview.value = null
+  getReviewStatus('note', id)
+    .then((v) => (noteInReview.value = v))
+    .catch(() => (noteInReview.value = null))
   // 手动笔记且尚无内容（新建 / 未书写过）：自动进入编辑态，免去先找编辑按钮
   if (isManualEmpty(selectedDetail.value)) {
     startEdit()
+  }
+}
+
+/** 加入今日复习队列（复习页的抽卡来源之一） */
+async function addNoteToReview() {
+  if (selectedId.value === null || noteInReview.value) {
+    return
+  }
+  try {
+    await addReviewCard('note', selectedId.value)
+    noteInReview.value = true
+    toast.push('已加入今日复习')
+  } catch (e) {
+    toast.push(e instanceof Error ? e.message : '加入复习失败', 'error')
   }
 }
 
@@ -626,6 +650,18 @@ const groupPathOptions = computed(() => {
             <p class="text-[12px] text-ink-2">{{ selectedNote.source }} · 更新于 {{ selectedNote.updatedAt }}</p>
           </div>
           <div class="ml-auto flex shrink-0 items-center gap-2">
+            <!-- 加入复习队列 -->
+            <button
+              class="flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-[13px]"
+              :class="noteInReview ? 'border-green-300 text-green-600' : 'border-line text-ink hover:bg-panel'"
+              :disabled="noteInReview !== false"
+              :title="noteInReview ? '已在复习队列' : '加入今日复习队列'"
+              @click="addNoteToReview"
+            >
+              <Check v-if="noteInReview" :size="15" />
+              <GraduationCap v-else :size="15" />
+              {{ noteInReview ? '已加入复习' : '加入复习' }}
+            </button>
             <!-- AI 笔记：编辑按钮（Markdown 源码修订） -->
             <button
               v-if="isAiNote"

@@ -40,6 +40,7 @@ class CourseServiceImplTest {
     private NoteMapper noteMapper;
     private NoteLinkMapper noteLinkMapper;
     private RagIngestService ragIngestService;
+    private ReviewService reviewService;
     private AliUploadUtils aliUploadUtils;
     private RabbitTemplate rabbitTemplate;
     private CourseServiceImpl service;
@@ -50,6 +51,7 @@ class CourseServiceImplTest {
         noteMapper = mock(NoteMapper.class);
         noteLinkMapper = mock(NoteLinkMapper.class);
         ragIngestService = mock(RagIngestService.class);
+        reviewService = mock(ReviewService.class);
         aliUploadUtils = mock(AliUploadUtils.class);
         rabbitTemplate = mock(RabbitTemplate.class);
         ThreadPoolExecutor courseExecutor = mock(ThreadPoolExecutor.class);
@@ -66,6 +68,7 @@ class CourseServiceImplTest {
         ReflectionTestUtils.setField(service, "aliUploadUtils", aliUploadUtils);
         ReflectionTestUtils.setField(service, "courseExecutor", courseExecutor);
         ReflectionTestUtils.setField(service, "rabbitTemplate", rabbitTemplate);
+        ReflectionTestUtils.setField(service, "reviewService", reviewService);
     }
 
     @Test

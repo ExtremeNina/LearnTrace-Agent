@@ -18,6 +18,7 @@ import com.xueji.agent.mapper.CourseTranscriptSegmentMapper;
 import com.xueji.agent.mapper.NoteLinkMapper;
 import com.xueji.agent.mapper.NoteMapper;
 import com.xueji.agent.service.CourseService;
+import com.xueji.agent.service.ReviewService;
 import com.xueji.agent.utils.AliUploadUtils;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -59,6 +60,9 @@ public class CourseServiceImpl implements CourseService {
 
     @Resource
     private RagIngestService ragIngestService;
+
+    @Resource
+    private ReviewService reviewService;
 
     @Resource
     private AliUploadUtils aliUploadUtils;
@@ -188,7 +192,7 @@ public class CourseServiceImpl implements CourseService {
         course.setDeleted(1).setUpdatedAt(LocalDateTime.now());
         courseMapper.updateById(course);
 
-        // 课程的 AI 笔记是派生产物，随课程一并软删并移出向量库
+        // 课程的 AI 笔记是派生产物，随课程一并软删并移出向量库与复习队列
         List<Note> aiNotes = noteMapper.selectList(new QueryWrapper<Note>()
                 .eq("course_id", courseId)
                 .eq("source_type", 1));
@@ -196,6 +200,7 @@ public class CourseServiceImpl implements CourseService {
             note.setDeleted(1).setUpdatedAt(LocalDateTime.now());
             noteMapper.updateById(note);
             ragIngestService.removeNote(note.getId());
+            reviewService.removeBySource(userId, "note", note.getId());
         }
         // 其他笔记指向该课程的知识联系一并清理
         noteLinkMapper.delete(new QueryWrapper<NoteLink>()

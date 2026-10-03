@@ -16,6 +16,7 @@ import com.xueji.agent.mapper.MessageMapper;
 import com.xueji.agent.mapper.QuestionRecordMapper;
 import com.xueji.agent.mapper.SimilarQuestionMapper;
 import com.xueji.agent.service.QuestionService;
+import com.xueji.agent.service.ReviewService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -52,6 +53,9 @@ public class QuestionServiceImpl implements QuestionService {
 
     @Resource
     private RagIngestService ragIngestService;
+
+    @Resource
+    private ReviewService reviewService;
 
     @Override
     public boolean saveFromConversation(Long userId, Long conversationId, String source, Long sourceQuestionId,
@@ -184,6 +188,7 @@ public class QuestionServiceImpl implements QuestionService {
             similar.setUpdatedAt(LocalDateTime.now());
             similarQuestionMapper.updateById(similar);
             ragIngestService.removeSimilar(id);
+            reviewService.removeBySource(userId, "similar", id);
             return;
         }
 
@@ -192,6 +197,7 @@ public class QuestionServiceImpl implements QuestionService {
         record.setUpdatedAt(LocalDateTime.now());
         questionRecordMapper.updateById(record);
         questionVectorStoreService.remove(id);
+        reviewService.removeBySource(userId, "question", id);
     }
 
     /**

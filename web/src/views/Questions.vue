@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Camera, ImageOff, Pencil, Sparkles, Trash2, X } from 'lucide-vue-next'
+import { BookmarkPlus, Camera, Check, ImageOff, Pencil, Sparkles, Trash2, X } from 'lucide-vue-next'
 import * as questionApi from '../api/question'
 import * as conversationApi from '../api/conversation'
+import * as reviewApi from '../api/review'
 import { useAgentStore } from '../stores/agent'
+import { useToastStore } from '../stores/toast'
 import type { QuestionItemInfo } from '../types/api'
 import { SUBJECTS } from '../constants/subjects'
 import { renderMarkdown } from '../utils/markdown'
@@ -16,6 +18,7 @@ import { renderMarkdown } from '../utils/markdown'
 const PAGE_SIZE = 10
 
 const agentStore = useAgentStore()
+const toast = useToastStore()
 const router = useRouter()
 
 const records = ref<QuestionItemInfo[]>([])
@@ -45,6 +48,8 @@ const route = useRoute()
 /** 生成相似弹窗（PRD §8：在当前会话继续 / 创建新会话） */
 const similarOpen = ref(false)
 const generating = ref(false)
+/** 复习队列状态（详情打开时查询，null = 查询中） */
+const inReview = ref<boolean | null>(null)
 
 onMounted(async () => {
   await load()
@@ -57,6 +62,32 @@ onMounted(async () => {
     }
   }
 })
+
+function openDetail(record: QuestionItemInfo) {
+  active.value = record
+  editMode.value = false
+  // 查询复习队列状态（photo / similar 两类来源都支持加入复习）
+  inReview.value = null
+  reviewApi
+    .getReviewStatus(record.source === 'similar_ai' ? 'similar' : 'question', record.id)
+    .then((v) => (inReview.value = v))
+    .catch(() => (inReview.value = null))
+}
+
+/** 加入今日复习队列（加入即可在复习页刷到） */
+async function addToReview() {
+  const q = active.value
+  if (!q || inReview.value) {
+    return
+  }
+  try {
+    await reviewApi.addReviewCard(q.source === 'similar_ai' ? 'similar' : 'question', q.id)
+    inReview.value = true
+    toast.push('已加入今日复习')
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : '加入复习失败'
+  }
+}
 
 /**
  * 发起相似题生成（PRD §8）：把原题作为上下文写入跨页种子消息，
@@ -135,11 +166,6 @@ function goPage(target: number) {
   }
   page.value = target
   load()
-}
-
-function openDetail(record: QuestionItemInfo) {
-  active.value = record
-  editMode.value = false
 }
 
 function startEdit() {
@@ -317,6 +343,17 @@ const pageLabel = computed(() => `第 ${page.value} / ${pages.value} 页 · 共 
           <div class="flex items-start justify-between">
             <h2 class="text-[16px] font-semibold">题目详情</h2>
             <div class="flex items-center gap-1">
+              <button
+                class="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[13px]"
+                :class="inReview ? 'text-green-600' : 'text-ink-2 hover:bg-line/60 hover:text-ink'"
+                :disabled="inReview !== false"
+                :title="inReview ? '已在复习队列' : '加入今日复习队列'"
+                @click="addToReview"
+              >
+                <Check v-if="inReview" :size="14" />
+                <BookmarkPlus v-else :size="14" />
+                {{ inReview ? '已加入复习' : '加入复习' }}
+              </button>
               <button
                 v-if="active.source === 'photo'"
                 class="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[13px] text-primary hover:bg-primary-soft"

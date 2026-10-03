@@ -13,6 +13,7 @@ import com.xueji.agent.mapper.NoteLinkMapper;
 import com.xueji.agent.mapper.NoteMapper;
 import com.xueji.agent.mapper.QuestionRecordMapper;
 import com.xueji.agent.service.NoteService;
+import com.xueji.agent.service.ReviewService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -53,6 +54,9 @@ public class NoteServiceImpl implements NoteService {
 
     @Resource
     private RagIngestService ragIngestService;
+
+    @Resource
+    private ReviewService reviewService;
 
     // ---- 树 ----
 
@@ -264,9 +268,10 @@ public class NoteServiceImpl implements NoteService {
                     .or()
                     .eq("link_type", "note")
                     .in("target_id", noteIds));
-            // 被删笔记（含分组级联的叶子笔记）同步移出向量库
+            // 被删笔记（含分组级联的叶子笔记）同步移出向量库与复习队列
             for (Long noteId : noteIds) {
                 ragIngestService.removeNote(noteId);
+                reviewService.removeBySource(userId, "note", noteId);
             }
         }
     }

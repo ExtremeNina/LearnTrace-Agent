@@ -53,6 +53,9 @@ class NoteServiceImplTest {
     @Mock
     private RagIngestService ragIngestService;
 
+    @Mock
+    private com.xueji.agent.service.ReviewService reviewService;
+
     @InjectMocks
     private NoteServiceImpl service;
 

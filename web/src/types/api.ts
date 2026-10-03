@@ -47,6 +47,29 @@ export interface UserProfileInfo {
   createdAt: string
 }
 
+/** 复习卡（对应后端 ReviewCardVO；内容按 cardType 实时组装） */
+export interface ReviewCardInfo {
+  id: number
+  cardType: 'question' | 'similar' | 'note'
+  refId: number
+  frontText: string | null
+  backText: string | null
+  analysis: string | null
+  imageUrl: string | null
+  dueAt: string
+  intervalDays: number
+  reps: number
+  lapses: number
+}
+
+/** 复习统计（对应后端 /review/stats） */
+export interface ReviewStatsInfo {
+  dueCount: number
+  total: number
+  reviewedToday: number
+}
+
+
 
 /** 会话（对应后端 domain/entity/Conversation） */
 export interface ConversationInfo {

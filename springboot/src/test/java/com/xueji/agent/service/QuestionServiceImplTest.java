@@ -46,6 +46,7 @@ class QuestionServiceImplTest {
     private ConversationMapper conversationMapper;
     private MessageMapper messageMapper;
     private QuestionVectorStoreService questionVectorStoreService;
+    private ReviewService reviewService;
     private RagIngestService ragIngestService;
     private QuestionServiceImpl service;
 
@@ -56,6 +57,7 @@ class QuestionServiceImplTest {
         conversationMapper = mock(ConversationMapper.class);
         messageMapper = mock(MessageMapper.class);
         questionVectorStoreService = mock(QuestionVectorStoreService.class);
+        reviewService = mock(ReviewService.class);
         ragIngestService = mock(RagIngestService.class);
         service = new QuestionServiceImpl();
         ReflectionTestUtils.setField(service, "questionRecordMapper", questionRecordMapper);
@@ -63,6 +65,7 @@ class QuestionServiceImplTest {
         ReflectionTestUtils.setField(service, "conversationMapper", conversationMapper);
         ReflectionTestUtils.setField(service, "messageMapper", messageMapper);
         ReflectionTestUtils.setField(service, "questionVectorStoreService", questionVectorStoreService);
+        ReflectionTestUtils.setField(service, "reviewService", reviewService);
         ReflectionTestUtils.setField(service, "ragIngestService", ragIngestService);
     }
 
