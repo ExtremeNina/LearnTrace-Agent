@@ -38,3 +38,25 @@
 - 单元：ReviewServiceImplTest（加卡去重与恢复重置 / 分组拒绝 / 非法类型 / 今日队列组装含来源已删跳过 / 评分更新 + 流水 / 统计 / 移除 / 级联）
 - 端到端冒烟：`node web/test-review-smoke.mjs`（一次性账号全流程 20 断言：加卡 / 去重 / 队列组装 / 评分推进与重置 / 统计 / 删除级联 / 移出恢复）
 - 人工：复习页刷卡全流程（键盘快捷键）、删除笔记后复习角标与队列变化
+
+## 每日简报（路线图 P0-2，2026-10-03 完成）
+
+### 职责与业务
+/review 页顶部"今日简报"卡片：LLM 把学习统计翻译成三段式诊断（本周做了什么 → 薄弱主题 → 下周建议）；启动时若有待复习卡，右上角 toast 轻推一次（每天最多一次，受个人页面通知开关控制）。Agent 工具 get_learning_status（B07 起步）与简报共用 LearningStatsService 统计口径。
+
+### 边界
+- 输入：`GET /briefing/today`（惰性生成）、`POST /briefing/refresh`（强制刷新）
+- 输出：daily_briefing 表（UNIQUE(user_id, brief_date)，stats_json 快照 + LLM 正文）
+- 统计口径（LearningStatsService，确定性查询）：dueToday / totalCards / reviewedThisWeek / againThisWeek / notesCreatedThisWeek / coursesTotal / coursesSuccess / weakCards（本周生疏卡 Top5，含题干与错因）
+- 生成：generationChatClient（无对话工具、无记忆的专用 ChatClient）+ AgentPrompts.BRIEFING_PROMPT；统计是代码算的，LLM 只做归纳措辞，不编造
+- 提醒：前端 MainLayout 启动时查 /review/stats，dueCount>0 且当天未提醒且通知开关开启 → toast；localStorage 记录当天已提醒
+
+### 不做（边界外）
+- 服务端主动推送 / 邮件（WS 推送能力已有，等真实使用节奏）
+- 独立仪表盘页（简报卡片即迷你仪表盘，验证需求后再立项）
+- learning_record 依赖的时长类统计（等学习轨迹数据层）
+
+### 测试方法
+- 单元：BriefingServiceImplTest（惰性生成幂等 / 强刷重生成 / 用户消息携带统计 JSON）、LearningStatsServiceImplTest（计数口径 / 薄弱卡去重与来源已删剔除 / 上限 5）
+- 端到端冒烟：`node web/test-briefing-smoke.mjs`（真实 LLM，8 断言）
+- 人工：/review 页简报卡生成与刷新；改个人页面通知开关后提醒不再出现

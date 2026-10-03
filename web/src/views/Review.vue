@@ -1,14 +1,15 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { Check, GraduationCap, LoaderCircle } from 'lucide-vue-next'
+import { Check, GraduationCap, LoaderCircle, RefreshCw, Sun } from 'lucide-vue-next'
 import * as reviewApi from '../api/review'
-import type { ReviewCardInfo, ReviewStatsInfo } from '../types/api'
+import { getTodayBriefing, refreshBriefing } from '../api/briefing'
+import type { BriefingInfo, ReviewCardInfo, ReviewStatsInfo } from '../types/api'
 import type { ReviewGrade } from '../api/review'
 import { renderMarkdown } from '../utils/markdown'
 
 /**
- * 今日待复习（路线图 P0-1）：统计首屏 → 卡片流（翻面 → 三档评分）→ 完成态。
+ * 今日待复习（路线图 P0-1）：统计首屏（含每日简报）→ 卡片流（翻面 → 三档评分）→ 完成态。
  * 调度由后端 ReviewScheduler（SM-2 简化版）负责，页面只负责呈现与评分。
  */
 const router = useRouter()
@@ -21,6 +22,12 @@ const queue = ref<ReviewCardInfo[]>([])
 const index = ref(0)
 const flipped = ref(false)
 const submitting = ref(false)
+
+// 每日简报（惰性生成：首次打开触发 LLM，可能有数秒等待）
+const briefing = ref<BriefingInfo | null>(null)
+const briefingLoading = ref(false)
+const briefingError = ref('')
+const briefingRefreshing = ref(false)
 
 const current = computed(() => queue.value[index.value] ?? null)
 const typeLabel = computed(() => {
@@ -42,10 +49,36 @@ async function load() {
   try {
     stats.value = await reviewApi.getReviewStats()
     phase.value = 'stats'
+    // 简报异步加载（惰性生成可能耗时数秒，不阻塞统计首屏）
+    loadBriefing()
   } catch (e) {
     error.value = e instanceof Error ? e.message : '加载失败，请稍后重试'
   } finally {
     loading.value = false
+  }
+}
+
+async function loadBriefing() {
+  briefingLoading.value = true
+  briefingError.value = ''
+  try {
+    briefing.value = await getTodayBriefing()
+  } catch (e) {
+    briefingError.value = e instanceof Error ? e.message : '简报生成失败，可点击刷新重试'
+  } finally {
+    briefingLoading.value = false
+  }
+}
+
+async function refreshBriefingCard() {
+  briefingRefreshing.value = true
+  briefingError.value = ''
+  try {
+    briefing.value = await refreshBriefing()
+  } catch (e) {
+    briefingError.value = e instanceof Error ? e.message : '刷新失败，请稍后重试'
+  } finally {
+    briefingRefreshing.value = false
   }
 }
 
@@ -126,7 +159,37 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
           <GraduationCap :size="20" class="text-primary" />
           今日待复习
         </h1>
-        <div class="mt-6 grid grid-cols-3 gap-4">
+
+        <!-- 每日简报 -->
+        <div class="mt-5 rounded-2xl border border-line bg-surface p-5">
+          <div class="flex items-center justify-between">
+            <h2 class="flex items-center gap-2 text-[14px] font-semibold text-ink">
+              <Sun :size="15" class="text-primary" />
+              今日简报
+              <span v-if="briefing?.briefDate" class="text-[12px] font-normal text-ink-2">{{ briefing.briefDate }}</span>
+            </h2>
+            <button
+              class="flex items-center gap-1 rounded-lg px-2 py-1 text-[12px] text-ink-2 hover:bg-line/60 hover:text-ink"
+              :disabled="briefingRefreshing"
+              @click="refreshBriefingCard"
+            >
+              <RefreshCw :size="12" :class="briefingRefreshing ? 'animate-spin' : ''" />
+              重新生成
+            </button>
+          </div>
+          <div v-if="briefingLoading" class="mt-3 flex items-center gap-2 text-[13px] text-ink-2">
+            <LoaderCircle :size="14" class="animate-spin" />
+            正在为你生成今日简报…
+          </div>
+          <p v-else-if="briefingError" class="mt-3 text-[12px] text-red-600">{{ briefingError }}</p>
+          <div
+            v-else-if="briefing?.content"
+            class="markdown-body mt-2 text-[13px] leading-6 text-ink"
+            v-html="renderMarkdown(briefing.content)"
+          ></div>
+        </div>
+
+        <div class="mt-4 grid grid-cols-3 gap-4">
           <div class="rounded-2xl border border-line bg-surface p-5 text-center">
             <p class="text-[26px] font-semibold text-primary">{{ stats.dueCount }}</p>
             <p class="mt-1 text-[12px] text-ink-2">待复习</p>

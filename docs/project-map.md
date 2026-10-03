@@ -21,6 +21,7 @@ LJ-Agent/
 - 切片三（网课）**基本完成**：上传→MQ→FFmpeg→ASR 分片转写→批量帧 OCR→LLM 笔记生成入库全链路已用 3 个真实视频（约 10 分钟/个）验证 SUCCESS；列表/详情三标签/在线编辑；网课删除（批量）与处理超时自愈。AI 笔记确认环节搁置（后期功能）。
 - 横向能力：RAG 统一向量化（题目 q: / 相似题 sq: / 笔记分块 / 转写分段，带来源标记）+ 水位补漏定时任务，真实回填 32 条验证；个人页面（头像/昵称/邮箱/简介、浅色深色主题、任务完成失败通知、改密/登出/注销）端到端冒烟 14 断言通过。
 - 复习系统 MVP 完成（2026-10-03）：统一复习队列（题目/相似题/笔记）+ SM-2 简化版调度 + 今日待复习独立入口（/review），端到端冒烟 20 断言通过。
+- 每日简报完成（2026-10-03）：惰性生成（当天首次访问触发 LLM 并落库缓存）+ /review 页顶部简报卡 + 启动时复习提醒 toast（每天一次，受通知偏好控制）+ Agent 工具 get_learning_status；真实 LLM 冒烟 8 断言通过（生成 350 字 / 缓存 0.01s）。
 - 已知遗留：Redis db1 与其他项目共用且 sa-token 键前缀相同（`sa-token:`），他项目 token 可通过本系统鉴权——B06 搁置期间接受，公开部署前改 `token-name` 隔离；对话图片上传的 OSS 配置走 git 忽略的本地配置文件方案（endpoint=武汉 lr 区）；`uploadChatImage` 只捕获 IOException、前端 Agent.vue 未渲染上传失败提示（早期记录，未复核）。
 
 ## 后端模块索引（springboot/src/main/java/com/xueji/agent/）
@@ -31,7 +32,7 @@ LJ-Agent/
 | 题目记录与相似题 RAG | QuestionController/ServiceImpl、ai/tool/QuestionSaveTool、RagSearchTool、impl/QuestionVectorStoreService、ai/RagIngestService | 拍照题与相似题双表存储（question_record + similar_question）、合并列表、生成相似题入口、统一向量化（q:/sq: 前缀）、rag_search 来源标记召回 | docs/modules/questions-rag.md |
 | 视频转写流水线 | CourseController/ServiceImpl、impl/CoursePipelineService、mq/CourseProcessConsumer、ai/tool/QwenAsrTool、PaddleOcrTool、ai/NoteGenerationService | 上传→MQ→FFmpeg→ASR→帧 OCR→LLM 笔记；失败重试；删除（批量）与连带清理；处理超时自愈；标题/学科/学习笔记编辑 | docs/modules/video-pipeline.md |
 | 笔记整理与知识联系 | NoteController/ServiceImpl | 5 层分组树、双轨编辑（AI=md / 手动=HTML）、知识联系挂链与说明、级联删除、笔记向量化钩子 | docs/modules/notes-wiki.md |
-| 复习系统 | ReviewController/ServiceImpl、ReviewScheduler（SM-2 简化版纯函数） | 统一复习队列（题目/相似题/笔记）：加卡、今日队列、三档评分调度、统计；来源删除级联移出 | docs/modules/review.md |
+| 复习系统与每日简报 | ReviewController/ServiceImpl、ReviewScheduler（SM-2 简化版纯函数）、BriefingController/ServiceImpl、LearningStatsService、task/CourseWatchScheduler | 统一复习队列（题目/相似题/笔记）：加卡、今日队列、三档评分调度、统计；来源删除级联移出；每日简报（惰性 LLM 生成）与学习状态快照（Agent 工具 get_learning_status）；处理超时自愈 | docs/modules/review.md |
 | 用户与个人页面 | UserController/ServiceImpl、AuthController/AuthServiceImpl | 登录注册（Sa-Token）、资料（头像/昵称/邮箱/简介）、偏好（主题/任务通知）、改密、注销（逻辑删除 + 登录拦截） | docs/modules/infrastructure.md |
 | 基础设施 | FileController、config/*（SpringAIConfig 等）、utils/*、common/* | 图片上传 OSS、AI 装配（ChatClient/记忆/工具/Embedding/VectorStore）、线程池、CORS/WS 配置、键名与归属校验收口 | docs/modules/infrastructure.md |
 | 定时任务 | task/CleanupScheduler、RagRepairScheduler、CourseWatchScheduler | 会话 30 天清理；RAG 水位补漏（首轮全量）；网课处理超时自愈（并入 M1/M2/M3 文档） | （并入各模块文档） |
@@ -62,6 +63,7 @@ LJ-Agent/
 | note / note_link | 笔记树与知识联系 | 笔记逻辑删除；note_link 物理删除（分组级联时双向清理） |
 | user | 用户（bio / theme / notify_task_enabled / deleted） | 注销为逻辑删除（deleted），登录拦截 |
 | review_card / review_log | 复习卡（调度状态）与评分流水 | 复习卡逻辑删除（移出队列）；来源实体删除时级联移出 |
+| daily_briefing | 每日学习简报（惰性生成，当天缓存） | 物理删除不适用（随账号保留） |
 | invite_code / learning_record / async_task 等 | 预留 | 未接线（learning_record 属学习轨迹待办） |
 
 ## 数据库操作
@@ -84,6 +86,7 @@ LJ-Agent/
 * `node web/test-profile-smoke.mjs` —— 个人页面全生命周期（一次性账号：注册 → 资料 → 偏好 → 改密 → 注销 → 复登拒绝），14 断言
 * `node web/test-ws.mjs` —— WS 对话连接与发送
 * `node web/test-review-smoke.mjs` —— 复习系统全流程（加卡/评分调度/级联），20 断言
+* `node web/test-briefing-smoke.mjs` —— 每日简报（惰性生成/缓存幂等/强制刷新），8 断言
 
 ## 外部服务
 
@@ -97,4 +100,4 @@ LJ-Agent/
 
 ## 测试
 
-后端 132 个单元测试（15 个测试类：Mockito 单测 + FFmpeg 真实调用用例）；前端 `npm run build` 类型检查；Node 冒烟脚本三条（见上）。全链路人工验证：网课流水线 3 个真实视频、WS 对话（web/test-ws.mjs）、RAG 相似题闭环、个人页面全生命周期（web/test-profile-smoke.mjs）。各模块使用的测试方法详见 docs/modules/。
+后端 139 个单元测试（16 个测试类：Mockito 单测 + FFmpeg 真实调用用例）；前端 `npm run build` 类型检查；Node 冒烟脚本四条（见上）。全链路人工验证：网课流水线 3 个真实视频、WS 对话（web/test-ws.mjs）、RAG 相似题闭环、个人页面全生命周期（web/test-profile-smoke.mjs）。各模块使用的测试方法详见 docs/modules/。

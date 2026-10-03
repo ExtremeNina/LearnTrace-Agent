@@ -2,6 +2,7 @@ package com.xueji.agent.config;
 
 import com.xueji.agent.ai.memory.RedisChatMemoryRepository;
 import com.xueji.agent.ai.tool.AliyunOcrTool;
+import com.xueji.agent.ai.tool.LearningStatusTool;
 import com.xueji.agent.ai.tool.OcrTool;
 import com.xueji.agent.ai.tool.PaddleOcrTool;
 import com.xueji.agent.ai.tool.QwenAsrTool;
@@ -196,15 +197,33 @@ public class SpringAIConfig {
         return new RagSearchTool(questionVectorStore);
     }
 
+    /**
+     * 学习状态查询工具（路线图 P0-2 / B07 起步）：个人简报与对话共用同一统计快照
+     */
+    @Bean
+    public LearningStatusTool learningStatusTool(com.xueji.agent.service.LearningStatsService learningStatsService) {
+        return new LearningStatusTool(learningStatsService);
+    }
+
     @Bean
     public ChatClient chatClient(ChatClient.Builder chatClientBuilder,
                                  Advisor messageChatMemoryAdvisor,
                                  Advisor loggerAdvisor,
                                  QuestionSaveTool questionSaveTool,
-                                 RagSearchTool ragSearchTool) {
+                                 RagSearchTool ragSearchTool,
+                                 LearningStatusTool learningStatusTool) {
         return chatClientBuilder
                 .defaultAdvisors(messageChatMemoryAdvisor, loggerAdvisor)
-                .defaultTools(questionSaveTool, ragSearchTool)
+                .defaultTools(questionSaveTool, ragSearchTool, learningStatusTool)
                 .build();
+    }
+
+    /**
+     * 生成类专用 ChatClient（AI 笔记 / 每日简报）：不挂对话工具、不挂记忆——
+     * 这些是一次性生成任务，挂对话工具后模型可能调用需要 ToolContext 的工具导致生成失败
+     */
+    @Bean
+    public ChatClient generationChatClient(ChatClient.Builder chatClientBuilder) {
+        return chatClientBuilder.build();
     }
 }

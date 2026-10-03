@@ -12,7 +12,6 @@ import com.xueji.agent.mapper.NoteMapper;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -28,7 +27,7 @@ import java.util.List;
 @Service
 public class NoteGenerationService {
 
-    @Resource
+    @Resource(name = "generationChatClient")
     private ChatClient chatClient;
 
     @Resource
@@ -78,11 +77,11 @@ public class NoteGenerationService {
     public String generate(Course course, List<CourseTranscriptSegment> transcript,
                            List<CourseFrame> frames, int durationSec) {
         String userContent = buildUserContent(transcript, frames, course.getExpectations(), durationSec);
+        // 使用生成类专用 ChatClient（无对话工具、无记忆）：一次性生成任务，
+        // 且默认工具链中含需要 ToolContext 的工具，缺上下文会导致生成失败
         String markdown = chatClient.prompt()
                 .system(AgentPrompts.COURSE_TRANSCRIPT_PROMPT)
                 .user(userContent)
-                // 独立会话空间：笔记生成的上下文不与用户对话混用
-                .advisors(advisorSpec -> advisorSpec.param(ChatMemory.CONVERSATION_ID, "course-note-" + course.getId()))
                 .call()
                 .content();
         if (markdown == null || markdown.isBlank()) {

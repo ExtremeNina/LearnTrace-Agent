@@ -47,6 +47,14 @@ export interface UserProfileInfo {
   createdAt: string
 }
 
+/** 每日学习简报（对应后端 BriefingVO） */
+export interface BriefingInfo {
+  briefDate: string
+  content: string
+  stats: Record<string, number | string | unknown[]>
+  generatedAt: string
+}
+
 /** 复习卡（对应后端 ReviewCardVO；内容按 cardType 实时组装） */
 export interface ReviewCardInfo {
   id: number

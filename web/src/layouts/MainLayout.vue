@@ -4,6 +4,7 @@ import { Menu } from 'lucide-vue-next'
 import { useUiStore } from '../stores/ui'
 import { useUserStore } from '../stores/user'
 import { useToastStore } from '../stores/toast'
+import * as reviewApi from '../api/review'
 import IconRail from '../components/layout/IconRail.vue'
 import SidebarContent from '../components/layout/SidebarContent.vue'
 import ToastHost from '../components/ToastHost.vue'
@@ -12,15 +13,39 @@ const ui = useUiStore()
 const userStore = useUserStore()
 const toast = useToastStore()
 
-onMounted(() => {
+const REMIND_KEY = 'xj_review_reminded'
+
+onMounted(async () => {
   // 个人页面数据 + 网课任务状态轮询（任务完成 / 失败右上角通知）
   userStore.loadMe()
   toast.startTaskWatcher()
+  // 主动复习提醒：有到期卡且当天未提醒过时轻推一次（受个人页面的任务通知开关控制）
+  await remindReview()
 })
 
 onUnmounted(() => {
   toast.stopTaskWatcher()
 })
+
+async function remindReview() {
+  try {
+    const today = new Date().toISOString().slice(0, 10)
+    if (localStorage.getItem(REMIND_KEY) === today) {
+      return
+    }
+    const user = await userStore.loadMe()
+    if (user?.notifyTaskEnabled === false) {
+      return
+    }
+    const stats = await reviewApi.getReviewStats()
+    if (stats.dueCount > 0) {
+      localStorage.setItem(REMIND_KEY, today)
+      toast.push(`有 ${stats.dueCount} 张卡片该复习了，要现在开始吗？`)
+    }
+  } catch {
+    // 提醒失败静默
+  }
+}
 </script>
 
 <template>
