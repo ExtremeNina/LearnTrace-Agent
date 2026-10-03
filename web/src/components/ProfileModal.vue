@@ -201,7 +201,8 @@ const initial = computed(() => (form.nickname || auth.user?.username || '?').sli
 
 <template>
   <div v-if="open" class="fixed inset-0 z-[70] flex items-center justify-center bg-ink/25 px-4 backdrop-blur-sm" @click.self="close">
-    <div class="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-3xl border border-line bg-surface p-6 shadow-xl">
+    <!-- 弹窗尺寸与拍照记录的题目详情弹窗一致（max-w-2xl / max-h-[85vh]） -->
+    <div class="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-line bg-surface p-6 shadow-xl">
       <!-- 头 -->
       <div class="flex items-center justify-between">
         <h2 class="text-[16px] font-semibold text-ink">个人设置</h2>
