@@ -34,7 +34,8 @@ LJ-Agent/
 | 题目记录与相似题 RAG | QuestionController/ServiceImpl、ai/tool/QuestionSaveTool、RagSearchTool、impl/QuestionVectorStoreService、ai/RagIngestService | 拍照题与相似题双表存储（question_record + similar_question）、合并列表、生成相似题入口、统一向量化（q:/sq: 前缀）、rag_search 来源标记召回 | docs/modules/questions-rag.md |
 | 视频转写流水线 | CourseController/ServiceImpl、impl/CoursePipelineService、mq/CourseProcessConsumer、ai/tool/QwenAsrTool、PaddleOcrTool、ai/NoteGenerationService | 上传→MQ→FFmpeg→ASR→帧 OCR→LLM 笔记；失败重试；删除（批量）与连带清理；处理超时自愈；标题/学科/学习笔记编辑 | docs/modules/video-pipeline.md |
 | 笔记整理与知识联系 | NoteController/ServiceImpl | 5 层分组树、双轨编辑（AI=md / 手动=HTML）、知识联系挂链与说明、级联删除、笔记向量化钩子 | docs/modules/notes-wiki.md |
-| 复习系统与每日简报 | ReviewController/ServiceImpl、ReviewScheduler（SM-2 简化版纯函数）、BriefingController/ServiceImpl、LearningStatsService、task/CourseWatchScheduler | 统一复习队列（题目/相似题/笔记）：加卡、今日队列、三档评分调度、统计；来源删除级联移出；每日简报（惰性 LLM 生成）与学习状态快照（Agent 工具 get_learning_status）；处理超时自愈 | docs/modules/review.md |
+| 复习系统与每日简报 | ReviewController/ServiceImpl、ReviewScheduler（SM-2 简化版纯函数）、BriefingController/ServiceImpl、LearningStatsService、task/CourseWatchScheduler | 统一复习队列（题目/相似题/笔记）：加卡（单条/批量）、今日队列、三档评分调度、统计；来源删除级联移出；每日简报（惰性 LLM 生成）与学习状态快照（Agent 工具 get_learning_status）；处理超时自愈 | docs/modules/review.md |
+| 练习 / 测验模式 | QuizController/ServiceImpl | 从题库（question_record + similar_question）按学科/时间段/来源随机抽题组卷（无状态，不建会话表）；错题经批量加卡沉淀进复习队列 | docs/modules/quiz.md |
 | 模型管理 | AiModelController/ServiceImpl、config/ChatClientFactory | 用户自建 OpenAI 兼容模型配置（CRUD/脱敏/连接测试）、按模块的模型偏好（对话/网课笔记/简报）、ChatClient 按配置构建缓存与失效、解析链（用户偏好→系统默认） | docs/modules/infrastructure.md |
 | 用户与个人页面 | UserController/ServiceImpl、AuthController/AuthServiceImpl | 登录注册（Sa-Token）、资料（头像/昵称/邮箱/简介）、偏好（主题/任务通知）、改密、注销（逻辑删除 + 登录拦截） | docs/modules/infrastructure.md |
 | 基础设施 | FileController、config/*（SpringAIConfig 等）、utils/*、common/* | 图片上传 OSS、AI 装配（ChatClient/记忆/工具/Embedding/VectorStore）、线程池、CORS/WS 配置、键名与归属校验收口 | docs/modules/infrastructure.md |
@@ -45,7 +46,7 @@ LJ-Agent/
 
 | 模块 | 文件 | 业务 |
 | --- | --- | --- |
-| 页面 | views/Agent.vue、Review.vue、Questions.vue、Courses.vue、CourseDetail.vue、Notes.vue、Login/Register.vue | 对话 / 题目记录（含生成相似题）/ 网课列表（批量删除）与详情 / 笔记整理 / 登录注册 |
+| 页面 | views/Agent.vue、Review.vue、Quiz.vue、Questions.vue、Courses.vue、CourseDetail.vue、Notes.vue、Login/Register.vue | 对话 / 复习 / 练习测验（组卷-作答-错题入队）/ 题目记录（含生成相似题）/ 网课列表（批量删除）与详情 / 笔记整理 / 登录注册 |
 | 接口层 | api/*.ts | 后端接口封装（统一 Result 解包、sa-token 注入） |
 | 状态 | stores/agent.ts、auth.ts、user.ts、toast.ts、ui.ts | 对话流式状态与种子消息 / 登录态 / 资料与主题 / 轻提示与任务通知轮询 / 侧栏模式与收缩 |
 | 组件 | components/ProfileModal.vue、ToastHost.vue、layout/*、notes/* | 个人页面弹窗、全局轻提示、可收缩双模式侧栏（对话 / 学习资产）、笔记树与编辑器、知识联系面板 |

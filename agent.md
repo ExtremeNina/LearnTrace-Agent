@@ -11,7 +11,7 @@ AI 个人学习工作台：学习资产（网课 / 题目 / 笔记）+ 知识点
 | 要找什么 | 去哪 |
 | --- | --- |
 | 某功能在哪个模块实现、模块依赖什么 | `docs/project-map.md`（项目地图 · 模块索引） |
-| 某模块的输入输出边界、约束与已知偏差、测试方法 | `docs/modules/`：`agent-chat.md`（会话与对话）/ `questions-rag.md`（题目与 RAG）/ `video-pipeline.md`(网课流水线) / `notes-wiki.md`（笔记）/ `infrastructure.md`（认证 / 上传 / 配置 / 调度） |
+| 某模块的输入输出边界、约束与已知偏差、测试方法 | `docs/modules/`：`agent-chat.md`（会话与对话）/ `questions-rag.md`（题目与 RAG）/ `video-pipeline.md`(网课流水线) / `notes-wiki.md`（笔记）/ `review.md`（复习与简报）/ `quiz.md`（练习测验）/ `infrastructure.md`（认证 / 上传 / 配置 / 调度） |
 | 数据库表结构、SQL 执行与改表流程、环境重建、冒烟脚本 | `docs/project-map.md`（数据库操作 / 环境清单） |
 | 项目当前进度、已知遗留与运行注意事项 | `docs/project-map.md`（当前状态） |
 | 待办与优化项（B 编号）、状态与完成记录 | `docs/backlog/`（README 总表 + 各 B 号文件） |
