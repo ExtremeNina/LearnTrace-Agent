@@ -210,6 +210,12 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
         >
           {{ stats.dueCount === 0 ? '今天没有到期的卡片' : `开始复习（${stats.dueCount} 张）` }}
         </button>
+        <button
+          class="mt-3 w-full rounded-2xl border border-line py-2.5 text-[14px] text-ink hover:bg-panel"
+          @click="router.push('/quiz')"
+        >
+          做组练习测验（从题库抽题）
+        </button>
         <p class="mt-3 text-center text-[12px] text-ink-2">
           在题目 / 笔记详情页点「加入复习」，卡片会按记忆曲线出现在这里
         </p>

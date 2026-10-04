@@ -1,5 +1,7 @@
 package com.xueji.agent.service;
 
+import com.xueji.agent.domain.dto.AddReviewCardDto;
+import com.xueji.agent.domain.vo.ReviewBatchAddVO;
 import com.xueji.agent.domain.vo.ReviewCardVO;
 
 import java.util.List;
@@ -12,6 +14,11 @@ public interface ReviewService {
 
     /** 加入复习：校验来源实体归属与存在，去重（已在队列 / 已移出则恢复） */
     ReviewCardVO addCard(Long userId, String cardType, Long refId);
+
+    /**
+     * 批量加入（练习模式交卷后一键入队）：已在队列 / 无效项 / 来源不存在计为跳过，不中断整批
+     */
+    ReviewBatchAddVO addCardsBatch(Long userId, List<AddReviewCardDto> items);
 
     /** 今日队列：due_at 不晚于今天末尾的卡，按到期排序，上限 20 张 */
     List<ReviewCardVO> todayQueue(Long userId);

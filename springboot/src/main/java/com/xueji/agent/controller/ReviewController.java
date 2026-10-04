@@ -2,7 +2,9 @@ package com.xueji.agent.controller;
 
 import com.xueji.agent.common.Result;
 import com.xueji.agent.domain.dto.AddReviewCardDto;
+import com.xueji.agent.domain.dto.AddReviewCardsDto;
 import com.xueji.agent.domain.dto.ReviewGradeDto;
+import com.xueji.agent.domain.vo.ReviewBatchAddVO;
 import com.xueji.agent.domain.vo.ReviewCardVO;
 import com.xueji.agent.service.ReviewService;
 import com.xueji.agent.utils.UserUtils;
@@ -45,6 +47,12 @@ public class ReviewController {
     @PostMapping("/cards")
     public Result<ReviewCardVO> addCard(@RequestBody AddReviewCardDto dto) {
         return Result.data(reviewService.addCard(UserUtils.getCurrentLoginId(), dto.getCardType(), dto.getRefId()));
+    }
+
+    /** 批量加入复习（练习模式一键入队：已在队列 / 无效项跳过不中断） */
+    @PostMapping("/cards/batch")
+    public Result<ReviewBatchAddVO> addCardsBatch(@RequestBody AddReviewCardsDto dto) {
+        return Result.data(reviewService.addCardsBatch(UserUtils.getCurrentLoginId(), dto.getItems()));
     }
 
     /** 是否已在复习队列 */

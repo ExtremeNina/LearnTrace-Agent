@@ -3,11 +3,13 @@ package com.xueji.agent.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.xueji.agent.common.OwnershipCheck;
+import com.xueji.agent.domain.dto.AddReviewCardDto;
 import com.xueji.agent.domain.entity.Note;
 import com.xueji.agent.domain.entity.QuestionRecord;
 import com.xueji.agent.domain.entity.ReviewCard;
 import com.xueji.agent.domain.entity.ReviewLog;
 import com.xueji.agent.domain.entity.SimilarQuestion;
+import com.xueji.agent.domain.vo.ReviewBatchAddVO;
 import com.xueji.agent.domain.vo.ReviewCardVO;
 import com.xueji.agent.exception.BusinessException;
 import com.xueji.agent.mapper.NoteMapper;
@@ -99,6 +101,29 @@ public class ReviewServiceImpl implements ReviewService {
         reviewCardMapper.insert(card);
         log.info("已加入复习, userId={}, cardType={}, refId={}, cardId={}", userId, cardType, refId, card.getId());
         return toVO(card);
+    }
+
+    @Override
+    public ReviewBatchAddVO addCardsBatch(Long userId, List<AddReviewCardDto> items) {
+        int added = 0;
+        int skipped = 0;
+        if (items == null || items.isEmpty()) {
+            throw new BusinessException("未选择要加入复习的题目");
+        }
+        for (AddReviewCardDto item : items) {
+            if (item == null || item.getCardType() == null || item.getRefId() == null) {
+                skipped++;
+                continue;
+            }
+            try {
+                addCard(userId, item.getCardType(), item.getRefId());
+                added++;
+            } catch (BusinessException e) {
+                // 已在队列 / 来源不存在：计为跳过，不中断整批
+                skipped++;
+            }
+        }
+        return new ReviewBatchAddVO().setAddedCount(added).setSkippedCount(skipped);
     }
 
     @Override

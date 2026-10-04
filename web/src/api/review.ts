@@ -1,5 +1,5 @@
 import { request } from './http'
-import type { ReviewCardInfo, ReviewStatsInfo } from '../types/api'
+import type { ReviewBatchAddResult, ReviewCardInfo, ReviewStatsInfo } from '../types/api'
 
 export type ReviewCardType = 'question' | 'similar' | 'note'
 export type ReviewGrade = 0 | 1 | 2
@@ -17,6 +17,11 @@ export function getTodayQueue(): Promise<ReviewCardInfo[]> {
 
 export function addReviewCard(cardType: ReviewCardType, refId: number): Promise<ReviewCardInfo> {
   return request<ReviewCardInfo>({ method: 'POST', url: '/review/cards', data: { cardType, refId } })
+}
+
+/** 批量加入复习（练习模式一键入队：已在队列 / 无效项跳过不中断） */
+export function addReviewCardsBatch(items: { cardType: ReviewCardType; refId: number }[]): Promise<ReviewBatchAddResult> {
+  return request<ReviewBatchAddResult>({ method: 'POST', url: '/review/cards/batch', data: { items } })
 }
 
 export function submitReview(id: number, grade: ReviewGrade): Promise<ReviewCardInfo> {

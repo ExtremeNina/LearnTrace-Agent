@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { House, CircleHelp, GraduationCap, BookOpen, Settings, LogIn } from 'lucide-vue-next'
+import { House, CircleHelp, GraduationCap, ListChecks, BookOpen, Settings, LogIn } from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../../stores/auth'
 import { useUiStore } from '../../stores/ui'
@@ -120,6 +120,16 @@ watch(() => route.path, refreshDueCount)
         >
           {{ dueCount > 99 ? '99+' : dueCount }}
         </span>
+      </RouterLink>
+
+      <RouterLink
+        to="/quiz"
+        class="flex h-10 w-10 items-center justify-center rounded-xl transition-colors"
+        :class="route.path === '/quiz' ? 'bg-line/60 font-medium text-ink' : 'text-ink-2 hover:bg-line/60 hover:text-ink'"
+        title="练习测验"
+        @click="ui.showSidebar('tasks')"
+      >
+        <ListChecks :size="20" />
       </RouterLink>
       <button
         class="flex h-10 w-10 items-center justify-center rounded-xl transition-colors"

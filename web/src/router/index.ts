@@ -23,6 +23,7 @@ const router = createRouter({
         // Agent 为首页（PRD §4）
         { path: '', name: 'agent', component: () => import('../views/Agent.vue') },
         { path: 'review', name: 'review', component: () => import('../views/Review.vue') },
+        { path: 'quiz', name: 'quiz', component: () => import('../views/Quiz.vue') },
         // 切片二 / 三占位
         { path: 'courses', name: 'courses', component: () => import('../views/Courses.vue') },
         { path: 'courses/:id', name: 'courseDetail', component: () => import('../views/CourseDetail.vue') },
