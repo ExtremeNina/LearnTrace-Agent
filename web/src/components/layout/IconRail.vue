@@ -99,7 +99,7 @@ watch(() => route.path, refreshDueCount)
       <RouterLink
         to="/"
         class="flex h-10 w-10 items-center justify-center rounded-xl transition-colors"
-        :class="route.path === '/' ? 'bg-ink text-white' : 'text-ink hover:bg-line/60'"
+        :class="route.path === '/' ? 'bg-line/60 font-medium text-ink' : 'text-ink-2 hover:bg-line/60 hover:text-ink'"
         title="首页 / Agent"
         @click="ui.showSidebar('chat')"
       >
@@ -109,7 +109,7 @@ watch(() => route.path, refreshDueCount)
       <RouterLink
         to="/review"
         class="relative flex h-10 w-10 items-center justify-center rounded-xl transition-colors"
-        :class="route.path === '/review' ? 'bg-ink text-white' : 'text-ink hover:bg-line/60'"
+        :class="route.path === '/review' ? 'bg-line/60 font-medium text-ink' : 'text-ink-2 hover:bg-line/60 hover:text-ink'"
         title="今日待复习"
         @click="ui.showSidebar('tasks')"
       >
@@ -123,7 +123,7 @@ watch(() => route.path, refreshDueCount)
       </RouterLink>
       <button
         class="flex h-10 w-10 items-center justify-center rounded-xl transition-colors"
-        :class="isAssetRoute || (ui.sidebarMode === 'assets' && !ui.sidebarCollapsed) ? 'bg-ink text-white' : 'text-ink hover:bg-line/60'"
+        :class="isAssetRoute || (ui.sidebarMode === 'assets' && !ui.sidebarCollapsed) ? 'bg-line/60 font-medium text-ink' : 'text-ink-2 hover:bg-line/60 hover:text-ink'"
         title="学习资产"
         @click="openAssets"
       >

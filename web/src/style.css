@@ -45,14 +45,14 @@ body,
   background: linear-gradient(165deg, #1b1b1e 0%, #17181a 42%, #1e1b19 100%);
 }
 
-/* 图标栏：与侧栏同色系但更浅更透的玻璃质感 */
+/* 图标栏：与侧栏同款暖色渐变但整体更浅，呈现轻玻璃质感 */
 .rail-gradient {
-  background: linear-gradient(165deg, rgba(254, 253, 250, 0.92) 0%, rgba(255, 255, 255, 0.78) 45%, rgba(254, 250, 245, 0.88) 100%);
+  background: linear-gradient(165deg, #fefdfb 0%, #ffffff 40%, #fef8f1 100%);
   backdrop-filter: blur(10px);
 }
 
 .dark .rail-gradient {
-  background: linear-gradient(165deg, rgba(32, 33, 36, 0.92) 0%, rgba(26, 27, 30, 0.85) 45%, rgba(33, 29, 27, 0.9) 100%);
+  background: linear-gradient(165deg, #1f2023 0%, #1a1b1e 40%, #211e1c 100%);
 }
 
 body {
