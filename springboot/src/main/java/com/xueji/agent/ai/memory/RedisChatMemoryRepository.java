@@ -134,12 +134,19 @@ public class RedisChatMemoryRepository implements ChatMemoryRepository {
     private String assembleUserContent(com.xueji.agent.domain.entity.Message row) {
         String content = row.getContent() == null ? "" : row.getContent();
         String questionText = null;
+        boolean hasVideo = false;
         if (row.getPayload() != null && !row.getPayload().isBlank()) {
             try {
-                questionText = cn.hutool.json.JSONUtil.parseObj(row.getPayload()).getStr("questionText", null);
+                cn.hutool.json.JSONObject payload = cn.hutool.json.JSONUtil.parseObj(row.getPayload());
+                questionText = payload.getStr("questionText", null);
+                hasVideo = payload.getStr("videoUrl", null) != null;
             } catch (Exception e) {
                 log.warn("记忆重建 payload 解析失败, messageId={}", row.getId());
             }
+        }
+        if (hasVideo) {
+            // 视频消息：转写全文作为独立 assistant 消息在记忆中，此处仅标记附件
+            content = content + "\n\n[用户上传了视频（已转写）]";
         }
         if (questionText == null || questionText.isBlank()) {
             return content;

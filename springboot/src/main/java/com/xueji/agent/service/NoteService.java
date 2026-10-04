@@ -37,6 +37,12 @@ public interface NoteService {
     /** 更新笔记正文（在线编辑保存） */
     void updateContent(Long userId, Long noteId, String content);
 
+    /**
+     * 保存对话视频转写笔记（B11）：分组不存在时在根目录自动创建，笔记 sourceType=2（对话转写），
+     * 落库后异步向量化。分组名 / 标题由 LLM 拟定并经用户对话确认
+     */
+    Long saveTranscriptNote(Long userId, String groupName, String title, String content);
+
     /** 添加知识联系（linkType: course / question / note；remark 可选关联说明） */
     void addLink(Long userId, Long noteId, String linkType, Long targetId, Integer tsSec, String remark);
 

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import { ArrowUp, Check, ChevronDown, Copy, Cpu, Pencil, Plus, RefreshCw, Share2, Sparkles, Square, ThumbsDown, ThumbsUp, Volume2, X } from 'lucide-vue-next'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { ArrowUp, Check, ChevronDown, Copy, Cpu, Film, LoaderCircle, Pencil, Plus, RefreshCw, Share2, Sparkles, Square, ThumbsDown, ThumbsUp, Volume2, X } from 'lucide-vue-next'
 import { useAgentStore } from '../stores/agent'
 import * as modelApi from '../api/model'
 import type { AiModelConfigInfo } from '../types/api'
@@ -8,15 +8,19 @@ import ModelManageModal from '../components/ModelManageModal.vue'
 import { renderMarkdown } from '../utils/markdown'
 
 /**
- * Agent 主区（PRD §3.1 / §5）：消息流 + 底部输入框，支持附图（截图预览位），流式渲染。
+ * Agent 主区（PRD §3.1 / §5）：消息流 + 底部输入框，支持附图（截图预览位）与附视频（B11 转写），流式渲染。
  * 输入框左下角常驻当前模型指示器：点击切换模型 / 进入管理模型弹窗。
  */
 const agent = useAgentStore()
 const draft = ref('')
 const scrollBox = ref<HTMLElement | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
+const videoInput = ref<HTMLInputElement | null>(null)
+const showAttachMenu = ref(false)
 /** 刚完成复制的消息下标（短暂显示对勾反馈） */
 const copiedIndex = ref<number | null>(null)
+/** 已展开全文的转写消息（B11：默认折叠展示） */
+const expandedTranscripts = reactive(new Set<number>())
 
 // 模型管理：配置列表 + 对话模块当前选择的模型（null = 系统默认）
 const models = ref<AiModelConfigInfo[]>([])
@@ -94,7 +98,13 @@ watch(
 )
 
 function onPickImage() {
+  showAttachMenu.value = false
   fileInput.value?.click()
+}
+
+function onPickVideo() {
+  showAttachMenu.value = false
+  videoInput.value?.click()
 }
 
 async function onFileChange(e: Event) {
@@ -106,12 +116,66 @@ async function onFileChange(e: Event) {
   }
 }
 
-function onSend() {
-  const text = draft.value.trim()
-  if ((text === '' && !agent.pendingImage) || agent.streaming || agent.uploading) {
+/** 视频选择：客户端先做格式初筛，时长校验交给上传接口（ffprobe 同步拒绝） */
+async function onVideoFileChange(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (file) {
+    await agent.uploadPendingVideo(file)
+  }
+}
+
+function formatDuration(sec?: number): string {
+  if (!sec && sec !== 0) {
+    return ''
+  }
+  const m = Math.floor(sec / 60)
+  const s = sec % 60
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+}
+
+/** 转写占位气泡的进度文案（B11：分片进度 → 正在转写第 x / y 段） */
+function transcriptProgressText(i: number): string {
+  const msg = agent.messages[i]
+  const t = msg.transcribe
+  if (!t) {
+    return ''
+  }
+  if (t.total > 0 && t.done > 0 && t.status === 'processing') {
+    return t.done >= t.total ? '正在合并转写文本…' : `正在转写第 ${t.done + 1} / ${t.total} 段…`
+  }
+  return '正在提取音频…'
+}
+
+function toggleTranscript(i: number) {
+  const msg = agent.messages[i]
+  if (msg.id === undefined) {
     return
   }
-  const content = text || '请看这张图片'
+  if (expandedTranscripts.has(msg.id)) {
+    expandedTranscripts.delete(msg.id)
+  } else {
+    expandedTranscripts.add(msg.id)
+  }
+}
+
+/** 转写折叠预览：截取前 600 字符（Markdown 语境下按行截断更整齐） */
+function transcriptPreview(content: string): string {
+  const limit = 600
+  if (content.length <= limit) {
+    return content
+  }
+  const head = content.slice(0, limit)
+  return head.slice(0, head.lastIndexOf('\n') > 0 ? head.lastIndexOf('\n') : limit)
+}
+
+function onSend() {
+  const text = draft.value.trim()
+  if ((text === '' && !agent.pendingImage && !agent.pendingVideo) || agent.streaming || agent.uploading) {
+    return
+  }
+  const content = text || (agent.pendingVideo ? '请转写这个视频' : '请看这张图片')
   draft.value = ''
   agent.send(content)
 }
@@ -156,9 +220,32 @@ function onSend() {
               alt="附图"
               class="mb-2 max-h-48 rounded-xl border border-line"
             />
+            <!-- B11 视频消息：用户侧显示视频标识 -->
+            <div
+              v-if="msg.video"
+              class="mb-2 flex items-center gap-2 rounded-xl border border-line bg-surface px-3 py-2 text-[13px] text-ink"
+            >
+              <Film :size="15" class="text-primary" />
+              视频<span v-if="msg.video.durationSec" class="text-ink-2">（{{ formatDuration(msg.video.durationSec) }}）</span>
+            </div>
             <!-- 助手消息：Markdown + 公式渲染；用户消息：纯文本 -->
             <template v-if="msg.role === 'assistant'">
-              <div class="markdown-body" v-html="renderMarkdown(msg.content)"></div>
+              <!-- B11 转写占位：进度 -->
+              <div v-if="msg.transcribe?.status === 'processing'" class="flex items-center gap-2 py-1 text-[14px] text-ink-2">
+                <LoaderCircle :size="15" class="animate-spin text-primary" />
+                {{ transcriptProgressText(i) }}
+              </div>
+              <!-- B11 转写完成：默认折叠，可展开全文 -->
+              <template v-else-if="msg.transcribe?.status === 'done'">
+                <div class="markdown-body" v-html="renderMarkdown(expandedTranscripts.has(msg.id ?? -1) ? msg.content : transcriptPreview(msg.content) + '\n\n…')"></div>
+                <button
+                  class="mt-2 flex items-center gap-1 text-[13px] text-primary hover:underline"
+                  @click="toggleTranscript(i)"
+                >
+                  {{ expandedTranscripts.has(msg.id ?? -1) ? '收起全文' : '查看全文' }}
+                </button>
+              </template>
+              <div v-else class="markdown-body" v-html="renderMarkdown(msg.content)"></div>
 
               <!-- 动作条：复制可用，其余为占位 -->
               <div v-if="!msg.streaming" class="mt-2.5 flex items-center gap-0.5 text-ink-2">
@@ -206,7 +293,7 @@ function onSend() {
     <div class="shrink-0 px-4 pb-6">
       <div class="mx-auto w-full max-w-3xl">
         <div class="rounded-[24px] border border-line bg-surface px-4 py-3.5 shadow-sm focus-within:border-ink-2/50">
-          <!-- 待发送图片预览位（截图中的图片位置） -->
+          <!-- 待发送图片 / 视频预览位 -->
           <div v-if="agent.pendingImage" class="mb-3 flex">
             <div class="relative">
               <img :src="agent.pendingImage" alt="待发送图片" class="h-20 w-20 rounded-xl border border-line object-cover" />
@@ -219,7 +306,23 @@ function onSend() {
               </button>
             </div>
           </div>
-          <p v-if="agent.uploading" class="mb-3 text-[13px] text-ink-2">图片上传中…</p>
+          <div v-if="agent.pendingVideo" class="mb-3 flex">
+            <div class="relative flex items-center gap-2 rounded-xl border border-line bg-panel px-3 py-2.5 text-[13px] text-ink">
+              <Film :size="16" class="text-primary" />
+              <span class="max-w-48 truncate">{{ agent.pendingVideo.name }}</span>
+              <span class="text-ink-2">（{{ formatDuration(agent.pendingVideo.durationSec) }}）</span>
+              <button
+                class="ml-1 flex h-5 w-5 items-center justify-center rounded-full bg-ink text-white"
+                title="移除视频"
+                @click="agent.clearPendingVideo()"
+              >
+                <X :size="12" />
+              </button>
+            </div>
+          </div>
+          <p v-if="agent.uploading" class="mb-3 text-[13px] text-ink-2">
+            {{ agent.pendingVideo ? '视频' : '图片' }}上传中，视频需要较长时间，请稍候…
+          </p>
 
           <textarea
             v-model="draft"
@@ -272,21 +375,42 @@ function onSend() {
               </div>
               <div v-if="showModelMenu" class="fixed inset-0 z-40" @click="showModelMenu = false"></div>
             </div>
-            <button
-              class="flex h-8 w-8 items-center justify-center rounded-full text-ink hover:bg-line/60"
-              :class="agent.uploading ? 'animate-pulse text-ink-2' : ''"
-              title="添加图片"
-              :disabled="agent.uploading"
-              @click="onPickImage"
-            >
-              <Plus :size="20" />
-            </button>
+            <div class="relative">
+              <button
+                class="flex h-8 w-8 items-center justify-center rounded-full text-ink hover:bg-line/60"
+                :class="agent.uploading ? 'animate-pulse text-ink-2' : ''"
+                title="添加图片 / 视频"
+                :disabled="agent.uploading"
+                @click="showAttachMenu = !showAttachMenu"
+              >
+                <Plus :size="20" />
+              </button>
+              <!-- 附件菜单：图片 / 视频（B11） -->
+              <div
+                v-if="showAttachMenu"
+                class="absolute bottom-[calc(100%+8px)] left-0 z-50 w-56 rounded-2xl border border-line bg-surface p-2 shadow-lg"
+              >
+                <button
+                  class="flex w-full items-center rounded-xl px-3 py-2 text-[14px] text-ink hover:bg-panel"
+                  @click="onPickImage"
+                >
+                  图片
+                </button>
+                <button
+                  class="flex w-full items-center rounded-xl px-3 py-2 text-left text-[14px] text-ink hover:bg-panel"
+                  @click="onPickVideo"
+                >
+                  视频<span class="ml-1 text-[12px] text-ink-2">≤30 分钟，仅转写语音</span>
+                </button>
+              </div>
+              <div v-if="showAttachMenu" class="fixed inset-0 z-40" @click="showAttachMenu = false"></div>
+            </div>
             <span class="text-[13px] text-ink-2">Enter 发送</span>
           </div>
             <button
               v-if="!agent.streaming"
               class="flex h-9 w-9 items-center justify-center rounded-full bg-ink text-white transition-opacity hover:opacity-80 disabled:opacity-25"
-              :disabled="(draft.trim() === '' && !agent.pendingImage) || agent.uploading"
+              :disabled="(draft.trim() === '' && !agent.pendingImage && !agent.pendingVideo) || agent.uploading"
               @click="onSend"
             >
               <ArrowUp :size="18" />
@@ -311,6 +435,14 @@ function onSend() {
       accept="image/jpeg,image/png,image/gif,image/webp,image/bmp"
       class="hidden"
       @change="onFileChange"
+    />
+    <!-- 隐藏的视频选择器（B11：仅语音转写，≤30 分钟） -->
+    <input
+      ref="videoInput"
+      type="file"
+      accept="video/mp4,video/quicktime,video/x-matroska,video/webm,video/x-msvideo,.mp4,.mov,.mkv,.avi,.webm,.m4v"
+      class="hidden"
+      @change="onVideoFileChange"
     />
 
     <!-- 管理模型弹窗 -->

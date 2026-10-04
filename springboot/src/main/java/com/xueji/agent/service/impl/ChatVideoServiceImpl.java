@@ -1,0 +1,86 @@
+package com.xueji.agent.service.impl;
+
+import com.xueji.agent.domain.vo.ChatVideoUploadVO;
+import com.xueji.agent.exception.BusinessException;
+import com.xueji.agent.service.ChatVideoService;
+import com.xueji.agent.utils.MediaUtils;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Locale;
+
+/**
+ * 对话视频上传实现：复用网课的格式白名单与大小口径；
+ * 时长同步 ffprobe 探测（秒级拒绝，优于进转写任务后异步失败）
+ */
+@Slf4j
+@Service
+public class ChatVideoServiceImpl implements ChatVideoService {
+
+    /** 与 AliUploadUtils 的网课视频白名单一致 */
+    private static final List<String> ALLOWED_VIDEO_EXT = List.of("mp4", "mov", "mkv", "avi", "webm", "m4v");
+
+    @Override
+    public ChatVideoUploadVO upload(MultipartFile file) {
+        String original = file.getOriginalFilename();
+        String ext = extOf(original);
+        if (!ALLOWED_VIDEO_EXT.contains(ext)) {
+            throw new BusinessException("不支持的视频格式，仅支持 mp4 / mov / mkv / avi / webm / m4v");
+        }
+        if (file.getSize() > MAX_CHAT_VIDEO_SIZE) {
+            throw new BusinessException("视频大小不能超过 500MB");
+        }
+
+        Path temp = null;
+        try {
+            temp = Files.createTempFile("xj-chat-video-", "." + ext);
+            file.transferTo(temp);
+            int durationSec = MediaUtils.ffprobeDurationSec(temp);
+            if (durationSec > MAX_CHAT_VIDEO_SEC) {
+                throw new BusinessException(
+                        "视频时长超过 30 分钟（当前 " + durationSec / 60 + " 分钟），请到「学习台 → 学习资产 → 视频管理」上传完整网课");
+            }
+            log.info("对话视频上传完成, 时长={}s, 大小={}B", durationSec, file.getSize());
+            return new ChatVideoUploadVO().setTempPath(temp.toString()).setDurationSec(durationSec);
+        } catch (BusinessException e) {
+            cleanupQuietly(temp);
+            throw e;
+        } catch (IOException | InterruptedException e) {
+            cleanupQuietly(temp);
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            log.error("对话视频保存失败", e);
+            throw new BusinessException("视频上传失败，请稍后重试");
+        }
+    }
+
+    /** 校验逻辑独立出来便于单测（时长上限 / 提示文案） */
+    void assertDurationAllowed(int durationSec) {
+        if (durationSec > MAX_CHAT_VIDEO_SEC) {
+            throw new BusinessException(
+                    "视频时长超过 30 分钟（当前 " + durationSec / 60 + " 分钟），请到「学习台 → 学习资产 → 视频管理」上传完整网课");
+        }
+    }
+
+    private String extOf(String fileName) {
+        if (fileName == null || !fileName.contains(".")) {
+            return "";
+        }
+        return fileName.substring(fileName.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT);
+    }
+
+    private void cleanupQuietly(Path file) {
+        if (file != null) {
+            try {
+                Files.deleteIfExists(file);
+            } catch (IOException ignored) {
+            }
+        }
+    }
+}

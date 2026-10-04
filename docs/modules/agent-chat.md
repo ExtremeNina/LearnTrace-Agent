@@ -6,18 +6,24 @@ WS 流式对话（DeepSeek 流式 + 工具调用）、回合互斥、消息双�
 ## 边界（详细）
 
 **输入**
-- WS `chat.send`（conversationId + content + 可选 imageUrl）：握手经 WsAuthHandshakeInterceptor 鉴权（token query 参数），userId 注入 session
+- WS `chat.send`（conversationId + content + 可选 imageUrl / videoTempPath + videoDurationSec）：握手经 WsAuthHandshakeInterceptor 鉴权（token query 参数），userId 注入 session
 - WS `chat.stop`：取消当前回合
-- REST：会话创建 / 列表 / 消息 / 重命名 / 删除（全部经 OwnershipCheck 校验归属）
+- REST：会话创建 / 列表 / 消息 / 重命名 / 删除（全部经 OwnershipCheck 校验归属）；`POST /upload/chat-video`（B11 对话视频：500MB + 白名单 + 同步 ffprobe 时长 ≤30 分钟，超限引导去视频管理）
+
+**视频转写（B11，2026-10-05 完成）**
+- 链路：视频消息走 `VIDEO_PROMPT` → LLM 调 `TranscribeVideoTool`（秒回提交，ToolContext 带 videoTempPath/durationSec）→ `TranscriptionService` 在 courseExecutor 异步执行「抽音频 → 280s 分片 → Qwen ASR → 偏移合并」（抽自 CoursePipelineService，MediaUtils 共用）→ 占位消息（msgType=video_transcript）每片更新 payload 进度并经 `AgentEventPushService`（userId→session 注册表）推送 `TRANSCRIBE` 事件 → 完成后占位消息原地更新为 `[mm:ss]` 全文 + 追加 Redis 记忆
+- 原片上传 OSS 永久保留（message.video_url 回填，日后可补 LLM 整理 / 抽帧 / 重试）
+- 保存：用户确认后 LLM 调 `CreateNoteTool`（分组同名复用 / 自动创建，sourceType=2 对话转写，全文从最近转写消息确定性获取）→ 落库后自动向量化可被 rag_search 检索
+- 工具返回结果码：SUBMIT_OK / SUBMIT_FAILED、SAVE_SUCCESS / SAVE_NOT_FOUND / SAVE_FAILED（与 saveQuestion 同风格）
 
 **输出**
-- 下行 ChatEvent：DELTA / COMPLETE / STOP / ERROR（错误码：CONVERSATION_LIMIT / TURN_IN_PROGRESS / BAD_REQUEST / AUTH_ERROR）
+- 下行 ChatEvent：DELTA / COMPLETE / STOP / ERROR（错误码：CONVERSATION_LIMIT / TURN_IN_PROGRESS / BAD_REQUEST / AUTH_ERROR）+ TRANSCRIBE（B11 转写进度 / 结果，后台任务经 AgentEventPushService 主动推送，离线时结果已落库、重进会话从 REST 补齐）
 - 存储：message 表双写（用户消息先落库再渲染，回合中途崩溃不丢输入）、conversation 表（last_active_at 活跃时间 / 自动标题去重）、Redis db1 会话记忆（MessageWindowChatMemory 滑窗 100 条）
 - 回合整体在 `Flux.defer(...).subscribeOn(boundedElastic)` 中执行：OCR 前置识别、消息落库、记忆读取都不占用 WS / 请求线程（PRD §16）
 
 **依赖**
 - DeepSeek OpenAI 兼容端点（经 Spring AI ChatClient，业务代码禁止直连；密钥经本地私密配置注入）
-- 工具（ToolContext 携带 userId/conversationId）：QuestionSaveTool（写题目 / 相似题，用户对话确认后调用）、RagSearchTool（读向量库，见 M2）
+- 工具（ToolContext 携带 userId/conversationId）：QuestionSaveTool（写题目 / 相似题，用户对话确认后调用）、RagSearchTool（读向量库，见 M2）、TranscribeVideoTool / CreateNoteTool（B11 视频转写与保存笔记）
 - CleanupScheduler（task/ 包，每日 3 点清理 30 天未活跃会话）
 - 前端 agentSocket：离线 outbox 暂存冲刷（跨页种子消息依赖，见 M2 生成相似题入口）
 

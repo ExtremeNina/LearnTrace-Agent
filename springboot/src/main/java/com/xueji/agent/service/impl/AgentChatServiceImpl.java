@@ -54,13 +54,16 @@ public class AgentChatServiceImpl implements AgentChatService {
     private OcrTextFormatter ocrTextFormatter;
 
     @Override
-    public Flux<ChatEvent> chat(Long userId, Long conversationId, String content, String imageUrl) {
+    public Flux<ChatEvent> chat(Long userId, Long conversationId, String content, String imageUrl,
+                                String videoTempPath, Integer videoDurationSec) {
         OwnershipCheck.requireOwned(conversationMapper.selectById(conversationId), userId, "会话不存在");
 
         String turnId = "t_" + java.util.UUID.randomUUID().toString().substring(0, 8);
 
-        // 带图先走前置流水线（OCR 识别 → 格式化），结果随消息落库并拼入 prompt
-        boolean hasImage = imageUrl != null && !imageUrl.isBlank();
+        // 带图先走前置流水线（OCR 识别 → 格式化），结果随消息落库并拼入 prompt；
+        // 视频消息（B11）优先：转写由后台任务异步执行，不进图片解题链路
+        boolean hasVideo = videoTempPath != null && !videoTempPath.isBlank() && videoDurationSec != null;
+        boolean hasImage = !hasVideo && imageUrl != null && !imageUrl.isBlank();
 
         // 回合整体延迟到订阅期执行并切到 boundedElastic：PaddleOCR 为轮询式长任务（上限可配，默认 45s），
         // 不得阻塞 WS / 请求线程（PRD §16 长耗时任务不阻塞请求）
@@ -78,7 +81,7 @@ public class AgentChatServiceImpl implements AgentChatService {
             Message userMessage = new Message()
                     .setConversationId(conversationId)
                     .setRole("user")
-                    .setMsgType("text")
+                    .setMsgType(hasVideo ? "video" : "text")
                     .setContent(content)
                     .setCreatedAt(LocalDateTime.now());
             if (hasImage) {
@@ -88,6 +91,12 @@ public class AgentChatServiceImpl implements AgentChatService {
                 }
                 userMessage.setPayload(payload.toString());
             }
+            if (hasVideo) {
+                // 视频元信息入 payload（前端历史渲染展示）；OSS 地址由转写任务上传后回填
+                cn.hutool.json.JSONObject payload = cn.hutool.json.JSONUtil.createObj()
+                        .set("videoDurationSec", videoDurationSec);
+                userMessage.setPayload(payload.toString());
+            }
             messageMapper.insert(userMessage);
 
             // 会话仍是默认标题时，用首条用户消息生成可区分的标题（重名自动加序号）
@@ -95,7 +104,13 @@ public class AgentChatServiceImpl implements AgentChatService {
 
             // DeepSeek 平台 API 初期为纯文本（PRD §11 不引入多模态）：题目文本以文字形式拼入 prompt
             String promptContent = content;
-            if (hasImage) {
+            if (hasVideo) {
+                int min = videoDurationSec / 60;
+                int sec = videoDurationSec % 60;
+                promptContent = content + String.format(
+                        "\n\n[系统提示：用户上传了一个视频（时长 %02d:%02d），已就绪可转写。若用户意图与视频内容相关，请调用 transcribeVideo 工具提交转写任务]",
+                        min, sec);
+            } else if (hasImage) {
                 if (questionText == null || questionText.isBlank()) {
                     promptContent = content + "\n\n[系统提示：题目图片识别失败或超时，请提示用户检查图片是否清晰可读并重新上传，或直接输入题目文字，不要猜测题目内容]";
                 } else {
@@ -106,11 +121,21 @@ public class AgentChatServiceImpl implements AgentChatService {
             StringBuilder answer = new StringBuilder();
             long[] savedMessageId = new long[1];
 
-            // 按场景选择系统提示词：带图走解题流程，否则用基础人设
-            String systemPrompt = hasImage ? AgentPrompts.QUESTION_PROMPT : AgentPrompts.BASE_PROMPT;
+            // 按场景选择系统提示词：带视频走转写流程，带图走解题流程，否则用基础人设
+            String systemPrompt = hasVideo ? AgentPrompts.VIDEO_PROMPT
+                    : hasImage ? AgentPrompts.QUESTION_PROMPT : AgentPrompts.BASE_PROMPT;
 
             // 按用户模块偏好解析当前对话模型（默认回退系统 DeepSeek）
         ChatClient chatClient = aiModelService.resolve(userId, AiModelService.MODULE_CHAT, ChatClientFactory.Variant.CHAT);
+
+            // 工具上下文：userId / conversationId 固定传；视频消息附带临时文件与时长供转写工具取用
+            java.util.Map<String, Object> toolContext = new java.util.HashMap<>();
+            toolContext.put("userId", userId);
+            toolContext.put("conversationId", conversationId);
+            if (hasVideo) {
+                toolContext.put("videoTempPath", videoTempPath);
+                toolContext.put("videoDurationSec", videoDurationSec);
+            }
 
         Flux<ChatEvent> body = chatClient.prompt()
                     .system(systemPrompt)
@@ -118,7 +143,7 @@ public class AgentChatServiceImpl implements AgentChatService {
                     // 会话 ID 经上下文传给 MessageChatMemoryAdvisor，自动注入历史并持久化本轮对话
                     .advisors(advisorSpec -> advisorSpec.param(ChatMemory.CONVERSATION_ID, String.valueOf(conversationId)))
                     // userId / conversationId 经工具上下文传给保存题目等工具（工具自身不感知会话）
-                    .toolContext(java.util.Map.of("userId", userId, "conversationId", conversationId))
+                    .toolContext(toolContext)
                     .stream()
                     .chatResponse()
                     // 空文本 chunk 过滤（工具调用 chunk 的防御性处理）

@@ -32,6 +32,9 @@ public class Message {
     /** 业务元数据（JSON） */
     private String payload;
 
+    /** 用户上传视频的 OSS 地址（对话视频转写，任务上传后回填） */
+    private String videoUrl;
+
     /** 确认卡片的确认状态：PENDING / CONFIRMED / REJECTED（仅卡片消息） */
     private String confirmStatus;
 

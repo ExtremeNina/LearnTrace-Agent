@@ -115,6 +115,12 @@ export interface MessageInfo {
   createdAt: string
 }
 
+/** 对话视频上传结果（B11，对应后端 ChatVideoUploadVO） */
+export interface ChatVideoUploadInfo {
+  tempPath: string
+  durationSec: number
+}
+
 /** 题目记录统一视图（拍照题目 + AI 生成的相似题合并列表，source 区分；相似题无图 / 无作答字段） */
 export interface QuestionItemInfo {
   id: number

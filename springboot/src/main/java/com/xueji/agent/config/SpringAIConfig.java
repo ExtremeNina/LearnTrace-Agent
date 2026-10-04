@@ -2,6 +2,8 @@ package com.xueji.agent.config;
 
 import com.xueji.agent.ai.memory.RedisChatMemoryRepository;
 import com.xueji.agent.ai.tool.AliyunOcrTool;
+import com.xueji.agent.ai.tool.CreateNoteTool;
+import com.xueji.agent.ai.tool.TranscribeVideoTool;
 import com.xueji.agent.ai.tool.LearningStatusTool;
 import com.xueji.agent.ai.tool.OcrTool;
 import com.xueji.agent.ai.tool.PaddleOcrTool;
@@ -152,6 +154,23 @@ public class SpringAIConfig {
         return new QuestionSaveTool(questionService);
     }
 
+    /**
+     * 对话视频转写提交工具（B11）：异步提交任务，秒回不阻塞回合
+     */
+    @Bean
+    public TranscribeVideoTool transcribeVideoTool(com.xueji.agent.service.TranscriptionService transcriptionService) {
+        return new TranscribeVideoTool(transcriptionService);
+    }
+
+    /**
+     * 保存转写笔记工具（B11）：用户确认保存后由模型调用，转写全文由服务端确定性获取
+     */
+    @Bean
+    public CreateNoteTool createNoteTool(com.xueji.agent.service.NoteService noteService,
+                                         com.xueji.agent.mapper.MessageMapper messageMapper) {
+        return new CreateNoteTool(noteService, messageMapper);
+    }
+
     @Bean
     @Primary
     public EmbeddingModel embeddingModel(
@@ -211,10 +230,13 @@ public class SpringAIConfig {
                                  Advisor loggerAdvisor,
                                  QuestionSaveTool questionSaveTool,
                                  RagSearchTool ragSearchTool,
-                                 LearningStatusTool learningStatusTool) {
+                                 LearningStatusTool learningStatusTool,
+                                 TranscribeVideoTool transcribeVideoTool,
+                                 CreateNoteTool createNoteTool) {
         return chatClientBuilder
                 .defaultAdvisors(messageChatMemoryAdvisor, loggerAdvisor)
-                .defaultTools(questionSaveTool, ragSearchTool, learningStatusTool)
+                .defaultTools(questionSaveTool, ragSearchTool, learningStatusTool,
+                        transcribeVideoTool, createNoteTool)
                 .build();
     }
 

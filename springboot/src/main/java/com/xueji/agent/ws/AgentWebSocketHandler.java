@@ -36,6 +36,9 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
     private ConversationService conversationService;
 
     @Resource
+    private AgentEventPushService pushService;
+
+    @Resource
     private ObjectMapper objectMapper;
 
     /** 回合互斥守卫：conversationId -> turnId */
@@ -85,7 +88,11 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
         }
 
         String imageUrl = node.path("imageUrl").asText("");
-        Disposable disposable = agentChatService.chat(userId, conversationId, content, imageUrl)
+        // B11 视频消息：上传接口产出的本地临时路径与 ffprobe 时长（存在时走视频转写链路）
+        String videoTempPath = node.path("videoTempPath").asText("");
+        Integer videoDurationSec = node.has("videoDurationSec") && node.path("videoDurationSec").isInt()
+                ? node.path("videoDurationSec").asInt() : null;
+        Disposable disposable = agentChatService.chat(userId, conversationId, content, imageUrl, videoTempPath, videoDurationSec)
                 .doFinally(sig -> {
                     // 服务端事件流已包含 STOP，这里只做守卫清理
                     activeTurns.remove(conversationId);
@@ -125,7 +132,17 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
     }
 
     @Override
+    public void afterConnectionEstablished(WebSocketSession session) {
+        // 注册 userId → session：后台任务（视频转写等）完成后主动推送事件回流对话
+        Long userId = (Long) session.getAttributes().get("userId");
+        if (userId != null) {
+            pushService.register(userId, session);
+        }
+    }
+
+    @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
         // 连接断开不取消进行中的回合：服务端继续跑完并落库，前端重连后从 REST 补齐
+        pushService.unregister(session);
     }
 }

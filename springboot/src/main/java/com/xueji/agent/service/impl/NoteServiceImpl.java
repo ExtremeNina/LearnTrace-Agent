@@ -99,7 +99,13 @@ public class NoteServiceImpl implements NoteService {
     }
 
     private static String sourceName(Integer sourceType) {
-        return sourceType != null && sourceType == 1 ? "AI 生成" : "手动创建";
+        if (sourceType != null && sourceType == 1) {
+            return "AI 生成";
+        }
+        if (sourceType != null && sourceType == 2) {
+            return "对话转写";
+        }
+        return "手动创建";
     }
 
     // ---- 详情 ----
@@ -160,6 +166,37 @@ public class NoteServiceImpl implements NoteService {
                 .setUpdatedAt(LocalDateTime.now());
         noteMapper.insert(node);
         return node.getId();
+    }
+
+    @Override
+    public Long saveTranscriptNote(Long userId, String groupName, String title, String content) {
+        // 分组：同名分组已存在则复用，否则在根目录新建（LLM 拟名，允许重名组——按最旧一个归属）
+        String name = groupName == null || groupName.isBlank() ? "对话转写" : groupName.trim();
+        List<Note> groups = noteMapper.selectList(new QueryWrapper<Note>()
+                .eq("user_id", userId)
+                .eq("deleted", 0)
+                .eq("node_type", TYPE_GROUP)
+                .eq("title", name)
+                .orderByAsc("id")
+                .last("LIMIT 1"));
+        Long groupId = groups.isEmpty() ? createGroup(userId, null, name) : groups.get(0).getId();
+
+        // 笔记：sourceType=2（对话转写），正文即转写全文，落库后异步向量化
+        validateDepth(userId, groupId);
+        Note note = new Note()
+                .setUserId(userId)
+                .setTitle(title)
+                .setContent(content)
+                .setNoteType(0)
+                .setNodeType(TYPE_NOTE)
+                .setSourceType(2)
+                .setParentId(groupId)
+                .setCreatedAt(LocalDateTime.now())
+                .setUpdatedAt(LocalDateTime.now());
+        noteMapper.insert(note);
+        ragIngestService.ingestNoteAsync(note);
+        log.info("对话转写笔记已保存, userId={}, groupId={}, noteId={}", userId, groupId, note.getId());
+        return note.getId();
     }
 
     // ---- 重命名 / 移动 / 删除 ----

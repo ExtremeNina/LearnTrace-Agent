@@ -14,6 +14,7 @@ import com.xueji.agent.mapper.CourseFrameMapper;
 import com.xueji.agent.mapper.CourseMapper;
 import com.xueji.agent.mapper.CourseTranscriptSegmentMapper;
 import com.xueji.agent.utils.AliUploadUtils;
+import com.xueji.agent.utils.MediaUtils;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -103,11 +104,11 @@ public class CoursePipelineService {
             course.setVideoOssKey(videoUrl).setVideoSize(Files.size(video));
 
             // 1. 时长
-            int durationSec = ffprobeDurationSec(video);
+            int durationSec = MediaUtils.ffprobeDurationSec(video);
 
             // 2. FFmpeg：抽音频 + 抽关键帧（场景检测，不足时回退定间隔）
             Path audio = Files.createTempFile("xj-audio-", ".wav");
-            extractAudio(video, audio);
+            MediaUtils.extractAudio(video, audio);
             List<Integer> frameSecs = new ArrayList<>();
             List<Path> frameFiles = extractFrames(video, frameSecs, durationSec);
 
@@ -122,7 +123,7 @@ public class CoursePipelineService {
                     for (int start = 0; start < durationSec; start += ASR_CHUNK_SEC) {
                         int len = Math.min(ASR_CHUNK_SEC, durationSec - start);
                         Path chunk = Files.createTempFile("xj-audio-chunk-", ".wav");
-                        run("ffmpeg", "-y", "-ss", String.valueOf(start), "-t", String.valueOf(len),
+                        MediaUtils.run("ffmpeg", "-y", "-ss", String.valueOf(start), "-t", String.valueOf(len),
                                 "-i", audio.toString(), "-c", "copy", chunk.toString());
                         String chunkUrl = aliUploadUtils.uploadLocalFile(chunk,
                                 "course/" + courseId + "/audio-" + start + ".wav");
@@ -237,18 +238,6 @@ public class CoursePipelineService {
 
     // ---- FFmpeg ----
 
-    private int ffprobeDurationSec(Path video) throws IOException, InterruptedException {
-        Process p = new ProcessBuilder("ffprobe", "-v", "error", "-show_entries", "format=duration",
-                "-of", "csv=p=0", video.toString()).start();
-        String out = new String(p.getInputStream().readAllBytes()).trim();
-        p.waitFor();
-        return (int) Math.round(Double.parseDouble(out));
-    }
-
-    private void extractAudio(Path video, Path audio) throws IOException, InterruptedException {
-        run("ffmpeg", "-y", "-i", video.toString(), "-vn", "-ac", "1", "-ar", "16000", "-f", "wav", audio.toString());
-    }
-
     /**
      * 抽关键帧：优先场景切换（含第 0 帧），不足时回退为按帧号采样（每 60s 一帧），
      * 仍无帧则保底抽取第 0 帧；相邻帧间隔小于 5s 的去重；总数上限 60
@@ -267,7 +256,7 @@ public class CoursePipelineService {
         if (files.isEmpty()) {
             // 保底：第 0 帧
             Path first = dir.resolve("frame_000.jpg");
-            run("ffmpeg", "-y", "-i", video.toString(), "-frames:v", "1", first.toString());
+            MediaUtils.run("ffmpeg", "-y", "-i", video.toString(), "-frames:v", "1", first.toString());
             if (Files.exists(first)) {
                 files.add(first);
                 frameSecs.add(0);
@@ -301,6 +290,7 @@ public class CoursePipelineService {
         String logText = new String(p.getInputStream().readAllBytes());
         p.waitFor();
 
+
         Matcher matcher = PTS_TIME.matcher(logText);
         List<Double> pts = new ArrayList<>();
         while (matcher.find()) {
@@ -320,15 +310,6 @@ public class CoursePipelineService {
             frameSecs.add((int) Math.round(pts.get(i)));
         }
         return true;
-    }
-
-    private void run(String... command) throws IOException, InterruptedException {
-        Process p = new ProcessBuilder(command).redirectErrorStream(true).start();
-        String output = new String(p.getInputStream().readAllBytes());
-        int code = p.waitFor();
-        if (code != 0) {
-            throw new IllegalStateException("命令执行失败(" + code + "): " + truncate(output));
-        }
     }
 
     // ---- 工具 ----

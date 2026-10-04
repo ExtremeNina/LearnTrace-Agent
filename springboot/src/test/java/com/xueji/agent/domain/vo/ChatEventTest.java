@@ -40,4 +40,23 @@ class ChatEventTest {
         assertThat(event.getTurnId()).isEqualTo("t_1");
         assertThat(event.getText()).isNull();
     }
+
+    @Test
+    void transcribeShouldCarryProgress() {
+        ChatEvent event = ChatEvent.transcribe(7L, "processing", null, 2, 5, null);
+        assertThat(event.getType()).isEqualTo("TRANSCRIBE");
+        assertThat(event.getMessageId()).isEqualTo(7L);
+        assertThat(event.getStatus()).isEqualTo("processing");
+        assertThat(event.getDone()).isEqualTo(2);
+        assertThat(event.getTotal()).isEqualTo(5);
+        assertThat(event.getText()).isNull();
+    }
+
+    @Test
+    void transcribeDoneShouldCarryFullText() {
+        ChatEvent event = ChatEvent.transcribe(7L, "done", "[00:00] 全文", 3, 3, null);
+        assertThat(event.getStatus()).isEqualTo("done");
+        assertThat(event.getText()).isEqualTo("[00:00] 全文");
+        assertThat(event.getMessage()).isNull();
+    }
 }
