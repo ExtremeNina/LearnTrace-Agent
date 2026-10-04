@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { House, History, CircleHelp, GraduationCap, BookOpen, Settings, LogIn } from 'lucide-vue-next'
+import { House, CircleHelp, GraduationCap, BookOpen, Settings, LogIn } from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../../stores/auth'
 import { useUiStore } from '../../stores/ui'
@@ -50,11 +50,6 @@ function openAssets() {
   }
 }
 
-/** 会话历史按钮：展开侧栏到对话模式 */
-function openChatSidebar() {
-  ui.showSidebar('chat')
-}
-
 async function toggleSettings() {
   showSettings.value = !showSettings.value
   if (showSettings.value) {
@@ -99,29 +94,23 @@ watch(() => route.path, refreshDueCount)
 
 <template>
   <!-- 最左全局图标栏（PRD §5：桌面端显示，移动端隐藏并入抽屉） -->
-  <nav class="panel-gradient relative w-14 shrink-0 flex-col items-center justify-between py-4 md:flex">
+  <nav class="relative w-14 shrink-0 flex-col items-center justify-between border-r border-line bg-surface py-4 md:flex">
     <div class="flex flex-col items-center gap-2">
       <RouterLink
         to="/"
         class="flex h-10 w-10 items-center justify-center rounded-xl transition-colors"
         :class="route.path === '/' ? 'bg-ink text-white' : 'text-ink hover:bg-line/60'"
         title="首页 / Agent"
+        @click="ui.showSidebar('chat')"
       >
         <House :size="20" />
       </RouterLink>
+
       <RouterLink
-        to="/history"
-        class="flex h-10 w-10 items-center justify-center rounded-xl transition-colors"
-        :class="route.path === '/history' ? 'bg-ink text-white' : 'text-ink hover:bg-line/60'"
-        title="会话历史"
-        @click="openChatSidebar"
-      >
-        <History :size="20" />
-      </RouterLink>
-      <button
+        to="/review"
         class="relative flex h-10 w-10 items-center justify-center rounded-xl transition-colors"
-        :class="ui.sidebarMode === 'tasks' && !ui.sidebarCollapsed ? 'bg-ink text-white' : 'text-ink hover:bg-line/60'"
-        title="今日待复习 / 任务"
+        :class="route.path === '/review' ? 'bg-ink text-white' : 'text-ink hover:bg-line/60'"
+        title="今日待复习"
         @click="ui.showSidebar('tasks')"
       >
         <GraduationCap :size="20" />
@@ -131,7 +120,7 @@ watch(() => route.path, refreshDueCount)
         >
           {{ dueCount > 99 ? '99+' : dueCount }}
         </span>
-      </button>
+      </RouterLink>
       <button
         class="flex h-10 w-10 items-center justify-center rounded-xl transition-colors"
         :class="isAssetRoute || (ui.sidebarMode === 'assets' && !ui.sidebarCollapsed) ? 'bg-ink text-white' : 'text-ink hover:bg-line/60'"
