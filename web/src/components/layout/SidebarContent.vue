@@ -200,28 +200,28 @@ const activeRoute = computed(() => router.currentRoute.value.path)
         <RouterLink
           to="/courses"
           class="flex items-center gap-3 rounded-2xl px-3.5 py-2.5 text-[15px] transition-colors"
-          :class="activeRoute === '/courses' ? 'bg-ink font-medium text-white' : 'text-ink hover:bg-line/50'"
+          :class="activeRoute === '/courses' ? 'bg-line/50 font-medium text-ink' : 'text-ink hover:bg-line/50'"
           @click="$emit('navigate')"
         >
-          <MonitorPlay :size="18" :class="activeRoute === '/courses' ? 'text-white' : 'text-ink-2'" />
+          <MonitorPlay :size="18" :class="activeRoute === '/courses' ? 'text-ink' : 'text-ink-2'" />
           网课记录
         </RouterLink>
         <RouterLink
           to="/questions"
           class="mt-1 flex items-center gap-3 rounded-2xl px-3.5 py-2.5 text-[15px] transition-colors"
-          :class="activeRoute === '/questions' ? 'bg-ink font-medium text-white' : 'text-ink hover:bg-line/50'"
+          :class="activeRoute === '/questions' ? 'bg-line/50 font-medium text-ink' : 'text-ink hover:bg-line/50'"
           @click="$emit('navigate')"
         >
-          <Camera :size="18" :class="activeRoute === '/questions' ? 'text-white' : 'text-ink-2'" />
+          <Camera :size="18" :class="activeRoute === '/questions' ? 'text-ink' : 'text-ink-2'" />
           拍照记录
         </RouterLink>
         <RouterLink
           to="/notes"
           class="mt-1 flex items-center gap-3 rounded-2xl px-3.5 py-2.5 text-[15px] transition-colors"
-          :class="activeRoute === '/notes' ? 'bg-ink font-medium text-white' : 'text-ink hover:bg-line/50'"
+          :class="activeRoute === '/notes' ? 'bg-line/50 font-medium text-ink' : 'text-ink hover:bg-line/50'"
           @click="$emit('navigate')"
         >
-          <NotebookPen :size="18" :class="activeRoute === '/notes' ? 'text-white' : 'text-ink-2'" />
+          <NotebookPen :size="18" :class="activeRoute === '/notes' ? 'text-ink' : 'text-ink-2'" />
           笔记整理
         </RouterLink>
       </div>

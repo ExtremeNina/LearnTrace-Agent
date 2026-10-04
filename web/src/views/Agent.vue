@@ -118,7 +118,7 @@ function onSend() {
 </script>
 
 <template>
-  <div class="relative flex h-full flex-col bg-canvas">
+  <div class="relative flex h-full flex-col bg-surface">
     <!-- 消息流 / 空状态 -->
     <div ref="scrollBox" class="min-h-0 flex-1 overflow-y-auto">
       <div v-if="agent.messages.length === 0" class="flex h-full flex-col items-center justify-center gap-5 px-4">
