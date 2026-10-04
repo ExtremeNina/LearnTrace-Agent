@@ -12,6 +12,7 @@ import MdSourceEditor from '../components/notes/MdSourceEditor.vue'
 import LinkPanel from '../components/notes/LinkPanel.vue'
 import { getReviewStatus, addReviewCard } from '../api/review'
 import { useToastStore } from '../stores/toast'
+import { useUiStore } from '../stores/ui'
 import type { TreeNodeData } from '../types/notes'
 import {
   createGroup, createNote, deleteNote, getNoteDetail, getNoteTree,
@@ -29,6 +30,47 @@ defineOptions({ name: 'NotesView' })
  * 数据来自后端 /notes 接口。
  */
 const MAX_LEVELS = 5
+
+// ---- 三栏宽度拖拽（桌面端）：分层树 / 编辑区 / 知识联系 ----
+const ui = useUiStore()
+/** 编辑区保底宽度：任一侧栏加宽时为中间编辑区保留的最小空间（两侧栏各自的边界由 ui store 夹紧） */
+const EDITOR_MIN_WIDTH = 360
+const pageRef = ref<HTMLDivElement | null>(null)
+let stopActiveResize: (() => void) | null = null
+
+function startResize(e: MouseEvent, side: 'tree' | 'links') {
+  e.preventDefault()
+  const startX = e.clientX
+  const startWidth = side === 'tree' ? ui.notesTreeWidth : ui.notesLinksWidth
+  const onMove = (ev: MouseEvent) => {
+    // 左栏向右拖变宽，右栏向左拖变宽
+    const delta = side === 'tree' ? ev.clientX - startX : startX - ev.clientX
+    let next = startWidth + delta
+    const page = pageRef.value
+    if (page) {
+      // 本栏加宽不得把编辑区挤到保底宽度以下（另一栏宽度在本次拖拽中不变）
+      const other = side === 'tree' ? ui.notesLinksWidth : ui.notesTreeWidth
+      next = Math.min(next, page.clientWidth - other - EDITOR_MIN_WIDTH)
+    }
+    if (side === 'tree') {
+      ui.setNotesTreeWidth(next)
+    } else {
+      ui.setNotesLinksWidth(next)
+    }
+  }
+  const onUp = () => {
+    window.removeEventListener('mousemove', onMove)
+    window.removeEventListener('mouseup', onUp)
+    document.body.style.cursor = ''
+    document.body.style.userSelect = ''
+    stopActiveResize = null
+  }
+  stopActiveResize = onUp
+  document.body.style.cursor = 'col-resize'
+  document.body.style.userSelect = 'none'
+  window.addEventListener('mousemove', onMove)
+  window.addEventListener('mouseup', onUp)
+}
 
 // ---- 分层树（id: g{数字}=分组 / n{数字}=笔记） ----
 const tree = ref<TreeNodeData[]>([])
@@ -532,6 +574,9 @@ onMounted(async () => {
 
 onUnmounted(() => {
   document.removeEventListener('mousedown', onDocMouseDownWhileInlineInput)
+  if (stopActiveResize) {
+    stopActiveResize()
+  }
 })
 
 /**
@@ -572,11 +617,12 @@ const groupPathOptions = computed(() => {
 </script>
 
 <template>
-  <div class="flex h-full overflow-hidden">
+  <div ref="pageRef" class="flex h-full overflow-hidden">
     <!-- 左：分层树 -->
     <aside
-      class="w-72 shrink-0 flex-col border-l border-line bg-surface md:flex"
+      class="relative w-72 shrink-0 flex-col border-l border-line bg-surface md:flex md:w-[var(--notes-tree-w)]"
       :class="selectedId === null ? 'flex' : 'hidden'"
+      :style="{ '--notes-tree-w': ui.notesTreeWidth + 'px' }"
     >
       <div class="flex items-center justify-between px-4 pt-5 pb-2">
         <p class="flex items-center gap-1.5 text-[14px] font-semibold text-ink">
@@ -633,6 +679,13 @@ const groupPathOptions = computed(() => {
           @delete-note="deleteNoteLeaf"
         />
       </div>
+
+      <!-- 分隔竖线 + 拖拽调宽手柄（右缘，200~400 持久化） -->
+      <div
+        class="absolute inset-y-0 right-0 z-10 hidden w-[3px] cursor-col-resize bg-line transition-colors hover:bg-primary md:block"
+        title="拖拽调整宽度"
+        @mousedown="startResize($event, 'tree')"
+      ></div>
     </aside>
 
     <!-- 右：笔记详情 -->
@@ -800,18 +853,29 @@ const groupPathOptions = computed(() => {
       </div>
     </div>
 
-    <!-- 右：知识联系侧栏（桌面端常驻第三列，移动端在正文下方折叠区） -->
-    <aside class="hidden w-80 shrink-0 flex-col overflow-y-auto border-l border-line px-4 py-4 lg:flex">
-      <LinkPanel
-        v-if="selectedDetail"
-        :note-id="selectedDetail.id"
-        :links="selectedDetail.links"
-        @changed="reloadDetail"
-        @jump="openLink"
-      />
-      <p v-else class="text-[12px] leading-5 text-ink-2">
-        选择一篇笔记后，在这里管理它的知识联系：关联讲到的网课片段、做过的题目、相关笔记，并可附一句关联说明。
-      </p>
+    <!-- 右：知识联系侧栏（桌面端常驻第三列，移动端在正文下方折叠区；滚动收进内层，拖拽手柄不随内容滚动） -->
+    <aside
+      class="relative hidden w-80 shrink-0 flex-col border-l border-line lg:flex lg:w-[var(--notes-links-w)]"
+      :style="{ '--notes-links-w': ui.notesLinksWidth + 'px' }"
+    >
+      <div class="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+        <LinkPanel
+          v-if="selectedDetail"
+          :note-id="selectedDetail.id"
+          :links="selectedDetail.links"
+          @changed="reloadDetail"
+          @jump="openLink"
+        />
+        <p v-else class="text-[12px] leading-5 text-ink-2">
+          选择一篇笔记后，在这里管理它的知识联系：关联讲到的网课片段、做过的题目、相关笔记，并可附一句关联说明。
+        </p>
+      </div>
+      <!-- 分隔竖线 + 拖拽调宽手柄（左缘，240~480 持久化） -->
+      <div
+        class="absolute inset-y-0 left-0 z-10 hidden w-[3px] cursor-col-resize bg-line transition-colors hover:bg-primary lg:block"
+        title="拖拽调整宽度"
+        @mousedown="startResize($event, 'links')"
+      ></div>
     </aside>
   </div>
 </template>

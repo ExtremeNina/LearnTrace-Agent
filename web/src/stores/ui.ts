@@ -9,11 +9,30 @@ export type SidebarMode = 'chat' | 'assets' | 'tasks'
 const MODE_KEY = 'xj_sidebar_mode'
 const COLLAPSED_KEY = 'xj_sidebar_collapsed'
 const WIDTH_KEY = 'xj_sidebar_width'
+const NOTES_TREE_WIDTH_KEY = 'xj_notes_tree_width'
+const NOTES_LINKS_WIDTH_KEY = 'xj_notes_links_width'
 
 /** 侧栏宽度边界（拖拽调宽的下限与上限） */
 export const SIDEBAR_MIN_WIDTH = 200
 export const SIDEBAR_MAX_WIDTH = 480
 export const SIDEBAR_DEFAULT_WIDTH = 240
+
+/** 笔记页三栏宽度边界（拖拽调宽的下限与上限；默认值 = 原 w-72 / w-80） */
+export const NOTES_TREE_MIN_WIDTH = 200
+export const NOTES_TREE_MAX_WIDTH = 400
+export const NOTES_TREE_DEFAULT_WIDTH = 288
+export const NOTES_LINKS_MIN_WIDTH = 240
+export const NOTES_LINKS_MAX_WIDTH = 480
+export const NOTES_LINKS_DEFAULT_WIDTH = 320
+
+/** 从 localStorage 读栏宽并夹紧到边界（无记录或非法时用默认值） */
+function persistedWidth(key: string, fallback: number, min: number, max: number): number {
+  const saved = Number(localStorage.getItem(key))
+  if (!Number.isFinite(saved) || saved <= 0) {
+    return fallback
+  }
+  return Math.min(max, Math.max(min, saved))
+}
 
 export const useUiStore = defineStore('ui', () => {
   const sidebarOpen = ref(false)
@@ -53,6 +72,20 @@ export const useUiStore = defineStore('ui', () => {
     localStorage.setItem(WIDTH_KEY, String(sidebarWidth.value))
   }
 
+  /** 笔记页栏宽（px，拖拽可调，持久化）：分层树 / 知识联系；编辑区占剩余空间 */
+  const notesTreeWidth = ref(persistedWidth(NOTES_TREE_WIDTH_KEY, NOTES_TREE_DEFAULT_WIDTH, NOTES_TREE_MIN_WIDTH, NOTES_TREE_MAX_WIDTH))
+  const notesLinksWidth = ref(persistedWidth(NOTES_LINKS_WIDTH_KEY, NOTES_LINKS_DEFAULT_WIDTH, NOTES_LINKS_MIN_WIDTH, NOTES_LINKS_MAX_WIDTH))
+
+  function setNotesTreeWidth(width: number) {
+    notesTreeWidth.value = Math.min(NOTES_TREE_MAX_WIDTH, Math.max(NOTES_TREE_MIN_WIDTH, width))
+    localStorage.setItem(NOTES_TREE_WIDTH_KEY, String(notesTreeWidth.value))
+  }
+
+  function setNotesLinksWidth(width: number) {
+    notesLinksWidth.value = Math.min(NOTES_LINKS_MAX_WIDTH, Math.max(NOTES_LINKS_MIN_WIDTH, width))
+    localStorage.setItem(NOTES_LINKS_WIDTH_KEY, String(notesLinksWidth.value))
+  }
+
   return {
     sidebarOpen,
     sidebarMode,
@@ -63,5 +96,9 @@ export const useUiStore = defineStore('ui', () => {
     showSidebar,
     toggleSidebarCollapsed,
     setSidebarWidth,
+    notesTreeWidth,
+    notesLinksWidth,
+    setNotesTreeWidth,
+    setNotesLinksWidth,
   }
 })
