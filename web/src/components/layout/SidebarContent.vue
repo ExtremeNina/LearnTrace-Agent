@@ -3,19 +3,18 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   ChevronsLeft, SquarePen, MonitorPlay, Camera, NotebookPen, Trash2,
-  GraduationCap, ListChecks, LoaderCircle, X,
+  GraduationCap, ListChecks, BookOpen, ChevronDown, LoaderCircle, X,
 } from 'lucide-vue-next'
 import { useAgentStore } from '../../stores/agent'
 import * as reviewApi from '../../api/review'
-import type { ReviewCardInfo, ReviewStatsInfo } from '../../types/api'
+import type { ReviewCardInfo } from '../../types/api'
 
 /**
- * 侧栏内容（四模式）：
- * chat = 新对话与会话历史（默认）；assets = 学习资产三入口；tasks = 复习任务（今日队列）；
- * quiz = 练习测验（队列统计 + 练习入口）。
+ * 侧栏内容（两模式）：
+ * chat = 新对话与会话历史（默认）；study = 学习台——今日待复习 / 练习测验入口 + 今日队列 + 学习资产（可展开子菜单）。
  * 桌面端 collapsible = true 时显示收缩按钮；移动端抽屉传 false。
  */
-const props = withDefaults(defineProps<{ mode?: 'chat' | 'assets' | 'tasks' | 'quiz'; collapsible?: boolean }>(), {
+const props = withDefaults(defineProps<{ mode?: 'chat' | 'study'; collapsible?: boolean }>(), {
   mode: 'chat',
   collapsible: false,
 })
@@ -45,7 +44,7 @@ async function removeConversation(id: number) {
   await agent.removeConversation(id)
 }
 
-// ---- 任务模式：今日队列（进入侧栏时加载；统计数字只在 /review 页展示） ----
+// ---- 学习台模式：今日队列（进入侧栏时加载） ----
 const tasksQueue = ref<ReviewCardInfo[]>([])
 const tasksLoading = ref(false)
 
@@ -54,30 +53,17 @@ async function loadTasks() {
   try {
     tasksQueue.value = await reviewApi.getTodayQueue()
   } catch {
-    // 任务侧栏加载失败静默（复习页可重试）
+    // 队列加载失败静默（复习页可重试）
   } finally {
     tasksLoading.value = false
-  }
-}
-
-// ---- 练习模式：队列统计（练习从题库抽题，错题沉淀进复习队列） ----
-const quizStats = ref<ReviewStatsInfo | null>(null)
-
-async function loadQuizStats() {
-  try {
-    quizStats.value = await reviewApi.getReviewStats()
-  } catch {
-    // 统计加载失败静默（不影响练习入口）
   }
 }
 
 watch(
   () => props.mode,
   (mode) => {
-    if (mode === 'tasks') {
+    if (mode === 'study') {
       loadTasks()
-    } else if (mode === 'quiz') {
-      loadQuizStats()
     }
   },
   { immediate: true }
@@ -98,6 +84,10 @@ function typeLabel(cardType: string): string {
 const showHistory = ref(false)
 
 const activeRoute = computed(() => router.currentRoute.value.path)
+
+// ---- 学习资产下拉子菜单（当前已在资产页时默认展开） ----
+const ASSET_ROUTES = ['/courses', '/questions', '/notes']
+const assetsOpen = ref(ASSET_ROUTES.includes(activeRoute.value))
 </script>
 
 <template>
@@ -105,14 +95,9 @@ const activeRoute = computed(() => router.currentRoute.value.path)
     <!-- 品牌区 -->
     <div class="flex items-center gap-1.5 px-5 pt-5 pb-3">
       <span v-if="mode === 'chat'" class="text-[20px] font-semibold tracking-tight">学迹</span>
-      <span v-else-if="mode === 'assets'" class="text-[16px] font-semibold tracking-tight">学习资产</span>
-      <span v-else-if="mode === 'tasks'" class="flex items-center gap-1.5 text-[16px] font-semibold tracking-tight">
-        <GraduationCap :size="16" class="text-primary" />
-        今日待复习
-      </span>
       <span v-else class="flex items-center gap-1.5 text-[16px] font-semibold tracking-tight">
-        <ListChecks :size="16" class="text-primary" />
-        练习测验
+        <BookOpen :size="16" class="text-primary" />
+        学习台
       </span>
       <button
         v-if="collapsible"
@@ -210,46 +195,30 @@ const activeRoute = computed(() => router.currentRoute.value.path)
       </div>
     </template>
 
-    <!-- 资产模式：学习资产入口 -->
-    <template v-else-if="mode === 'assets'">
-      <div class="px-3 pt-1">
-        <RouterLink
-          to="/courses"
-          class="flex items-center gap-3 rounded-2xl px-3.5 py-2.5 text-[15px] transition-colors"
-          :class="activeRoute === '/courses' ? 'bg-line/50 font-medium text-ink' : 'text-ink hover:bg-line/50'"
-          @click="$emit('navigate')"
-        >
-          <MonitorPlay :size="18" :class="activeRoute === '/courses' ? 'text-ink' : 'text-ink-2'" />
-          网课记录
-        </RouterLink>
-        <RouterLink
-          to="/questions"
-          class="mt-1 flex items-center gap-3 rounded-2xl px-3.5 py-2.5 text-[15px] transition-colors"
-          :class="activeRoute === '/questions' ? 'bg-line/50 font-medium text-ink' : 'text-ink hover:bg-line/50'"
-          @click="$emit('navigate')"
-        >
-          <Camera :size="18" :class="activeRoute === '/questions' ? 'text-ink' : 'text-ink-2'" />
-          拍照记录
-        </RouterLink>
-        <RouterLink
-          to="/notes"
-          class="mt-1 flex items-center gap-3 rounded-2xl px-3.5 py-2.5 text-[15px] transition-colors"
-          :class="activeRoute === '/notes' ? 'bg-line/50 font-medium text-ink' : 'text-ink hover:bg-line/50'"
-          @click="$emit('navigate')"
-        >
-          <NotebookPen :size="18" :class="activeRoute === '/notes' ? 'text-ink' : 'text-ink-2'" />
-          笔记整理
-        </RouterLink>
-      </div>
-      <p class="px-6 pt-3 text-[12px] leading-5 text-ink-2">
-        网课转写与 AI 笔记、拍照解题与错因整理、OneNote 式分层笔记，都在这里管理。
-      </p>
-    </template>
-
-    <!-- 任务模式：今日队列 -->
-    <template v-else-if="mode === 'tasks'">
+    <!-- 学习台模式：复习 / 练习入口 + 今日队列 + 学习资产（可展开） -->
+    <template v-else-if="mode === 'study'">
       <div class="min-h-0 flex-1 overflow-y-auto px-3 pt-1">
-        <p class="px-3.5 pb-2 text-[13px] text-ink-2">今日队列</p>
+        <RouterLink
+          to="/review"
+          class="flex items-center gap-3 rounded-2xl px-3.5 py-2.5 text-[15px] transition-colors"
+          :class="activeRoute === '/review' ? 'bg-line/50 font-medium text-ink' : 'text-ink hover:bg-line/50'"
+          @click="$emit('navigate')"
+        >
+          <GraduationCap :size="18" :class="activeRoute === '/review' ? 'text-ink' : 'text-ink-2'" />
+          今日待复习
+        </RouterLink>
+        <RouterLink
+          to="/quiz"
+          class="mt-1 flex items-center gap-3 rounded-2xl px-3.5 py-2.5 text-[15px] transition-colors"
+          :class="activeRoute === '/quiz' ? 'bg-line/50 font-medium text-ink' : 'text-ink hover:bg-line/50'"
+          @click="$emit('navigate')"
+        >
+          <ListChecks :size="18" :class="activeRoute === '/quiz' ? 'text-ink' : 'text-ink-2'" />
+          练习测验
+        </RouterLink>
+
+        <!-- 今日队列 -->
+        <p class="px-3.5 pb-2 pt-5 text-[13px] text-ink-2">今日队列</p>
         <div v-if="tasksLoading" class="flex items-center gap-2 px-3.5 py-2 text-[13px] text-ink-2">
           <LoaderCircle :size="14" class="animate-spin" />
           加载中…
@@ -263,72 +232,64 @@ const activeRoute = computed(() => router.currentRoute.value.path)
           <p class="text-[11px] text-ink-2">{{ typeLabel(c.cardType) }}</p>
           <p class="mt-0.5 truncate text-[13px] text-ink">{{ c.frontText || '（无内容）' }}</p>
         </div>
-      </div>
 
-      <div class="shrink-0 px-3 pb-3">
-        <button
-          class="flex w-full items-center justify-center gap-1.5 rounded-xl bg-primary py-2.5 text-[14px] text-white hover:opacity-90 disabled:opacity-50"
-          :disabled="tasksLoading"
-          @click="router.push('/review')"
-        >
-          <GraduationCap :size="15" />
-          进入复习
-        </button>
-      </div>
-    </template>
-
-    <!-- 练习模式：队列统计 + 练习入口 -->
-    <template v-else-if="mode === 'quiz'">
-      <div class="min-h-0 flex-1 overflow-y-auto px-3 pt-1">
-        <div class="grid grid-cols-2 gap-2 px-0.5">
-          <div class="rounded-xl border border-line bg-surface p-3 text-center">
-            <p class="text-[20px] font-semibold text-primary">{{ quizStats?.dueCount ?? '--' }}</p>
-            <p class="mt-0.5 text-[11px] text-ink-2">待复习</p>
-          </div>
-          <div class="rounded-xl border border-line bg-surface p-3 text-center">
-            <p class="text-[20px] font-semibold text-ink">{{ quizStats?.total ?? '--' }}</p>
-            <p class="mt-0.5 text-[11px] text-ink-2">队列总数</p>
-          </div>
+        <!-- 学习资产（点击展开子菜单） -->
+        <div class="pb-3 pt-4">
+          <button
+            class="flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-[15px] text-ink transition-colors hover:bg-line/50"
+            @click="assetsOpen = !assetsOpen"
+          >
+            <span class="flex items-center gap-3">
+              <BookOpen :size="18" class="text-ink-2" />
+              学习资产
+            </span>
+            <ChevronDown :size="16" class="text-ink-2 transition-transform" :class="assetsOpen ? 'rotate-180' : ''" />
+          </button>
+          <Transition name="drop">
+            <div v-if="assetsOpen" class="mt-1 ml-4 flex flex-col border-l border-line pl-2">
+              <RouterLink
+                to="/courses"
+                class="flex items-center gap-3 rounded-2xl px-3 py-2 text-[14px] transition-colors"
+                :class="activeRoute === '/courses' ? 'bg-line/50 font-medium text-ink' : 'text-ink hover:bg-line/50'"
+                @click="$emit('navigate')"
+              >
+                <MonitorPlay :size="16" :class="activeRoute === '/courses' ? 'text-ink' : 'text-ink-2'" />
+                视频管理
+              </RouterLink>
+              <RouterLink
+                to="/questions"
+                class="mt-0.5 flex items-center gap-3 rounded-2xl px-3 py-2 text-[14px] transition-colors"
+                :class="activeRoute === '/questions' ? 'bg-line/50 font-medium text-ink' : 'text-ink hover:bg-line/50'"
+                @click="$emit('navigate')"
+              >
+                <Camera :size="16" :class="activeRoute === '/questions' ? 'text-ink' : 'text-ink-2'" />
+                题目管理
+              </RouterLink>
+              <RouterLink
+                to="/notes"
+                class="mt-0.5 flex items-center gap-3 rounded-2xl px-3 py-2 text-[14px] transition-colors"
+                :class="activeRoute === '/notes' ? 'bg-line/50 font-medium text-ink' : 'text-ink hover:bg-line/50'"
+                @click="$emit('navigate')"
+              >
+                <NotebookPen :size="16" :class="activeRoute === '/notes' ? 'text-ink' : 'text-ink-2'" />
+                笔记管理
+              </RouterLink>
+            </div>
+          </Transition>
         </div>
-        <p class="px-3.5 pt-4 pb-2 text-[13px] text-ink-2">练习入口</p>
-        <button
-          class="flex w-full items-center gap-3 rounded-2xl px-3.5 py-2.5 text-left text-[15px] transition-colors"
-          :class="activeRoute === '/quiz' ? 'bg-line/50 font-medium text-ink' : 'text-ink hover:bg-line/50'"
-          @click="router.push('/quiz'); $emit('navigate')"
-        >
-          <ListChecks :size="18" class="text-ink-2" />
-          练习测验
-        </button>
-        <button
-          class="mt-1 flex w-full items-center gap-3 rounded-2xl px-3.5 py-2.5 text-left text-[15px] transition-colors"
-          :class="activeRoute === '/review' ? 'bg-line/50 font-medium text-ink' : 'text-ink hover:bg-line/50'"
-          @click="router.push('/review'); $emit('navigate')"
-        >
-          <GraduationCap :size="18" class="text-ink-2" />
-          今日待复习
-        </button>
-        <button
-          class="mt-1 flex w-full items-center gap-3 rounded-2xl px-3.5 py-2.5 text-left text-[15px] transition-colors"
-          :class="activeRoute === '/questions' ? 'bg-line/50 font-medium text-ink' : 'text-ink hover:bg-line/50'"
-          @click="router.push('/questions'); $emit('navigate')"
-        >
-          <Camera :size="18" class="text-ink-2" />
-          拍照记录
-        </button>
-        <p class="px-3.5 pt-4 text-[12px] leading-5 text-ink-2">
-          从题库（拍照题目 + AI 相似题）按学科与时间段抽题组卷，先做后看解析；交卷后勾选做错的题加入复习队列。
-        </p>
-      </div>
-
-      <div class="shrink-0 px-3 pb-3">
-        <button
-          class="flex w-full items-center justify-center gap-1.5 rounded-xl bg-primary py-2.5 text-[14px] text-white hover:opacity-90"
-          @click="router.push('/quiz'); $emit('navigate')"
-        >
-          <ListChecks :size="15" />
-          开始练习
-        </button>
       </div>
     </template>
   </div>
 </template>
+
+<style scoped>
+.drop-enter-active,
+.drop-leave-active {
+  transition: all 0.15s ease;
+}
+.drop-enter-from,
+.drop-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+</style>

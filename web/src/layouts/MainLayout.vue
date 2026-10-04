@@ -131,24 +131,10 @@ async function remindReview() {
           </button>
           <button
             class="flex-1 rounded-xl py-2 text-[13px] transition-colors"
-            :class="ui.sidebarMode === 'assets' ? 'bg-line/70 font-medium text-ink' : 'text-ink-2'"
-            @click="ui.showSidebar('assets')"
+            :class="ui.sidebarMode === 'study' ? 'bg-line/70 font-medium text-ink' : 'text-ink-2'"
+            @click="ui.showSidebar('study')"
           >
-            学习资产
-          </button>
-          <button
-            class="flex-1 rounded-xl py-2 text-[13px] transition-colors"
-            :class="ui.sidebarMode === 'tasks' ? 'bg-line/70 font-medium text-ink' : 'text-ink-2'"
-            @click="ui.showSidebar('tasks')"
-          >
-            任务
-          </button>
-          <button
-            class="flex-1 rounded-xl py-2 text-[13px] transition-colors"
-            :class="ui.sidebarMode === 'quiz' ? 'bg-line/70 font-medium text-ink' : 'text-ink-2'"
-            @click="ui.showSidebar('quiz')"
-          >
-            练习
+            学习台
           </button>
         </div>
         <div class="min-h-0 flex-1">

@@ -1,10 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { House, CircleHelp, GraduationCap, ListChecks, BookOpen, Settings, LogIn } from 'lucide-vue-next'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { House, CircleHelp, BookOpen, Settings, LogIn } from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../../stores/auth'
 import { useUiStore } from '../../stores/ui'
-import { getReviewStats } from '../../api/review'
 import ProfileModal from '../ProfileModal.vue'
 
 const route = useRoute()
@@ -13,20 +12,6 @@ const auth = useAuthStore()
 const ui = useUiStore()
 const showSettings = ref(false)
 const showProfile = ref(false)
-/** 今日待复习数（复习页角标） */
-const dueCount = ref(0)
-
-async function refreshDueCount() {
-  if (!auth.isLoggedIn) {
-    dueCount.value = 0
-    return
-  }
-  try {
-    dueCount.value = (await getReviewStats()).dueCount
-  } catch {
-    // 静默：角标仅是提示，失败不影响功能
-  }
-}
 
 /** 未登录时从弹窗直达登录页（先清除失效 token，避免路由守卫拦截） */
 function goLogin() {
@@ -35,20 +20,8 @@ function goLogin() {
   router.push('/login')
 }
 
-const ASSET_ROUTES = ['/courses', '/questions', '/notes']
-const isAssetRoute = computed(() => ASSET_ROUTES.includes(route.path))
-
-/** 学习资产按钮：展开侧栏到资产模式并默认打开网课记录；已在资产模式时切换为收缩 */
-function openAssets() {
-  if (ui.sidebarMode === 'assets' && !ui.sidebarCollapsed) {
-    ui.toggleSidebarCollapsed()
-    return
-  }
-  ui.showSidebar('assets')
-  if (!isAssetRoute.value) {
-    router.push('/courses')
-  }
-}
+const STUDY_ROUTES = ['/review', '/quiz', '/courses', '/questions', '/notes']
+const isStudyRoute = computed(() => STUDY_ROUTES.includes(route.path))
 
 async function toggleSettings() {
   showSettings.value = !showSettings.value
@@ -81,15 +54,8 @@ function onGlobalKeydown(e: KeyboardEvent) {
   }
 }
 
-onMounted(() => {
-  window.addEventListener('keydown', onGlobalKeydown)
-  refreshDueCount()
-})
-
+onMounted(() => window.addEventListener('keydown', onGlobalKeydown))
 onUnmounted(() => window.removeEventListener('keydown', onGlobalKeydown))
-
-// 路由切换时刷新角标（复习页刷完卡返回后数字要更新）
-watch(() => route.path, refreshDueCount)
 </script>
 
 <template>
@@ -106,36 +72,11 @@ watch(() => route.path, refreshDueCount)
         <House :size="20" />
       </RouterLink>
 
-      <RouterLink
-        to="/review"
-        class="relative flex h-10 w-10 items-center justify-center rounded-xl transition-colors"
-        :class="route.path === '/review' ? 'bg-line/60 font-medium text-ink' : 'text-ink-2 hover:bg-line/60 hover:text-ink'"
-        title="今日待复习"
-        @click="ui.showSidebar('tasks')"
-      >
-        <GraduationCap :size="20" />
-        <span
-          v-if="dueCount > 0"
-          class="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-medium text-white"
-        >
-          {{ dueCount > 99 ? '99+' : dueCount }}
-        </span>
-      </RouterLink>
-
-      <RouterLink
-        to="/quiz"
-        class="flex h-10 w-10 items-center justify-center rounded-xl transition-colors"
-        :class="route.path === '/quiz' ? 'bg-line/60 font-medium text-ink' : 'text-ink-2 hover:bg-line/60 hover:text-ink'"
-        title="练习测验"
-        @click="ui.showSidebar('quiz')"
-      >
-        <ListChecks :size="20" />
-      </RouterLink>
       <button
         class="flex h-10 w-10 items-center justify-center rounded-xl transition-colors"
-        :class="isAssetRoute || (ui.sidebarMode === 'assets' && !ui.sidebarCollapsed) ? 'bg-line/60 font-medium text-ink' : 'text-ink-2 hover:bg-line/60 hover:text-ink'"
-        title="学习资产"
-        @click="openAssets"
+        :class="isStudyRoute || ui.sidebarMode === 'study' ? 'bg-line/60 font-medium text-ink' : 'text-ink-2 hover:bg-line/60 hover:text-ink'"
+        title="学习台"
+        @click="ui.showSidebar('study')"
       >
         <BookOpen :size="20" />
       </button>
