@@ -23,7 +23,33 @@ onMounted(async () => {
 
 onUnmounted(() => {
   toast.stopTaskWatcher()
+  stopResize()
 })
+
+/** 拖拽侧栏右边界调整宽度（200~480px，持久化） */
+function startResize(e: MouseEvent) {
+  e.preventDefault()
+  const startX = e.clientX
+  const startWidth = ui.sidebarWidth
+  const onMove = (ev: MouseEvent) => {
+    ui.setSidebarWidth(startWidth + (ev.clientX - startX))
+  }
+  const onUp = () => {
+    window.removeEventListener('mousemove', onMove)
+    window.removeEventListener('mouseup', onUp)
+    document.body.style.cursor = ''
+    document.body.style.userSelect = ''
+  }
+  document.body.style.cursor = 'col-resize'
+  document.body.style.userSelect = 'none'
+  window.addEventListener('mousemove', onMove)
+  window.addEventListener('mouseup', onUp)
+}
+
+function stopResize() {
+  document.body.style.cursor = ''
+  document.body.style.userSelect = ''
+}
 
 async function remindReview() {
   try {
@@ -54,7 +80,8 @@ async function remindReview() {
     <!-- Sidebar：桌面端（可收缩，双模式） -->
     <aside
       v-if="!ui.sidebarCollapsed"
-      class="panel-gradient relative hidden w-60 shrink-0 flex-col border-r border-line md:flex"
+      class="panel-gradient relative hidden shrink-0 flex-col border-r border-line md:flex"
+      :style="{ width: ui.sidebarWidth + 'px' }"
     >
       <button
         class="absolute right-2 top-3.5 z-10 flex h-7 w-7 items-center justify-center rounded-lg text-ink-2 hover:bg-line/60 hover:text-ink"
@@ -64,6 +91,12 @@ async function remindReview() {
         <ChevronsRight :size="16" />
       </button>
       <SidebarContent :mode="ui.sidebarMode" collapsible />
+      <!-- 分隔竖线 + 拖拽调宽手柄 -->
+      <div
+        class="absolute inset-y-0 right-0 z-10 w-[3px] cursor-col-resize bg-line transition-colors hover:bg-primary"
+        title="拖拽调整宽度"
+        @mousedown="startResize"
+      ></div>
     </aside>
     <!-- 收缩后的展开入口（悬停桌面图标栏旁） -->
     <button
@@ -102,6 +135,13 @@ async function remindReview() {
             @click="ui.showSidebar('assets')"
           >
             学习资产
+          </button>
+          <button
+            class="flex-1 rounded-xl py-2 text-[13px] transition-colors"
+            :class="ui.sidebarMode === 'tasks' ? 'bg-line/70 font-medium text-ink' : 'text-ink-2'"
+            @click="ui.showSidebar('tasks')"
+          >
+            任务
           </button>
         </div>
         <div class="min-h-0 flex-1">

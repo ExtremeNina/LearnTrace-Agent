@@ -13,6 +13,7 @@
   --color-primary: #2563eb;     /* 强调色 */
   --color-primary-soft: #eff6ff; /* 选中 / 悬停浅底 */
   --color-surface: #ffffff;     /* 卡片 / 弹层表面 */
+  --color-canvas: #f7f7f6;      /* 对话区画布（比侧栏略深，形成区分） */
 }
 
 /* 深色主题令牌翻转（个人页面偏好设置；写入 html.dark） */
@@ -24,6 +25,7 @@
   --color-primary: #3b82f6;
   --color-primary-soft: #1c2a45;
   --color-surface: #1e1f23;
+  --color-canvas: #151617;
 }
 
 html,

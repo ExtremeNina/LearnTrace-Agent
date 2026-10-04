@@ -118,11 +118,11 @@ watch(() => route.path, refreshDueCount)
       >
         <History :size="20" />
       </RouterLink>
-      <RouterLink
-        to="/review"
+      <button
         class="relative flex h-10 w-10 items-center justify-center rounded-xl transition-colors"
-        :class="route.path === '/review' ? 'bg-ink text-white' : 'text-ink hover:bg-line/60'"
-        title="今日待复习"
+        :class="ui.sidebarMode === 'tasks' && !ui.sidebarCollapsed ? 'bg-ink text-white' : 'text-ink hover:bg-line/60'"
+        title="今日待复习 / 任务"
+        @click="ui.showSidebar('tasks')"
       >
         <GraduationCap :size="20" />
         <span
@@ -131,7 +131,7 @@ watch(() => route.path, refreshDueCount)
         >
           {{ dueCount > 99 ? '99+' : dueCount }}
         </span>
-      </RouterLink>
+      </button>
       <button
         class="flex h-10 w-10 items-center justify-center rounded-xl transition-colors"
         :class="isAssetRoute || (ui.sidebarMode === 'assets' && !ui.sidebarCollapsed) ? 'bg-ink text-white' : 'text-ink hover:bg-line/60'"
