@@ -449,13 +449,13 @@ const timelineTicks = computed(() => {
                   </div>
                 </div>
 
-                <div class="divide-y divide-line">
-                  <div v-for="row in segmentsWithFrames" :key="row.seg.id" class="py-3 first:pt-1 last:pb-1">
-                    <div class="flex gap-3">
-                      <button class="shrink-0 pt-0.5 text-[12px] text-primary hover:underline" @click="seekTo(row.seg.startSec)">
+                <div class="flex flex-col gap-7">
+                  <div v-for="row in segmentsWithFrames" :key="row.seg.id">
+                    <div class="flex gap-4">
+                      <button class="w-12 shrink-0 pt-0.5 text-left text-[12px] font-medium text-primary hover:underline" @click="seekTo(row.seg.startSec)">
                         {{ formatTs(row.seg.startSec) }}
                       </button>
-                      <p class="min-w-0 flex-1 text-[13px] leading-6 text-ink">{{ row.seg.text }}</p>
+                      <p class="min-w-0 flex-1 text-[13px] leading-6.5 text-ink">{{ row.seg.text }}</p>
                     </div>
                     <div v-if="row.frames.length" class="mt-2 flex gap-2 overflow-x-auto pb-1">
                       <button
