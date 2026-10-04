@@ -65,7 +65,7 @@ onUnmounted(() => window.removeEventListener('keydown', onGlobalKeydown))
       <RouterLink
         to="/"
         class="flex h-10 w-10 items-center justify-center rounded-xl transition-colors"
-        :class="route.path === '/' ? 'bg-line/60 font-medium text-ink' : 'text-ink-2 hover:bg-line/60 hover:text-ink'"
+        :class="route.path === '/' && ui.sidebarMode === 'chat' ? 'bg-line/60 font-medium text-ink' : 'text-ink-2 hover:bg-line/60 hover:text-ink'"
         title="首页 / Agent"
         @click="ui.showSidebar('chat')"
       >
