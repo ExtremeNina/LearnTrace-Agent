@@ -127,7 +127,7 @@ watch(() => route.path, refreshDueCount)
         class="flex h-10 w-10 items-center justify-center rounded-xl transition-colors"
         :class="route.path === '/quiz' ? 'bg-line/60 font-medium text-ink' : 'text-ink-2 hover:bg-line/60 hover:text-ink'"
         title="练习测验"
-        @click="ui.showSidebar('tasks')"
+        @click="ui.showSidebar('quiz')"
       >
         <ListChecks :size="20" />
       </RouterLink>

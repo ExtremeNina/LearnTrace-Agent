@@ -2,9 +2,9 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
 /**
- * 布局 UI 状态：移动端抽屉开关、桌面端侧栏模式（对话 / 学习资产 / 任务）与收缩、侧栏宽度（可拖拽）
+ * 布局 UI 状态：移动端抽屉开关、桌面端侧栏模式（对话 / 学习资产 / 任务 / 练习）与收缩、侧栏宽度（可拖拽）
  */
-export type SidebarMode = 'chat' | 'assets' | 'tasks'
+export type SidebarMode = 'chat' | 'assets' | 'tasks' | 'quiz'
 
 const MODE_KEY = 'xj_sidebar_mode'
 const COLLAPSED_KEY = 'xj_sidebar_collapsed'
@@ -37,7 +37,7 @@ function persistedWidth(key: string, fallback: number, min: number, max: number)
 export const useUiStore = defineStore('ui', () => {
   const sidebarOpen = ref(false)
 
-  /** 侧栏当前模式：chat = 新对话与会话历史 / assets = 学习资产 / tasks = 今日任务 */
+  /** 侧栏当前模式：chat = 新对话与会话历史 / assets = 学习资产 / tasks = 今日任务 / quiz = 练习测验 */
   const sidebarMode = ref<SidebarMode>((localStorage.getItem(MODE_KEY) as SidebarMode) || 'chat')
 
   /** 桌面端侧栏是否收缩（移动端抽屉不受影响） */

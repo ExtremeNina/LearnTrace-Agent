@@ -143,6 +143,13 @@ async function remindReview() {
           >
             任务
           </button>
+          <button
+            class="flex-1 rounded-xl py-2 text-[13px] transition-colors"
+            :class="ui.sidebarMode === 'quiz' ? 'bg-line/70 font-medium text-ink' : 'text-ink-2'"
+            @click="ui.showSidebar('quiz')"
+          >
+            练习
+          </button>
         </div>
         <div class="min-h-0 flex-1">
           <SidebarContent :mode="ui.sidebarMode" @navigate="ui.closeSidebar()" />
