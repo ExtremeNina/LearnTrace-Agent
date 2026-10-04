@@ -44,6 +44,7 @@ AI 个人学习工作台：学习资产（网课 / 题目 / 笔记）+ 知识点
 **RabbitMQ**
 * guest 只允许容器内 localhost 登录，Docker NAT 后来源是网关 IP 会被拒 → 容器内已建用户 `xueji/xueji123`（凭据同时记在 `application-local.properties`；**容器重建会丢，需重建用户**）
 * MQ 转换器为 RabbitMQConfig 装配的 Jackson2JsonMessageConverter（类型解析 INFERRED 优先，按监听方法签名反序列化）：负载直接发对象（如 `mq.CourseProcessMessage`），禁止再手写 JSON 字符串负载——字符串会被 Jackson 二次编码成带引号字面量；SimpleMessageConverter 时代的「负载一律 JSON 字符串」规避（B02）已下线
+* 发送可靠性三件套（confirm / returns / mandatory）在 RabbitMQConfig 显式声明的 RabbitTemplate 上，依赖 yml `publisher-confirm-type: correlated` + `publisher-returns: true`——漏配 yml 回调静默失效；发送端未传 CorrelationData，确认日志里 correlationData 为 null 属正常
 * 监听容器认证失败会中止启动（SimpleMessageListenerContainer fatal）→ 认证问题表现为**整个应用起不来**，不只是 MQ 不可用
 
 **Spring AI 1.1.8**

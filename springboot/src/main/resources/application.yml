@@ -24,6 +24,9 @@ spring:
     port: ${RABBITMQ_PORT:5672}
     username: ${RABBITMQ_USER:guest}
     password: ${RABBITMQ_PASS:guest}
+    # 发送可靠性：confirm / returns 回调生效的前提，漏配则 RabbitTemplate 回调静默失效
+    publisher-confirm-type: correlated
+    publisher-returns: true
     listener:
       simple:
         acknowledge-mode: manual

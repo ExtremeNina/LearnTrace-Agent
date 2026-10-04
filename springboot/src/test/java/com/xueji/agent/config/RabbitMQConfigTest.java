@@ -6,12 +6,15 @@ import com.xueji.agent.mq.CourseProcessMessage;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.core.MessageProperties;
+import org.springframework.amqp.rabbit.connection.ConnectionFactory;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
 import org.springframework.core.MethodParameter;
 
 import java.lang.reflect.Method;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.Mockito.mock;
 
 /**
  * MQ 消息转换器契约：对象负载序列化为 application/json，消费端按监听方法签名（INFERRED 优先，
@@ -39,5 +42,15 @@ class RabbitMQConfigTest {
         CourseProcessMessage back = (CourseProcessMessage) restored;
         assertEquals(15L, back.getCourseId());
         assertEquals("/tmp/a.mp4", back.getTempPath());
+    }
+
+    @Test
+    void rabbitTemplateShouldBindConverterExplicitly() {
+        RabbitMQConfig config = new RabbitMQConfig();
+        Jackson2JsonMessageConverter converter = config.jacksonMessageConverter();
+
+        RabbitTemplate template = config.rabbitTemplate(mock(ConnectionFactory.class), converter);
+
+        assertEquals(converter, template.getMessageConverter());
     }
 }
