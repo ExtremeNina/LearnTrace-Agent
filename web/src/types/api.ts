@@ -47,6 +47,21 @@ export interface UserProfileInfo {
   createdAt: string
 }
 
+/** 用户自建模型配置（对应后端 AiModelVO；apiKey 一律脱敏返回） */
+export interface AiModelConfigInfo {
+  id: number
+  name: string
+  baseUrl: string
+  apiKeyMasked: string
+  model: string
+  apiFormat: string
+  createdAt: string
+  updatedAt: string
+}
+
+/** 按模块的模型偏好：module → 模型配置 ID（null = 系统默认） */
+export type ModelModulePrefsInfo = Record<string, number | null>
+
 /** 每日学习简报（对应后端 BriefingVO） */
 export interface BriefingInfo {
   briefDate: string

@@ -1,11 +1,15 @@
 <script setup lang="ts">
-import { nextTick, onMounted, ref, watch } from 'vue'
-import { ArrowUp, Check, Copy, Plus, RefreshCw, Share2, Sparkles, Square, ThumbsDown, ThumbsUp, Volume2, X } from 'lucide-vue-next'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { ArrowUp, Check, ChevronDown, Copy, Cpu, Pencil, Plus, RefreshCw, Share2, Sparkles, Square, ThumbsDown, ThumbsUp, Volume2, X } from 'lucide-vue-next'
 import { useAgentStore } from '../stores/agent'
+import * as modelApi from '../api/model'
+import type { AiModelConfigInfo } from '../types/api'
+import ModelManageModal from '../components/ModelManageModal.vue'
 import { renderMarkdown } from '../utils/markdown'
 
 /**
- * Agent 主区（PRD §3.1 / §5）：消息流 + 底部输入框，支持附图（截图预览位），流式渲染
+ * Agent 主区（PRD §3.1 / §5）：消息流 + 底部输入框，支持附图（截图预览位），流式渲染。
+ * 输入框左下角常驻当前模型指示器：点击切换模型 / 进入管理模型弹窗。
  */
 const agent = useAgentStore()
 const draft = ref('')
@@ -13,6 +17,48 @@ const scrollBox = ref<HTMLElement | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
 /** 刚完成复制的消息下标（短暂显示对勾反馈） */
 const copiedIndex = ref<number | null>(null)
+
+// 模型管理：配置列表 + 对话模块当前选择的模型（null = 系统默认）
+const models = ref<AiModelConfigInfo[]>([])
+const chatModelId = ref<number | null>(null)
+const showModelMenu = ref(false)
+const showModelManage = ref(false)
+
+const currentModelName = computed(() => {
+  if (chatModelId.value == null) {
+    return '系统默认'
+  }
+  return models.value.find((m) => m.id === chatModelId.value)?.name ?? '系统默认'
+})
+
+async function loadModels() {
+  try {
+    models.value = await modelApi.listModels()
+    chatModelId.value = (await modelApi.getModulePrefs()).chat ?? null
+  } catch {
+    // 模型清单加载失败静默（下拉可重试）
+  }
+}
+
+async function pickModel(id: number | null) {
+  try {
+    await modelApi.setModulePref('chat', id)
+    chatModelId.value = id
+    showModelMenu.value = false
+  } catch (e) {
+    agent.error = e instanceof Error ? e.message : '切换模型失败'
+  }
+}
+
+function openModelManage() {
+  showModelMenu.value = false
+  showModelManage.value = true
+}
+
+function onModelManageChanged() {
+  // 弹窗内增删改后刷新列表与当前选择（被删配置回退系统默认）
+  loadModels()
+}
 
 async function copyMessage(index: number, content: string) {
   try {
@@ -34,6 +80,8 @@ onMounted(async () => {
   await agent.restoreLastConversation()
   // 跨页种子消息（题目详情页「生成相似题」）：切换目标会话后自动发出
   await agent.applySeed()
+  // 模型管理数据（配置列表 + 对话模块当前选择）
+  loadModels()
 })
 
 watch(
@@ -182,17 +230,59 @@ function onSend() {
           />
           <div class="flex items-center justify-between pt-2">
             <div class="flex items-center gap-3">
+            <!-- 当前模型指示器：点击切换模型 / 管理模型 -->
+            <div class="relative">
               <button
-                class="flex h-8 w-8 items-center justify-center rounded-full text-ink hover:bg-line/60"
-                :class="agent.uploading ? 'animate-pulse text-ink-2' : ''"
-                title="添加图片"
-                :disabled="agent.uploading"
-                @click="onPickImage"
+                class="flex items-center gap-1 rounded-full border border-line px-2.5 py-1.5 text-[13px] text-ink-2 hover:border-ink-2/50 hover:text-ink"
+                title="切换模型"
+                @click="showModelMenu = !showModelMenu"
               >
-                <Plus :size="20" />
+                <Cpu :size="13" />
+                {{ currentModelName }}
+                <ChevronDown :size="13" />
               </button>
-              <span class="text-[13px] text-ink-2">Enter 发送</span>
+              <div
+                v-if="showModelMenu"
+                class="absolute bottom-[calc(100%+8px)] left-0 z-50 w-60 rounded-2xl border border-line bg-surface p-2 shadow-lg"
+              >
+                <button
+                  class="flex w-full items-center justify-between rounded-xl px-3 py-2 text-[14px] text-ink hover:bg-panel"
+                  @click="pickModel(null)"
+                >
+                  系统默认
+                  <Check v-if="chatModelId === null" :size="14" class="text-primary" />
+                </button>
+                <button
+                  v-for="m in models"
+                  :key="m.id"
+                  class="flex w-full items-center justify-between rounded-xl px-3 py-2 text-[14px] text-ink hover:bg-panel"
+                  @click="pickModel(m.id)"
+                >
+                  {{ m.name }}
+                  <Check v-if="chatModelId === m.id" :size="14" class="text-primary" />
+                </button>
+                <div class="my-1.5 h-px bg-line"></div>
+                <button
+                  class="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-[14px] text-ink hover:bg-panel"
+                  @click="openModelManage"
+                >
+                  <Pencil :size="14" class="text-ink-2" />
+                  管理模型
+                </button>
+              </div>
+              <div v-if="showModelMenu" class="fixed inset-0 z-40" @click="showModelMenu = false"></div>
             </div>
+            <button
+              class="flex h-8 w-8 items-center justify-center rounded-full text-ink hover:bg-line/60"
+              :class="agent.uploading ? 'animate-pulse text-ink-2' : ''"
+              title="添加图片"
+              :disabled="agent.uploading"
+              @click="onPickImage"
+            >
+              <Plus :size="20" />
+            </button>
+            <span class="text-[13px] text-ink-2">Enter 发送</span>
+          </div>
             <button
               v-if="!agent.streaming"
               class="flex h-9 w-9 items-center justify-center rounded-full bg-ink text-white transition-opacity hover:opacity-80 disabled:opacity-25"
@@ -222,5 +312,8 @@ function onSend() {
       class="hidden"
       @change="onFileChange"
     />
+
+    <!-- 管理模型弹窗 -->
+    <ModelManageModal v-model:open="showModelManage" @changed="onModelManageChanged" />
   </div>
 </template>

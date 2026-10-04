@@ -1,6 +1,7 @@
 package com.xueji.agent.service;
 
 import com.xueji.agent.domain.entity.DailyBriefing;
+import com.xueji.agent.config.ChatClientFactory;
 import com.xueji.agent.mapper.DailyBriefingMapper;
 import com.xueji.agent.service.impl.BriefingServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
@@ -36,6 +37,7 @@ class BriefingServiceImplTest {
     private DailyBriefingMapper dailyBriefingMapper;
     private LearningStatsService learningStatsService;
     private ChatClient chatClient;
+    private AiModelService aiModelService;
     private BriefingServiceImpl service;
 
     @BeforeEach
@@ -43,10 +45,13 @@ class BriefingServiceImplTest {
         dailyBriefingMapper = mock(DailyBriefingMapper.class);
         learningStatsService = mock(LearningStatsService.class);
         chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
+        aiModelService = mock(AiModelService.class);
         service = new BriefingServiceImpl();
         ReflectionTestUtils.setField(service, "dailyBriefingMapper", dailyBriefingMapper);
         ReflectionTestUtils.setField(service, "learningStatsService", learningStatsService);
-        ReflectionTestUtils.setField(service, "chatClient", chatClient);
+        ReflectionTestUtils.setField(service, "aiModelService", aiModelService);
+        when(aiModelService.resolve(USER_ID, AiModelService.MODULE_BRIEFING, ChatClientFactory.Variant.GENERATION))
+                .thenReturn(chatClient);
 
         when(chatClient.prompt()
                 .system(anyString())

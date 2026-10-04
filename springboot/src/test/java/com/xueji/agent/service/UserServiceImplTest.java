@@ -30,13 +30,16 @@ import static org.mockito.Mockito.when;
 class UserServiceImplTest {
 
     private UserMapper userMapper;
+    private AiModelService aiModelService;
     private UserServiceImpl service;
 
     @BeforeEach
     void setUp() {
         userMapper = mock(UserMapper.class);
+        aiModelService = mock(AiModelService.class);
         service = new UserServiceImpl();
         ReflectionTestUtils.setField(service, "userMapper", userMapper);
+        ReflectionTestUtils.setField(service, "aiModelService", aiModelService);
     }
 
     private User existingUser() {

@@ -2,6 +2,7 @@ package com.xueji.agent.ai;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.xueji.agent.ai.prompt.AgentPrompts;
+import com.xueji.agent.config.ChatClientFactory;
 import com.xueji.agent.ai.tool.AsrSegment;
 import com.xueji.agent.domain.enums.CourseStatus;
 import com.xueji.agent.domain.entity.Course;
@@ -27,8 +28,8 @@ import java.util.List;
 @Service
 public class NoteGenerationService {
 
-    @Resource(name = "generationChatClient")
-    private ChatClient chatClient;
+    @Resource
+    private com.xueji.agent.service.AiModelService aiModelService;
 
     @Resource
     private NoteMapper noteMapper;
@@ -77,8 +78,9 @@ public class NoteGenerationService {
     public String generate(Course course, List<CourseTranscriptSegment> transcript,
                            List<CourseFrame> frames, int durationSec) {
         String userContent = buildUserContent(transcript, frames, course.getExpectations(), durationSec);
-        // 使用生成类专用 ChatClient（无对话工具、无记忆）：一次性生成任务，
-        // 且默认工具链中含需要 ToolContext 的工具，缺上下文会导致生成失败
+        // 生成形态客户端（无工具无记忆）；模型按用户的网课笔记模块偏好解析
+        ChatClient chatClient = aiModelService.resolve(course.getUserId(),
+                com.xueji.agent.service.AiModelService.MODULE_COURSE_NOTE, ChatClientFactory.Variant.GENERATION);
         String markdown = chatClient.prompt()
                 .system(AgentPrompts.COURSE_TRANSCRIPT_PROMPT)
                 .user(userContent)

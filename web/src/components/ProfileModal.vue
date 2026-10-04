@@ -3,11 +3,13 @@ import { computed, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { Camera, ChevronDown, ChevronUp, LoaderCircle, LogOut, Moon, Sun, Trash2, X } from 'lucide-vue-next'
 import * as userApi from '../api/user'
+import * as modelApi from '../api/model'
 import { uploadImage } from '../api/upload'
 import { logout as logoutApi } from '../api/auth'
 import { useAuthStore } from '../stores/auth'
 import { useUserStore } from '../stores/user'
 import { useToastStore } from '../stores/toast'
+import type { AiModelConfigInfo } from '../types/api'
 
 /**
  * 个人页面弹窗：资料（头像/昵称/邮箱/简介）、偏好（主题/任务通知）、
@@ -30,6 +32,14 @@ const form = reactive({ nickname: '', email: '', bio: '', avatarUrl: '' })
 // 偏好开关由 store 直接持久化，弹窗内即时生效
 const darkMode = computed(() => userStore.theme === 'DARK')
 const notifyEnabled = computed(() => userStore.profile?.notifyTaskEnabled !== false)
+
+// 模型偏好（模块 → 配置 ID，null = 系统默认）
+const models = ref<AiModelConfigInfo[]>([])
+const modulePrefs = ref<Record<string, number | null>>({
+  chat: null,
+  course_note: null,
+  briefing: null,
+})
 
 // 修改密码
 const pwdOpen = ref(false)
@@ -58,6 +68,12 @@ watch(
     form.email = profile?.email ?? ''
     form.bio = profile?.bio ?? ''
     form.avatarUrl = profile?.avatarUrl ?? ''
+    try {
+      models.value = await modelApi.listModels()
+      modulePrefs.value = await modelApi.getModulePrefs()
+    } catch {
+      // 模型偏好加载失败静默（下拉仍显示系统默认）
+    }
   }
 )
 
@@ -125,6 +141,18 @@ async function toggleNotify() {
     await userStore.setNotifyTaskEnabled(!notifyEnabled.value)
   } catch (err) {
     toast.push(err instanceof Error ? err.message : '通知设置失败', 'error')
+  }
+}
+
+async function setModuleModel(module: string, event: Event) {
+  const value = (event.target as HTMLSelectElement).value
+  const configId = value === '' ? null : Number(value)
+  try {
+    await modelApi.setModulePref(module as 'chat' | 'course_note' | 'briefing', configId)
+    modulePrefs.value[module] = configId
+    toast.push('模型偏好已保存')
+  } catch (err) {
+    toast.push(err instanceof Error ? err.message : '模型偏好保存失败', 'error')
   }
 }
 
@@ -320,7 +348,37 @@ const initial = computed(() => (form.nickname || auth.user?.username || '?').sli
             ></span>
           </button>
         </div>
-        <p class="px-4 pb-3 pt-1 text-[12px] text-ink-2">开启后，网课转写与笔记生成任务完成或失败时会在右上角提醒你</p>
+        <div class="flex items-center justify-between gap-3 px-4 py-3">
+          <span class="text-[14px] text-ink">对话模型</span>
+          <select
+            class="w-44 rounded-xl border border-line bg-surface px-2.5 py-1.5 text-[13px] text-ink outline-none focus:border-primary"
+            @change="setModuleModel('chat', $event)"
+          >
+            <option value="">系统默认</option>
+            <option v-for="m in models" :key="m.id" :value="m.id">{{ m.name }}（{{ m.model }}）</option>
+          </select>
+        </div>
+        <div class="flex items-center justify-between gap-3 px-4 py-3">
+          <span class="text-[14px] text-ink">网课笔记模型</span>
+          <select
+            class="w-44 rounded-xl border border-line bg-surface px-2.5 py-1.5 text-[13px] text-ink outline-none focus:border-primary"
+            @change="setModuleModel('course_note', $event)"
+          >
+            <option value="">系统默认</option>
+            <option v-for="m in models" :key="m.id" :value="m.id">{{ m.name }}（{{ m.model }}）</option>
+          </select>
+        </div>
+        <div class="flex items-center justify-between gap-3 px-4 py-3">
+          <span class="text-[14px] text-ink">简报模型</span>
+          <select
+            class="w-44 rounded-xl border border-line bg-surface px-2.5 py-1.5 text-[13px] text-ink outline-none focus:border-primary"
+            @change="setModuleModel('briefing', $event)"
+          >
+            <option value="">系统默认</option>
+            <option v-for="m in models" :key="m.id" :value="m.id">{{ m.name }}（{{ m.model }}）</option>
+          </select>
+        </div>
+        <p class="px-4 pb-3 pt-1 text-[12px] text-ink-2">开启后，网课转写与笔记生成任务完成或失败时会在右上角提醒你；模型清单可在对话页「管理模型」中添加</p>
       </div>
 
       <!-- 账号 -->

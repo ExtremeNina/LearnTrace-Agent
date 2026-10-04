@@ -7,6 +7,8 @@ import com.xueji.agent.domain.entity.DailyBriefing;
 import com.xueji.agent.domain.vo.BriefingVO;
 import com.xueji.agent.exception.BusinessException;
 import com.xueji.agent.mapper.DailyBriefingMapper;
+import com.xueji.agent.config.ChatClientFactory;
+import com.xueji.agent.service.AiModelService;
 import com.xueji.agent.service.BriefingService;
 import com.xueji.agent.service.LearningStatsService;
 import jakarta.annotation.Resource;
@@ -36,8 +38,8 @@ public class BriefingServiceImpl implements BriefingService {
     @Resource
     private LearningStatsService learningStatsService;
 
-    @Resource(name = "generationChatClient")
-    private ChatClient chatClient;
+    @Resource
+    private AiModelService aiModelService;
 
     @Override
     public BriefingVO getTodayBriefing(Long userId) {
@@ -83,6 +85,8 @@ public class BriefingServiceImpl implements BriefingService {
     }
 
     private String generateContent(Long userId, LocalDate today, Map<String, Object> stats) {
+        ChatClient chatClient = aiModelService.resolve(userId,
+                AiModelService.MODULE_BRIEFING, ChatClientFactory.Variant.GENERATION);
         String content = chatClient.prompt()
                 .system(AgentPrompts.BRIEFING_PROMPT)
                 .user(buildUserContent(stats))

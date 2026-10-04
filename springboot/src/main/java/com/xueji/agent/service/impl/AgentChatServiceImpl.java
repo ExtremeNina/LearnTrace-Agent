@@ -10,7 +10,9 @@ import com.xueji.agent.domain.entity.Message;
 import com.xueji.agent.domain.vo.ChatEvent;
 import com.xueji.agent.mapper.ConversationMapper;
 import com.xueji.agent.mapper.MessageMapper;
+import com.xueji.agent.config.ChatClientFactory;
 import com.xueji.agent.service.AgentChatService;
+import com.xueji.agent.service.AiModelService;
 import com.xueji.agent.service.ConversationService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -34,7 +36,7 @@ import java.util.List;
 public class AgentChatServiceImpl implements AgentChatService {
 
     @Resource
-    private ChatClient chatClient;
+    private AiModelService aiModelService;
 
     @Resource
     private ConversationMapper conversationMapper;
@@ -107,7 +109,10 @@ public class AgentChatServiceImpl implements AgentChatService {
             // 按场景选择系统提示词：带图走解题流程，否则用基础人设
             String systemPrompt = hasImage ? AgentPrompts.QUESTION_PROMPT : AgentPrompts.BASE_PROMPT;
 
-            Flux<ChatEvent> body = chatClient.prompt()
+            // 按用户模块偏好解析当前对话模型（默认回退系统 DeepSeek）
+        ChatClient chatClient = aiModelService.resolve(userId, AiModelService.MODULE_CHAT, ChatClientFactory.Variant.CHAT);
+
+        Flux<ChatEvent> body = chatClient.prompt()
                     .system(systemPrompt)
                     .user(promptContent)
                     // 会话 ID 经上下文传给 MessageChatMemoryAdvisor，自动注入历史并持久化本轮对话

@@ -8,6 +8,7 @@ import com.xueji.agent.domain.entity.User;
 import com.xueji.agent.domain.vo.UserProfileVO;
 import com.xueji.agent.exception.BusinessException;
 import com.xueji.agent.mapper.UserMapper;
+import com.xueji.agent.service.AiModelService;
 import com.xueji.agent.service.UserService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -28,6 +29,9 @@ public class UserServiceImpl implements UserService {
 
     @Resource
     private UserMapper userMapper;
+
+    @Resource
+    private AiModelService aiModelService;
 
     @Override
     public UserProfileVO getProfile(Long userId) {
@@ -90,6 +94,8 @@ public class UserServiceImpl implements UserService {
         }
         user.setDeleted(1).setUpdatedAt(LocalDateTime.now());
         userMapper.updateById(user);
+        // 模型配置含 API Key（凭据非资产），注销时物理删除
+        aiModelService.deleteAllByUser(userId);
         log.info("账号已注销（逻辑删除）, userId={}", userId);
     }
 
