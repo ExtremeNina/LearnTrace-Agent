@@ -23,6 +23,7 @@ LJ-Agent/
 - 复习系统 MVP 完成（2026-10-03）：统一复习队列（题目/相似题/笔记）+ SM-2 简化版调度 + 今日待复习独立入口（/review），端到端冒烟 20 断言通过。
 - 模型管理完成（2026-10-04）：用户自建 OpenAI 兼容模型配置（Base URL / API 格式 / API Key / 模型名，测试连接）+ 对话输入框模型切换器与管理弹窗 + 按模块的模型偏好（对话/网课笔记/简报，个人页面配置）+ ChatClientFactory（DB 驱动构建缓存，配置变更失效）；系统默认模型（部署者配置的 DeepSeek）为内置兜底；注销物理删除配置。冒烟 16 断言通过。
 - 每日简报完成（2026-10-03）：惰性生成（当天首次访问触发 LLM 并落库缓存）+ /review 页顶部简报卡 + 启动时复习提醒 toast（每天一次，受通知偏好控制）+ Agent 工具 get_learning_status；真实 LLM 冒烟 8 断言通过（生成 350 字 / 缓存 0.01s）。
+- 模型管理完成（2026-10-04）：用户自建 OpenAI 兼容模型配置（管理弹窗：Base URL / API 格式 / API Key / 模型名 + 测试连接）+ 对话输入框当前模型指示器与切换器 + 按模块的模型偏好（对话 / 网课笔记 / 简报）+ ChatClientFactory（DB 驱动构建缓存，配置变更失效）；系统默认模型（部署者配置的 DeepSeek）为内置兜底；注销物理删除配置。冒烟 16 断言通过。
 - 已知遗留：Redis db1 与其他项目共用且 sa-token 键前缀相同（`sa-token:`），他项目 token 可通过本系统鉴权——B06 搁置期间接受，公开部署前改 `token-name` 隔离；对话图片上传的 OSS 配置走 git 忽略的本地配置文件方案（endpoint=武汉 lr 区）；`uploadChatImage` 只捕获 IOException、前端 Agent.vue 未渲染上传失败提示（早期记录，未复核）。
 
 ## 后端模块索引（springboot/src/main/java/com/xueji/agent/）
@@ -60,7 +61,7 @@ LJ-Agent/
 | conversation / message | 会话与消息 | 物理删除（会话属临时数据，30 天定时清理） |
 | question_record | 拍照题目（image_oss_key NOT NULL） | 逻辑删除（deleted） |
 | similar_question | AI 相似题（source_question_id 可空、subject、conversation_id 溯源；is_correct 二期） | 逻辑删除（deleted） |
-| course | 网课 | 逻辑删除（deleted；删除连带 AI 笔记 / 知识联系 / 向量 / OSS 清理） |
+| course | 网课（model_config_id = 上传时选择的笔记生成模型，NULL = 系统默认） | 逻辑删除（deleted；删除连带 AI 笔记 / 知识联系 / 向量 / OSS 清理） |
 | course_transcript_segment / course_frame | 转写分段 / 关键帧 | 随重试清理重建；随网课删除移出向量库 |
 | note / note_link | 笔记树与知识联系 | 笔记逻辑删除；note_link 物理删除（分组级联时双向清理） |
 | user | 用户（bio / theme / notify_task_enabled / deleted） | 注销为逻辑删除（deleted），登录拦截 |

@@ -48,6 +48,7 @@ Sa-Token 登录注册与会话鉴权（除注册 / 登录 / WS 握手外全拦�
 - ChatClientFactory：按 (configId, variant) 缓存（CHAT = 记忆 + 三工具 / GENERATION = 裸）；invalidate 于配置变更 / 删除；构建期无网络请求
 - 解析链：用户模块偏好 → 系统默认；引用的配置删除时级联清除偏好并自动回退
 - 注销级联：模型配置（含密钥）与偏好物理删除（UserServiceImpl.deleteAccount → deleteAllByUser）
+- 网课笔记模型：上传弹窗按次选择（course.model_config_id 落库，重试沿用；上传时校验归属），流水线经 resolveGenerationForCourse 解析，配置缺失/已删静默回退系统默认；个人页面不再设网课笔记下拉（避免重复入口）
 
 ### 不做（边界外）
 - 非 OpenAI 兼容协议（Anthropic / Gemini 原生，需额外 starter——兼容协议已覆盖 DeepSeek / Qwen / GLM / Kimi / 豆包）
