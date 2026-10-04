@@ -1,14 +1,16 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, watch } from 'vue'
-import { House, History, CircleHelp, GraduationCap, Settings, LogIn } from 'lucide-vue-next'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { House, History, CircleHelp, GraduationCap, BookOpen, Settings, LogIn } from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../../stores/auth'
+import { useUiStore } from '../../stores/ui'
 import { getReviewStats } from '../../api/review'
 import ProfileModal from '../ProfileModal.vue'
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+const ui = useUiStore()
 const showSettings = ref(false)
 const showProfile = ref(false)
 /** 今日待复习数（复习页角标） */
@@ -31,6 +33,26 @@ function goLogin() {
   showSettings.value = false
   auth.logout()
   router.push('/login')
+}
+
+const ASSET_ROUTES = ['/courses', '/questions', '/notes']
+const isAssetRoute = computed(() => ASSET_ROUTES.includes(route.path))
+
+/** 学习资产按钮：展开侧栏到资产模式并默认打开网课记录；已在资产模式时切换为收缩 */
+function openAssets() {
+  if (ui.sidebarMode === 'assets' && !ui.sidebarCollapsed) {
+    ui.toggleSidebarCollapsed()
+    return
+  }
+  ui.showSidebar('assets')
+  if (!isAssetRoute.value) {
+    router.push('/courses')
+  }
+}
+
+/** 会话历史按钮：展开侧栏到对话模式 */
+function openChatSidebar() {
+  ui.showSidebar('chat')
 }
 
 async function toggleSettings() {
@@ -92,6 +114,7 @@ watch(() => route.path, refreshDueCount)
         class="flex h-10 w-10 items-center justify-center rounded-xl transition-colors"
         :class="route.path === '/history' ? 'bg-ink text-white' : 'text-ink hover:bg-line/60'"
         title="会话历史"
+        @click="openChatSidebar"
       >
         <History :size="20" />
       </RouterLink>
@@ -109,6 +132,14 @@ watch(() => route.path, refreshDueCount)
           {{ dueCount > 99 ? '99+' : dueCount }}
         </span>
       </RouterLink>
+      <button
+        class="flex h-10 w-10 items-center justify-center rounded-xl transition-colors"
+        :class="isAssetRoute || (ui.sidebarMode === 'assets' && !ui.sidebarCollapsed) ? 'bg-ink text-white' : 'text-ink hover:bg-line/60'"
+        title="学习资产"
+        @click="openAssets"
+      >
+        <BookOpen :size="20" />
+      </button>
     </div>
     <div class="flex flex-col items-center gap-2">
       <button

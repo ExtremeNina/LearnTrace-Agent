@@ -47,8 +47,8 @@ LJ-Agent/
 | --- | --- | --- |
 | 页面 | views/Agent.vue、Review.vue、Questions.vue、Courses.vue、CourseDetail.vue、Notes.vue、Login/Register.vue | 对话 / 题目记录（含生成相似题）/ 网课列表（批量删除）与详情 / 笔记整理 / 登录注册 |
 | 接口层 | api/*.ts | 后端接口封装（统一 Result 解包、sa-token 注入） |
-| 状态 | stores/agent.ts、auth.ts、user.ts、toast.ts、ui.ts | 对话流式状态与种子消息 / 登录态 / 资料与主题 / 轻提示与任务通知轮询 / 侧栏 UI |
-| 组件 | components/ProfileModal.vue、ToastHost.vue、layout/*、notes/* | 个人页面弹窗、全局轻提示、图标栏与侧栏、笔记树与编辑器、知识联系面板 |
+| 状态 | stores/agent.ts、auth.ts、user.ts、toast.ts、ui.ts | 对话流式状态与种子消息 / 登录态 / 资料与主题 / 轻提示与任务通知轮询 / 侧栏模式与收缩 |
+| 组件 | components/ProfileModal.vue、ToastHost.vue、layout/*、notes/* | 个人页面弹窗、全局轻提示、可收缩双模式侧栏（对话 / 学习资产）、笔记树与编辑器、知识联系面板 |
 | 渲染 | utils/markdown.ts | Markdown+KaTeX 渲染、[mm:ss] 时间戳胶囊（DOMPurify 消毒） |
 | 通信 | ws/agentSocket.ts | WebSocket 封装（指数退避重连 + 离线 outbox 暂存冲刷） |
 | 主题 | style.css | Tailwind v4 @theme 语义令牌；html.dark 翻转变量实现深色主题 |

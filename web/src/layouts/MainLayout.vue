@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted } from 'vue'
-import { Menu } from 'lucide-vue-next'
+import { ChevronsRight, Menu } from 'lucide-vue-next'
 import { useUiStore } from '../stores/ui'
 import { useUserStore } from '../stores/user'
 import { useToastStore } from '../stores/toast'
@@ -12,8 +12,6 @@ import ToastHost from '../components/ToastHost.vue'
 const ui = useUiStore()
 const userStore = useUserStore()
 const toast = useToastStore()
-
-const REMIND_KEY = 'xj_review_reminded'
 
 onMounted(async () => {
   // 个人页面数据 + 网课任务状态轮询（任务完成 / 失败右上角通知）
@@ -30,7 +28,7 @@ onUnmounted(() => {
 async function remindReview() {
   try {
     const today = new Date().toISOString().slice(0, 10)
-    if (localStorage.getItem(REMIND_KEY) === today) {
+    if (localStorage.getItem('xj_review_reminded') === today) {
       return
     }
     const user = await userStore.loadMe()
@@ -39,7 +37,7 @@ async function remindReview() {
     }
     const stats = await reviewApi.getReviewStats()
     if (stats.dueCount > 0) {
-      localStorage.setItem(REMIND_KEY, today)
+      localStorage.setItem('xj_review_reminded', today)
       toast.push(`有 ${stats.dueCount} 张卡片该复习了，要现在开始吗？`)
     }
   } catch {
@@ -53,11 +51,31 @@ async function remindReview() {
     <!-- 图标栏：桌面端 -->
     <IconRail class="hidden md:flex" />
 
-    <!-- Sidebar：桌面端常驻 -->
-    <aside class="panel-gradient hidden w-60 shrink-0 flex-col border-r border-line md:flex">
-      <SidebarContent />
+    <!-- Sidebar：桌面端（可收缩，双模式） -->
+    <aside
+      v-if="!ui.sidebarCollapsed"
+      class="panel-gradient relative hidden w-60 shrink-0 flex-col border-r border-line md:flex"
+    >
+      <button
+        class="absolute right-2 top-3.5 z-10 flex h-7 w-7 items-center justify-center rounded-lg text-ink-2 hover:bg-line/60 hover:text-ink"
+        title="收起侧栏"
+        @click="ui.toggleSidebarCollapsed()"
+      >
+        <ChevronsRight :size="16" />
+      </button>
+      <SidebarContent :mode="ui.sidebarMode" collapsible />
     </aside>
-    <!-- Sidebar：移动端抽屉 -->
+    <!-- 收缩后的展开入口（悬停桌面图标栏旁） -->
+    <button
+      v-if="ui.sidebarCollapsed"
+      class="panel-gradient hidden h-full w-2 shrink-0 border-r border-line md:block hover:w-14 transition-all group relative"
+      title="展开侧栏"
+      @click="ui.showSidebar(ui.sidebarMode)"
+    >
+      <ChevronsRight :size="16" class="absolute left-1/2 top-6 -translate-x-1/2 rotate-180 text-ink-2 opacity-0 transition-opacity group-hover:opacity-100" />
+    </button>
+
+    <!-- Sidebar：移动端抽屉（带模式切换） -->
     <Transition name="fade">
       <div
         v-if="ui.sidebarOpen"
@@ -70,7 +88,25 @@ async function remindReview() {
         v-if="ui.sidebarOpen"
         class="panel-gradient fixed inset-y-0 left-0 z-50 w-64 flex-col border-r border-line md:hidden"
       >
-        <SidebarContent @navigate="ui.closeSidebar()" />
+        <div class="flex shrink-0 gap-1 px-3 pt-3">
+          <button
+            class="flex-1 rounded-xl py-2 text-[13px] transition-colors"
+            :class="ui.sidebarMode === 'chat' ? 'bg-line/70 font-medium text-ink' : 'text-ink-2'"
+            @click="ui.showSidebar('chat')"
+          >
+            对话
+          </button>
+          <button
+            class="flex-1 rounded-xl py-2 text-[13px] transition-colors"
+            :class="ui.sidebarMode === 'assets' ? 'bg-line/70 font-medium text-ink' : 'text-ink-2'"
+            @click="ui.showSidebar('assets')"
+          >
+            学习资产
+          </button>
+        </div>
+        <div class="min-h-0 flex-1">
+          <SidebarContent :mode="ui.sidebarMode" @navigate="ui.closeSidebar()" />
+        </div>
       </aside>
     </Transition>
 
