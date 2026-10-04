@@ -9,6 +9,7 @@ import com.xueji.agent.exception.BusinessException;
 import com.xueji.agent.mapper.CourseMapper;
 import com.xueji.agent.mapper.NoteLinkMapper;
 import com.xueji.agent.mapper.NoteMapper;
+import com.xueji.agent.mq.CourseProcessMessage;
 import com.xueji.agent.service.impl.CourseServiceImpl;
 import com.xueji.agent.utils.AliUploadUtils;
 import org.junit.jupiter.api.BeforeEach;
@@ -113,9 +114,9 @@ class CourseServiceImplTest {
     }
 
     @Test
-    void retryShouldSendJsonStringPayload() {
-        // B02 回归：重试负载必须与 upload 一致为 JSON 字符串——裸 HashMap 会走 JDK 序列化，
-        // 消费者（Spring AMQP 3.x 禁 JDK 反序列化）直接拒绝，重试链路不可用
+    void retryShouldSendMessageObjectPayload() {
+        // 负载契约回归：RabbitMQConfig 装配 Jackson2JsonMessageConverter 后负载直接发对象
+        // （旧 B02 时代的 JSON 字符串规避已下线——字符串负载会被 Jackson 二次编码成带引号字面量）
         when(courseMapper.selectById(15L)).thenReturn(
                 new Course().setId(15L).setUserId(1L).setDeleted(0).setStatus("FAILED"));
 
@@ -124,10 +125,10 @@ class CourseServiceImplTest {
         ArgumentCaptor<Object> payloadCaptor = ArgumentCaptor.forClass(Object.class);
         verify(rabbitTemplate, times(1)).convertAndSend(any(), any(), payloadCaptor.capture());
         Object payload = payloadCaptor.getValue();
-        assertEquals(String.class, payload.getClass());
-        cn.hutool.json.JSONObject json = cn.hutool.json.JSONUtil.parseObj((String) payload);
-        assertEquals(15L, json.getLong("courseId"));
-        assertEquals("", json.getStr("tempPath"));
+        assertEquals(CourseProcessMessage.class, payload.getClass());
+        CourseProcessMessage message = (CourseProcessMessage) payload;
+        assertEquals(15L, message.getCourseId());
+        assertEquals("", message.getTempPath());
     }
 
     @Test

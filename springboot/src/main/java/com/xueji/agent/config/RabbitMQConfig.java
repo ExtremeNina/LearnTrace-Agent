@@ -5,6 +5,9 @@ import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.BindingBuilder;
 import org.springframework.amqp.core.DirectExchange;
 import org.springframework.amqp.core.Queue;
+import org.springframework.amqp.support.converter.DefaultJackson2JavaTypeMapper;
+import org.springframework.amqp.support.converter.Jackson2JavaTypeMapper;
+import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -13,6 +16,20 @@ import org.springframework.context.annotation.Configuration;
  */
 @Configuration
 public class RabbitMQConfig {
+
+    /**
+     * 消息转换器：负载直接发对象，由 Jackson 序列化为 JSON，取代 SimpleMessageConverter
+     * （后者对 Map / 对象走 JDK 序列化，Spring AMQP 3.x 消费端直接拒绝）。
+     * 类型解析用 INFERRED 优先：按监听方法签名反序列化，不依赖 __TypeId__ 头的信任包校验。
+     * 声明单个 MessageConverter Bean 后，Spring Boot 自动装配到 RabbitTemplate 与监听容器工厂。
+     */
+    @Bean
+    public Jackson2JsonMessageConverter jacksonMessageConverter() {
+        Jackson2JsonMessageConverter converter = new Jackson2JsonMessageConverter();
+        DefaultJackson2JavaTypeMapper typeMapper = (DefaultJackson2JavaTypeMapper) converter.getJavaTypeMapper();
+        typeMapper.setTypePrecedence(Jackson2JavaTypeMapper.TypePrecedence.INFERRED);
+        return converter;
+    }
 
     @Bean
     public DirectExchange courseExchange() {

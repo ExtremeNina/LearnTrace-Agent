@@ -16,7 +16,7 @@ import java.io.IOException;
 import java.util.Map;
 
 /**
- * 网课处理消费者（手动 ack）：payload 为 { courseId, tempPath }。
+ * 网课处理消费者（手动 ack）：负载为 CourseProcessMessage（Jackson 转换器按方法签名反序列化）。
  * 失败不重新入队（流水线内部已置 FAILED，用户可通过重试接口再次触发），避免毒消息无限重投。
  */
 @Slf4j
@@ -27,14 +27,12 @@ public class CourseProcessConsumer {
     private CoursePipelineService coursePipelineService;
 
     @RabbitListener(queues = MqKeys.COURSE_PROCESS_QUEUE)
-    public void onProcess(@Payload String payload, Channel channel, Message message) throws IOException {
+    public void onProcess(@Payload CourseProcessMessage payload, Channel channel, Message message) throws IOException {
         long tag = message.getMessageProperties().getDeliveryTag();
-        Long courseId = null;
+        Long courseId = payload == null ? null : payload.getCourseId();
         try {
-            cn.hutool.json.JSONObject json = cn.hutool.json.JSONUtil.parseObj(payload);
-            courseId = json.getLong("courseId");
-            String tempPath = json.getStr("tempPath", "");
             log.info("收到网课处理消息, courseId={}", courseId);
+            String tempPath = payload == null || payload.getTempPath() == null ? "" : payload.getTempPath();
             coursePipelineService.process(courseId, tempPath);
             channel.basicAck(tag, false);
         } catch (Exception e) {

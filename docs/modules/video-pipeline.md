@@ -6,8 +6,8 @@
 ## 边界（详细）
 
 **输入**
-- REST `POST /courses`（multipart 视频 ≤500MB，title / subject / expectations 可选）→ 落库 PENDING + 投递 MQ（JSON 字符串负载：courseId + tempPath）
-- REST `POST /courses/{id}/retry`（重新投递，JSON 字符串负载；仅 FAILED 可重试）
+- REST `POST /courses`（multipart 视频 ≤500MB，title / subject / expectations 可选）→ 落库 PENDING + 投递 MQ（对象负载 CourseProcessMessage：courseId + tempPath，Jackson 转换器序列化）
+- REST `POST /courses/{id}/retry`（重新投递，同款对象负载；仅 FAILED 可重试）
 - REST `DELETE /courses/{id}`、`POST /courses/batch-delete`（List<Long>；PROCESSING 中禁删，批量中不可删的自动跳过并返回计数文案）——删除连带：软删课程与其 AI 笔记、清理知识联系、移除转写向量（RagIngestService）、OSS 按前缀 `course/{id}/` 异步删除
 - REST `PUT /courses/{id}`（标题 / 学科 / 学习笔记 studyNote，仅更新提供字段）
 - REST `GET /courses`（标题 / 状态 / 日期 / 学科筛选）、`GET /courses/{id}`（详情聚合：course + transcript + frames + note）
@@ -23,7 +23,7 @@
 - Qwen-Audio ASR（DashScope 专用部署端点，密钥本地配置；裸 RestClient 直连——豁免记录见 agent.md 硬性规范）
 - PaddleOCR AI Studio 异步任务（提交 + 轮询 NDJSON，轮询上限可配置 `paddle-ocr.poll-timeout-seconds` 默认 45s；结果签名 URL 需裸请求避免二次编码）
 - DeepSeek（NoteGenerationService 生成笔记，独立 conversationId 隔离，不污染用户对话）
-- RabbitMQ（CourseProcessConsumer 消费；负载一律 JSON 字符串；消费失败不重投，由超时自愈兜底）
+- RabbitMQ（CourseProcessConsumer 消费；负载为 Jackson 序列化的对象 CourseProcessMessage，转换器见 RabbitMQConfig；消费失败不重投，由超时自愈兜底）
 - 阿里云 OSS（@PostConstruct 启动期密钥校验；AliUploadUtils.deleteByPrefix 前缀清理）
 - task/CourseWatchScheduler（每 10 分钟把 PROCESSING 超 60 分钟的网课置为 FAILED——进程崩溃中断的自愈）
 

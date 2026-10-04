@@ -17,6 +17,7 @@ import com.xueji.agent.mapper.CourseMapper;
 import com.xueji.agent.mapper.CourseTranscriptSegmentMapper;
 import com.xueji.agent.mapper.NoteLinkMapper;
 import com.xueji.agent.mapper.NoteMapper;
+import com.xueji.agent.mq.CourseProcessMessage;
 import com.xueji.agent.service.AiModelService;
 import com.xueji.agent.service.CourseService;
 import com.xueji.agent.service.ReviewService;
@@ -115,12 +116,11 @@ public class CourseServiceImpl implements CourseService {
                 .setUpdatedAt(LocalDateTime.now());
         courseMapper.insert(course);
 
-        // 投递处理消息（JSON 字符串负载，避免 JDK 序列化的反序列化白名单问题）
-        String payload = cn.hutool.json.JSONUtil.createObj()
-                .set("courseId", course.getId())
-                .set("tempPath", temp.toString())
-                .toString();
-        rabbitTemplate.convertAndSend(MqKeys.COURSE_EXCHANGE, MqKeys.COURSE_PROCESS_ROUTING, payload);
+        // 投递处理消息（对象负载，由 RabbitMQConfig 的 Jackson 转换器序列化）
+        CourseProcessMessage message = new CourseProcessMessage();
+        message.setCourseId(course.getId());
+        message.setTempPath(temp.toString());
+        rabbitTemplate.convertAndSend(MqKeys.COURSE_EXCHANGE, MqKeys.COURSE_PROCESS_ROUTING, message);
         log.info("网课处理消息已投递, courseId={}, temp={}", course.getId(), temp);
         return course;
     }
@@ -182,12 +182,10 @@ public class CourseServiceImpl implements CourseService {
         course.setStatus(CourseStatus.PENDING).setErrorMsg(null).setUpdatedAt(LocalDateTime.now());
         courseMapper.updateById(course);
         // 重试时本地临时文件可能已清理，仅重发消息由流水线校验（文件丢失会再次置为 FAILED 并提示重新上传）
-        // 负载必须与 upload 一致用 JSON 字符串：默认 SimpleMessageConverter 对 Map 走 JDK 序列化，消费者反序列化会直接被拒
-        String payload = cn.hutool.json.JSONUtil.createObj()
-                .set("courseId", courseId)
-                .set("tempPath", "")
-                .toString();
-        rabbitTemplate.convertAndSend(MqKeys.COURSE_EXCHANGE, MqKeys.COURSE_PROCESS_ROUTING, payload);
+        CourseProcessMessage message = new CourseProcessMessage();
+        message.setCourseId(courseId);
+        message.setTempPath("");
+        rabbitTemplate.convertAndSend(MqKeys.COURSE_EXCHANGE, MqKeys.COURSE_PROCESS_ROUTING, message);
     }
 
     @Override

@@ -43,7 +43,7 @@ AI 个人学习工作台：学习资产（网课 / 题目 / 笔记）+ 知识点
 
 **RabbitMQ**
 * guest 只允许容器内 localhost 登录，Docker NAT 后来源是网关 IP 会被拒 → 容器内已建用户 `xueji/xueji123`（凭据同时记在 `application-local.properties`；**容器重建会丢，需重建用户**）
-* Spring AMQP 3.x 禁止 JDK 序列化反序列化（HashMap 直接被拒）→ MQ 负载一律 JSON 字符串
+* MQ 转换器为 RabbitMQConfig 装配的 Jackson2JsonMessageConverter（类型解析 INFERRED 优先，按监听方法签名反序列化）：负载直接发对象（如 `mq.CourseProcessMessage`），禁止再手写 JSON 字符串负载——字符串会被 Jackson 二次编码成带引号字面量；SimpleMessageConverter 时代的「负载一律 JSON 字符串」规避（B02）已下线
 * 监听容器认证失败会中止启动（SimpleMessageListenerContainer fatal）→ 认证问题表现为**整个应用起不来**，不只是 MQ 不可用
 
 **Spring AI 1.1.8**
