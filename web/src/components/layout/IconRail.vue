@@ -94,7 +94,7 @@ watch(() => route.path, refreshDueCount)
 
 <template>
   <!-- 最左全局图标栏（PRD §5：桌面端显示，移动端隐藏并入抽屉） -->
-  <nav class="rail-gradient relative w-14 shrink-0 flex-col items-center justify-between border-r border-line py-4 md:flex">
+  <nav class="panel-gradient relative w-14 shrink-0 flex-col items-center justify-between border-r border-line py-4 md:flex">
     <div class="flex flex-col items-center gap-2">
       <RouterLink
         to="/"
