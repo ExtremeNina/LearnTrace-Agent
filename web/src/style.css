@@ -13,6 +13,7 @@
   --color-primary: #2563eb;     /* 强调色 */
   --color-primary-soft: #eff6ff; /* 选中 / 悬停浅底 */
   --color-surface: #ffffff;     /* 卡片 / 弹层表面 */
+  --shadow-card: 0 1px 3px rgb(0 0 0 / 0.06), 0 1px 2px rgb(0 0 0 / 0.04); /* 卡片极淡投影（替代生硬边框） */
 }
 
 /* 深色主题令牌翻转（个人页面偏好设置；写入 html.dark） */

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   Download, ArrowLeft, CircleCheck, LoaderCircle, Pencil, Save, X,
@@ -10,7 +10,6 @@ import type { CourseDetailData } from '../api/course'
 import { updateNoteContent } from '../api/note'
 import { renderNoteHtml } from '../utils/markdown'
 import DOMPurify from 'dompurify'
-import { SUBJECTS } from '../constants/subjects'
 import MdSourceEditor from '../components/notes/MdSourceEditor.vue'
 
 /**
@@ -102,35 +101,7 @@ function onTabChange(tab: 'note' | 'transcript') {
   activeTab.value = tab
 }
 
-// 在线编辑标题 / 学科
-const editMode = ref(false)
-const editForm = reactive({ title: '', subject: '' })
-const saving = ref(false)
-
-function openEdit() {
-  if (!data.value) {
-    return
-  }
-  editForm.title = data.value.course.title
-  editForm.subject = data.value.course.subject ?? ''
-  saving.value = false
-  editMode.value = true
-}
-
-async function saveEdit() {
-  if (!data.value || !editForm.title.trim()) {
-    return
-  }
-  saving.value = true
-  try {
-    data.value.course = await updateCourse(courseId, { title: editForm.title, subject: editForm.subject })
-    editMode.value = false
-  } finally {
-    saving.value = false
-  }
-}
-
-// 在线编辑 AI 笔记：Markdown 源码编辑，保存回笔记正文接口。
+// 在线编辑 AI 笔记：Markdown 源码编辑，保存回笔记正文接口。入口为右上角「编辑」按钮。
 // AI 笔记必须存 Markdown（详情页靠 renderMarkdown 渲染并转换 [mm:ss] 时间戳胶囊），不能存富文本 HTML
 const noteEditing = ref(false)
 const noteDraft = ref('')
@@ -309,8 +280,10 @@ const timelineTicks = computed(() => {
           </div>
           <div class="ml-auto flex shrink-0 items-center gap-2">
             <button
-              class="flex items-center gap-1.5 rounded-xl border border-line px-3 py-1.5 text-[13px] text-ink hover:bg-panel"
-              @click="openEdit"
+              class="flex items-center gap-1.5 rounded-xl border border-line px-3 py-1.5 text-[13px] text-ink hover:bg-panel disabled:cursor-not-allowed disabled:opacity-50"
+              :disabled="noteEditing || !data.note"
+              :title="data.note ? '编辑 AI 笔记内容' : 'AI 笔记生成后可编辑'"
+              @click="startNoteEdit"
             >
               <Pencil :size="15" />
               编辑
@@ -353,7 +326,7 @@ const timelineTicks = computed(() => {
             </div>
 
             <!-- 学习笔记（用户随想） -->
-            <div class="mt-4 flex min-h-[180px] flex-1 flex-col rounded-2xl border border-ink-2/25 bg-panel">
+            <div class="mt-4 flex min-h-[180px] flex-1 flex-col rounded-xl bg-surface shadow-card">
               <div class="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2">
                 <p class="text-[13px] font-semibold text-ink">学习笔记</p>
                 <div class="ml-auto flex items-center gap-1">
@@ -401,7 +374,7 @@ const timelineTicks = computed(() => {
           </div>
 
           <!-- 右：AI 笔记 / 转写对照 -->
-          <div class="flex min-h-0 flex-col rounded-2xl border border-ink-2/25 bg-panel">
+          <div class="flex min-h-0 flex-col rounded-xl bg-surface shadow-card">
             <div class="flex shrink-0 items-center gap-1 border-b border-line p-2">
               <button
                 v-for="tab in [
@@ -420,11 +393,6 @@ const timelineTicks = computed(() => {
             <div class="min-h-0 flex-1 overflow-y-auto p-3">
               <!-- AI 笔记 -->
               <template v-if="activeTab === 'note'">
-                <div v-if="data.course.expectations" class="mb-3 rounded-xl border border-line bg-panel px-3 py-2">
-                  <p class="text-[12px] font-semibold text-ink">您希望的内容</p>
-                  <p class="mt-1 text-[12px] leading-5 text-ink-2">{{ data.course.expectations }}</p>
-                </div>
-
                 <div v-if="noteEditing" class="px-1 pb-3">
                   <p v-if="noteError" class="mb-2 text-[12px] text-red-600">{{ noteError }}</p>
                   <MdSourceEditor v-model="noteDraft" height-class="h-[420px]" @chip="onEditorChip">
@@ -448,15 +416,7 @@ const timelineTicks = computed(() => {
                   </MdSourceEditor>
                 </div>
                 <template v-else>
-                  <button
-                    v-if="data.note"
-                    class="mb-3 flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-line py-2 text-[13px] text-ink-2 hover:border-primary hover:text-primary"
-                    @click="startNoteEdit"
-                  >
-                    <Pencil :size="14" />
-                    编辑 AI 笔记（Markdown 源码）
-                  </button>
-                  <div class="note-view rounded-xl border border-line bg-surface p-3 text-[14px] leading-7 text-ink" v-html="noteHtml" @click="onNoteClick"></div>
+                  <div class="note-view text-[14px] leading-7 text-ink" v-html="noteHtml" @click="onNoteClick"></div>
                   <p v-if="!data.note" class="rounded-xl border border-dashed border-line py-8 text-center text-[13px] text-ink-2">
                     AI 笔记生成中，完成后展示在这里
                   </p>
@@ -489,8 +449,8 @@ const timelineTicks = computed(() => {
                   </div>
                 </div>
 
-                <div class="flex flex-col gap-2">
-                  <div v-for="row in segmentsWithFrames" :key="row.seg.id" class="rounded-xl border border-line bg-surface px-3 py-2.5">
+                <div class="divide-y divide-line">
+                  <div v-for="row in segmentsWithFrames" :key="row.seg.id" class="py-3 first:pt-1 last:pb-1">
                     <div class="flex gap-3">
                       <button class="shrink-0 pt-0.5 text-[12px] text-primary hover:underline" @click="seekTo(row.seg.startSec)">
                         {{ formatTs(row.seg.startSec) }}
@@ -520,62 +480,6 @@ const timelineTicks = computed(() => {
         </div>
       </template>
 
-      <!-- 编辑标题 / 学科弹窗 -->
-      <div
-        v-if="editMode"
-        class="fixed inset-0 z-50 flex items-center justify-center bg-ink/25 px-4 backdrop-blur-sm"
-        @click.self="editMode = false"
-      >
-        <div class="w-full max-w-md rounded-3xl border border-line bg-surface p-6 shadow-xl">
-          <div class="flex items-start justify-between">
-            <h2 class="text-[16px] font-semibold">编辑网课</h2>
-            <button
-              class="flex h-8 w-8 items-center justify-center rounded-lg text-ink-2 hover:bg-line/60 hover:text-ink"
-              title="关闭"
-              @click="editMode = false"
-            >
-              <X :size="16" />
-            </button>
-          </div>
-
-          <div class="mt-4 flex flex-col gap-4">
-            <label class="block">
-              <span class="mb-1 block text-[12px] text-ink-2">标题</span>
-              <input
-                v-model="editForm.title"
-                type="text"
-                class="w-full rounded-xl border border-line px-3 py-2 text-[14px] outline-none focus:border-primary"
-              />
-            </label>
-            <label class="block">
-              <span class="mb-1 block text-[12px] text-ink-2">学科</span>
-              <select
-                v-model="editForm.subject"
-                class="w-full rounded-xl border border-line bg-surface px-3 py-2 text-[14px] outline-none focus:border-primary"
-              >
-                <option value="">不选择</option>
-                <option v-for="s in SUBJECTS" :key="s" :value="s">{{ s }}</option>
-              </select>
-            </label>
-          </div>
-
-          <div class="mt-5 flex justify-end gap-2">
-            <button
-              class="rounded-xl border border-line px-4 py-2 text-[14px] text-ink hover:bg-line/60"
-              @click="editMode = false"
-            >
-              取消
-            </button>
-            <button
-              class="rounded-xl bg-primary px-4 py-2 text-[14px] text-white hover:opacity-90 disabled:opacity-50"
-              :disabled="saving || !editForm.title.trim()"
-              @click="saveEdit"
-            >
-              保存修改
-            </button>
-          </div>
-        </div>
-      </div>
     </div>
   </div>
 </template>
