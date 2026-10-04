@@ -210,6 +210,29 @@ public class AiModelServiceImpl implements AiModelService {
                 : chatClientFactory.getGenerationClient(config);
     }
 
+    @Override
+    public void validateUserConfig(Long userId, Long configId) {
+        if (configId == null) {
+            return;
+        }
+        OwnershipCheck.requireOwned(aiModelConfigMapper.selectById(configId), userId, "所选模型配置不存在");
+    }
+
+    @Override
+    public ChatClient resolveGenerationForCourse(Long userId, Long configId) {
+        if (configId == null) {
+            return systemGenerationClient;
+        }
+        AiModelConfig config = aiModelConfigMapper.selectById(configId);
+        // 配置缺失 / 已删 / 非本人：静默回退系统默认（流水线不因模型配置失效而中断）
+        if (config == null || Integer.valueOf(1).equals(config.getDeleted()) || config.getUserId() == null
+                || !config.getUserId().equals(userId)) {
+            log.warn("网课笔记模型配置不可用，回退系统默认, userId={}, configId={}", userId, configId);
+            return systemGenerationClient;
+        }
+        return chatClientFactory.getGenerationClient(config);
+    }
+
     /** 注销账号：物理删除该用户的全部模型配置（含密钥）与模块偏好 */
     public void deleteAllByUser(Long userId) {
         aiModelConfigMapper.delete(new QueryWrapper<AiModelConfig>().eq("user_id", userId));

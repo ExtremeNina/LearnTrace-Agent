@@ -78,9 +78,8 @@ public class NoteGenerationService {
     public String generate(Course course, List<CourseTranscriptSegment> transcript,
                            List<CourseFrame> frames, int durationSec) {
         String userContent = buildUserContent(transcript, frames, course.getExpectations(), durationSec);
-        // 生成形态客户端（无工具无记忆）；模型按用户的网课笔记模块偏好解析
-        ChatClient chatClient = aiModelService.resolve(course.getUserId(),
-                com.xueji.agent.service.AiModelService.MODULE_COURSE_NOTE, ChatClientFactory.Variant.GENERATION);
+        // 生成形态客户端（无工具无记忆）；模型按上传时选择的配置解析（课程上记录，缺失回退系统默认）
+        ChatClient chatClient = aiModelService.resolveGenerationForCourse(course.getUserId(), course.getModelConfigId());
         String markdown = chatClient.prompt()
                 .system(AgentPrompts.COURSE_TRANSCRIPT_PROMPT)
                 .user(userContent)

@@ -17,8 +17,10 @@ public interface CourseService {
     /**
      * 上传网课视频：保存到本地临时目录、创建课程记录（PENDING）、投递处理消息。
      * 返回创建的课程（视频 URL 在流水线阶段补全）
+     *
+     * @param modelConfigId 笔记生成使用的模型配置（用户自建，NULL = 系统默认）
      */
-    Course upload(Long userId, MultipartFile file, String title, String subject, String expectations);
+    Course upload(Long userId, MultipartFile file, String title, String subject, String expectations, Long modelConfigId);
 
     /**
      * 用户的网课列表（按创建时间倒序）

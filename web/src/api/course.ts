@@ -10,6 +10,8 @@ export interface CourseInfo {
   videoOssKey?: string | null
   videoSize?: number | null
   duration?: number | null
+  /** 笔记生成使用的模型配置（上传时选择，NULL = 系统默认） */
+  modelConfigId?: number | null
   status: 'PENDING' | 'PROCESSING' | 'SUCCESS' | 'FAILED'
   errorMsg?: string | null
   createdAt: string
@@ -54,7 +56,7 @@ export function listCourses(): Promise<CourseInfo[]> {
   return request<CourseInfo[]>({ method: 'GET', url: '/courses' })
 }
 
-export function uploadCourse(file: File, title?: string, expectations?: string, subject?: string): Promise<CourseInfo> {
+export function uploadCourse(file: File, title?: string, expectations?: string, subject?: string, modelConfigId?: number | null): Promise<CourseInfo> {
   const form = new FormData()
   form.append('file', file)
   if (title) {
@@ -65,6 +67,9 @@ export function uploadCourse(file: File, title?: string, expectations?: string, 
   }
   if (expectations) {
     form.append('expectations', expectations)
+  }
+  if (modelConfigId != null) {
+    form.append('modelConfigId', String(modelConfigId))
   }
   return request<CourseInfo>({
     method: 'POST',

@@ -17,6 +17,7 @@ import com.xueji.agent.mapper.CourseMapper;
 import com.xueji.agent.mapper.CourseTranscriptSegmentMapper;
 import com.xueji.agent.mapper.NoteLinkMapper;
 import com.xueji.agent.mapper.NoteMapper;
+import com.xueji.agent.service.AiModelService;
 import com.xueji.agent.service.CourseService;
 import com.xueji.agent.service.ReviewService;
 import com.xueji.agent.utils.AliUploadUtils;
@@ -65,6 +66,9 @@ public class CourseServiceImpl implements CourseService {
     private ReviewService reviewService;
 
     @Resource
+    private AiModelService aiModelService;
+
+    @Resource
     private AliUploadUtils aliUploadUtils;
 
     @Resource(name = "courseExecutor")
@@ -74,13 +78,15 @@ public class CourseServiceImpl implements CourseService {
     private RabbitTemplate rabbitTemplate;
 
     @Override
-    public Course upload(Long userId, MultipartFile file, String title, String subject, String expectations) {
+    public Course upload(Long userId, MultipartFile file, String title, String subject, String expectations, Long modelConfigId) {
         if (file == null || file.isEmpty()) {
             throw new BusinessException("请选择要上传的视频文件");
         }
         if (file.getSize() > MAX_VIDEO_SIZE) {
             throw new BusinessException("视频大小不能超过 500MB");
         }
+        // 上传时选择的笔记生成模型必须属于本人（NULL = 系统默认）
+        aiModelService.validateUserConfig(userId, modelConfigId);
         String original = file.getOriginalFilename() == null ? "未命名课程" : file.getOriginalFilename();
         String derivedTitle = title == null || title.isBlank()
                 ? original.substring(0, Math.max(original.lastIndexOf('.'), 0) == 0
@@ -103,6 +109,7 @@ public class CourseServiceImpl implements CourseService {
                 .setTitle(derivedTitle)
                 .setSubject(subject == null || subject.isBlank() ? null : subject.trim())
                 .setExpectations(expectations == null || expectations.isBlank() ? null : expectations.trim())
+                .setModelConfigId(modelConfigId)
                 .setStatus(CourseStatus.PENDING)
                 .setCreatedAt(LocalDateTime.now())
                 .setUpdatedAt(LocalDateTime.now());

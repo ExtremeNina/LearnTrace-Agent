@@ -3,6 +3,8 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Plus, AlertCircle, Check, LoaderCircle, RotateCcw, Search, Trash2, X } from 'lucide-vue-next'
 import { listCourses, uploadCourse, retryCourse, batchDeleteCourses } from '../api/course'
+import { listModels } from '../api/model'
+import type { AiModelConfigInfo } from '../types/api'
 import type { CourseInfo } from '../api/course'
 import { SUBJECTS } from '../constants/subjects'
 
@@ -34,6 +36,9 @@ const uploadExpectations = ref('')
 const uploading = ref(false)
 const uploadError = ref('')
 const fileInput = ref<HTMLInputElement | null>(null)
+/** 本次上传用于笔记生成的模型（null = 系统默认） */
+const uploadModelConfigId = ref<number | null>(null)
+const modelConfigs = ref<AiModelConfigInfo[]>([])
 
 let pollTimer: number | null = null
 
@@ -68,6 +73,9 @@ function openUpload() {
   uploadSubject.value = ''
   uploadExpectations.value = ''
   uploadError.value = ''
+  uploadModelConfigId.value = null
+  // 打开弹窗时拉取用户的模型配置清单（失败静默，下拉仅剩系统默认）
+  listModels().then((list) => (modelConfigs.value = list)).catch(() => (modelConfigs.value = []))
   showUpload.value = true
 }
 
@@ -84,7 +92,7 @@ async function submitUpload() {
   uploading.value = true
   uploadError.value = ''
   try {
-    await uploadCourse(uploadFile.value, uploadTitle.value, uploadExpectations.value, uploadSubject.value)
+    await uploadCourse(uploadFile.value, uploadTitle.value, uploadExpectations.value, uploadSubject.value, uploadModelConfigId.value)
     showUpload.value = false
     await load()
   } catch (e) {
@@ -448,6 +456,17 @@ async function batchDelete() {
               class="w-full resize-none rounded-xl border border-line px-3 py-2 text-[13px] leading-6 outline-none focus:border-primary"
               placeholder="告诉 AI 你希望这份笔记突出什么。例如：我不太理解 HashMap 的作用，笔记里请重点展开它的原理与使用场景"
             />
+          </div>
+
+          <div>
+            <label class="mb-1 block text-[12px] text-ink-2">笔记生成模型（可选，默认系统模型）</label>
+            <select
+              v-model="uploadModelConfigId"
+              class="w-full rounded-xl border border-line bg-white px-3 py-2 text-[13px] outline-none focus:border-primary"
+            >
+              <option :value="null">系统默认</option>
+              <option v-for="m in modelConfigs" :key="m.id" :value="m.id">{{ m.name }}（{{ m.model }}）</option>
+            </select>
           </div>
 
           <p v-if="uploadError" class="text-[12px] text-red-600">{{ uploadError }}</p>

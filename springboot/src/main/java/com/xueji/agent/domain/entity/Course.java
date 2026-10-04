@@ -30,6 +30,9 @@ public class Course implements UserOwned {
     /** 用户期望（上传时填写，注入笔记生成提示词） */
     private String expectations;
 
+    /** 笔记生成使用的模型配置（上传时选择，NULL = 系统默认） */
+    private Long modelConfigId;
+
     /** 用户学习笔记（网课页随想，富文本 HTML，可选） */
     private String studyNote;
 

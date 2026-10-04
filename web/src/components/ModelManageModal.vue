@@ -192,15 +192,12 @@ function hostOf(baseUrl: string): string {
             placeholder="https://open.bigmodel.cn/api/paas/v4"
           />
         </label>
-        <label class="mt-3 block">
+        <div class="mt-3 block">
           <span class="mb-1 block text-[12px] text-ink-2">API 格式</span>
-          <select
-            class="w-full rounded-xl border border-line bg-surface px-3 py-2 text-[14px] outline-none focus:border-primary"
-            disabled
-          >
-            <option>Chat Completions (/chat/completions)</option>
-          </select>
-        </label>
+          <div class="w-full rounded-xl border border-line bg-panel px-3 py-2 text-[14px] text-ink-2">
+            Chat Completions (/chat/completions)
+          </div>
+        </div>
         <label class="mt-3 block">
           <span class="mb-1 block text-[12px] text-ink-2">
             API Key

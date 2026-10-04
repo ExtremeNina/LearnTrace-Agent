@@ -37,9 +37,10 @@ public class CourseController {
     public Result<Course> upload(@RequestParam("file") MultipartFile file,
                                  @RequestParam(value = "title", required = false) String title,
                                  @RequestParam(value = "subject", required = false) String subject,
-                                 @RequestParam(value = "expectations", required = false) String expectations) {
+                                 @RequestParam(value = "expectations", required = false) String expectations,
+                                 @RequestParam(value = "modelConfigId", required = false) Long modelConfigId) {
         Long userId = UserUtils.getCurrentLoginId();
-        return Result.data(courseService.upload(userId, file, title, subject, expectations));
+        return Result.data(courseService.upload(userId, file, title, subject, expectations, modelConfigId));
     }
 
     /**

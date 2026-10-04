@@ -48,6 +48,12 @@ public interface AiModelService {
     /** 解析某模块当前应使用的 ChatClient（对话用 CHAT 形态，生成类用 GENERATION 形态） */
     ChatClient resolve(Long userId, String module, ChatClientFactory.Variant variant);
 
+    /** 校验模型配置存在且属于本人（上传网课时选择模型用），非法抛业务异常 */
+    void validateUserConfig(Long userId, Long configId);
+
+    /** 网课笔记生成解析：按课程上记录的模型配置取生成形态客户端，配置缺失/已删回退系统默认 */
+    ChatClient resolveGenerationForCourse(Long userId, Long configId);
+
     /** 注销账号级联：物理删除该用户的全部模型配置（含密钥）与模块偏好 */
     void deleteAllByUser(Long userId);
 }
