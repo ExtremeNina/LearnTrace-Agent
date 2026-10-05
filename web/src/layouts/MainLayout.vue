@@ -200,12 +200,12 @@ async function remindReview() {
         <span class="text-[15px] font-medium md:hidden">学迹</span>
 
         <!-- 全局搜索（B15）：语义检索本人题目 / 笔记 / 网课转写 -->
-        <div class="relative mx-auto hidden w-full max-w-md md:block">
+        <div class="relative hidden w-full max-w-md md:block">
           <Search :size="15" class="absolute left-3 top-1/2 -translate-y-1/2 text-ink-2" />
           <input
             ref="searchInputRef"
             v-model="searchQuery"
-            class="w-full rounded-xl border border-line bg-surface py-1.5 pl-8 pr-9 text-[13px] text-ink outline-none focus:border-primary"
+            class="w-full rounded-lg border border-line bg-surface py-1.5 pl-8 pr-9 text-[13px] text-ink outline-none focus:border-primary"
             placeholder="搜索课程、笔记、知识点…（Ctrl+K）"
             @input="onSearchInput"
             @keydown="onSearchKeydown"
@@ -217,7 +217,7 @@ async function remindReview() {
           <!-- 结果下拉：mousedown.prevent 保住输入框焦点，点击项再跳转 -->
           <div
             v-if="searchFocused && searchQuery.trim()"
-            class="absolute inset-x-0 top-full z-50 mt-1.5 max-h-[60vh] overflow-y-auto rounded-2xl border border-line bg-surface p-2 shadow-lg"
+            class="absolute inset-x-0 top-full z-50 mt-1.5 max-h-[60vh] overflow-y-auto rounded-lg border border-line bg-surface p-2 shadow-lg"
             @mousedown.prevent
           >
             <div v-if="searchLoading && groupedResults.length === 0" class="px-3 py-4 text-center text-[12px] text-ink-2">
@@ -229,7 +229,7 @@ async function remindReview() {
                 <button
                   v-for="(item, i) in group.items"
                   :key="group.label + i"
-                  class="block w-full rounded-xl px-3 py-2 text-left hover:bg-line/50"
+                  class="block w-full rounded-lg px-3 py-2 text-left hover:bg-line/50"
                   @click="gotoResult(item)"
                 >
                   <span class="line-clamp-1 text-[13px] text-ink">{{ item.snippet }}</span>

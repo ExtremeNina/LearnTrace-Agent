@@ -213,7 +213,7 @@ watch(
       <template v-else-if="overview">
         <div class="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
             <!-- 问候 banner：水中照片背景 + 浅蓝渐变遮罩（保证文字可读）+ 手写标语（右上） -->
-            <div class="relative min-w-0 overflow-hidden rounded-2xl border border-blue-100 px-6 py-8 md:px-9 md:py-10 lg:col-start-1 lg:row-start-1">
+            <div class="relative min-w-0 overflow-hidden rounded-lg border border-blue-100 px-6 py-8 md:px-9 md:py-10 lg:col-start-1 lg:row-start-1">
               <img :src="bannerWaterUrl" class="absolute inset-0 h-full w-full object-cover" alt="" />
               <div class="absolute inset-0 bg-gradient-to-r from-blue-100/90 via-blue-50/75 to-blue-100/30" />
               <p class="pointer-events-none absolute right-8 top-5 select-none text-[14px] font-medium italic text-blue-500/90 md:right-10 md:top-6" style="transform: rotate(-4deg)">
@@ -226,7 +226,7 @@ watch(
             </div>
 
             <!-- 继续学习 -->
-            <section v-if="continueCourse" class="min-w-0 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm lg:col-start-1 lg:row-start-2">
+            <section v-if="continueCourse" class="min-w-0 rounded-lg border border-gray-100 bg-white p-6 shadow-sm transition-all hover:border-blue-200 hover:shadow-md lg:col-start-1 lg:row-start-2">
               <div class="flex items-center justify-between">
                 <h2 class="flex items-center gap-2 text-[15px] font-bold text-gray-900">
                   <MonitorPlay :size="17" class="text-blue-500" />
@@ -239,8 +239,8 @@ watch(
               </div>
               <div class="mt-5 flex flex-col gap-4 lg:flex-row">
                 <!-- 左：软底面板——封面 + 文字列（进度条 / 时间）+ 右下角继续按钮 -->
-                <div class="flex min-w-0 flex-1 items-stretch gap-4 rounded-2xl bg-gray-50/80 p-4">
-                  <div class="w-36 shrink-0 self-stretch overflow-hidden rounded-xl bg-gradient-to-br from-blue-500 to-blue-600">
+                <div class="flex min-w-0 flex-1 items-stretch gap-4 rounded-lg bg-gray-50/80 p-4">
+                  <div class="w-36 shrink-0 self-stretch overflow-hidden rounded-lg bg-gradient-to-br from-blue-500 to-blue-600">
                     <img
                       v-if="coverUrl(continueCourse.id)"
                       :src="coverUrl(continueCourse.id)!"
@@ -277,7 +277,7 @@ watch(
                   </div>
                 </div>
                 <!-- 右：本课重点（最新 AI 笔记知识点 / LLM 从转写提炼） -->
-                <div v-if="keyPoints.length > 0" class="rounded-2xl bg-blue-50/70 p-4 lg:w-60 lg:shrink-0">
+                <div v-if="keyPoints.length > 0" class="rounded-lg bg-blue-50/70 p-4 lg:w-60 lg:shrink-0">
                   <p class="text-[13px] font-semibold text-gray-900">本课重点</p>
                   <ul class="mt-2 flex flex-col gap-1.5">
                     <li
@@ -294,7 +294,7 @@ watch(
             </section>
 
             <!-- 今日复习 -->
-            <section class="min-w-0 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm lg:col-start-1 lg:row-start-3">
+            <section class="min-w-0 rounded-lg border border-gray-100 bg-white p-6 shadow-sm lg:col-start-1 lg:row-start-3">
               <div class="flex items-center justify-between">
                 <h2 class="flex items-center gap-2 text-[15px] font-bold text-gray-900">
                   <GraduationCap :size="17" class="text-blue-500" />
@@ -307,7 +307,7 @@ watch(
               </div>
               <div
                 v-if="dueCount > 0"
-                class="mt-4 flex flex-col gap-3 rounded-2xl bg-blue-50/70 px-4 py-5 sm:flex-row sm:items-center"
+                class="mt-4 flex flex-col gap-3 rounded-lg bg-blue-50/70 px-4 py-5 sm:flex-row sm:items-center"
               >
                 <div class="flex min-w-0 flex-1 items-start gap-3">
                   <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white text-blue-500 shadow-sm">
@@ -337,13 +337,13 @@ watch(
                   <ChevronRight :size="14" />
                 </button>
               </div>
-              <div v-else class="mt-4 rounded-2xl border border-dashed border-blue-100 px-4 py-6 text-center text-[13px] text-gray-400">
+              <div v-else class="mt-4 rounded-lg border border-dashed border-blue-100 px-4 py-6 text-center text-[13px] text-gray-400">
                 今日复习已清空 ✅ 到题目 / 笔记详情页「加入复习」，卡片会按记忆曲线出现在这里
               </div>
             </section>
 
             <!-- 最近学习 -->
-            <section class="min-w-0 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm lg:col-start-1 lg:row-start-4">
+            <section class="min-w-0 rounded-lg border border-gray-100 bg-white p-6 shadow-sm lg:col-start-1 lg:row-start-4">
               <div class="flex items-center justify-between">
                 <h2 class="flex items-center gap-2 text-[15px] font-bold text-gray-900">
                   <Clock :size="17" class="text-blue-500" />
@@ -359,9 +359,9 @@ watch(
                   v-for="course in overview.recentCourses"
                   :key="course.id"
                   :to="`/courses/${course.id}`"
-                  class="rounded-2xl border border-gray-100 bg-white p-4 transition-all hover:border-blue-200 hover:shadow-sm"
+                  class="rounded-lg border border-gray-100 bg-white p-4 transition-all hover:border-blue-200 hover:shadow-sm"
                 >
-                  <div class="h-28 w-full overflow-hidden rounded-xl bg-gradient-to-br from-blue-400 to-blue-600">
+                  <div class="h-28 w-full overflow-hidden rounded-lg bg-gradient-to-br from-blue-400 to-blue-600">
                     <img
                       v-if="coverUrl(course.id)"
                       :src="coverUrl(course.id)!"
@@ -386,14 +386,14 @@ watch(
                   <p class="mt-2.5 text-[11px] text-gray-400/80">{{ relativeTime(course.lastStudiedAt || course.updatedAt) }}</p>
                 </RouterLink>
               </div>
-              <div v-else class="mt-4 rounded-2xl border border-dashed border-blue-100 px-4 py-6 text-center text-[13px] text-gray-400">
+              <div v-else class="mt-4 rounded-lg border border-dashed border-blue-100 px-4 py-6 text-center text-[13px] text-gray-400">
                 暂无学习记录，上传第一门网课吧
               </div>
             </section>
 
             <!-- 上传资料：视频直传流水线；图片去对话拍照解题；PDF / PPT 随 B19 -->
             <section
-              class="flex min-w-0 cursor-pointer flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-blue-200 bg-white px-4 py-6 transition-colors hover:bg-blue-50/40 sm:flex-row sm:px-8 lg:col-start-1 lg:row-start-5"
+              class="flex min-w-0 cursor-pointer flex-col items-center gap-3 rounded-lg border-2 border-dashed border-blue-200 bg-white px-4 py-6 transition-colors hover:bg-blue-50/40 sm:flex-row sm:px-8 lg:col-start-1 lg:row-start-5"
               :class="uploadingCourse ? 'pointer-events-none opacity-60' : ''"
               @click="openUpload"
               @dragover.prevent
@@ -409,16 +409,16 @@ watch(
                 <p class="mt-0.5 text-[12px] text-gray-400">支持视频（点击或拖拽，自动转写）、图片等多种格式</p>
               </div>
               <div class="flex items-center gap-2.5">
-                <span class="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-500" title="视频：点击或拖拽上传" @click.stop="openUpload">
+                <span class="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-blue-500" title="视频：点击或拖拽上传" @click.stop="openUpload">
                   <Video :size="17" />
                 </span>
-                <span class="flex h-9 w-9 items-center justify-center rounded-xl bg-red-50 text-red-400" title="PDF 摄取即将上线" @click.stop="toast.push('PDF 摄取即将上线（B19）')">
+                <span class="flex h-9 w-9 items-center justify-center rounded-lg bg-red-50 text-red-400" title="PDF 摄取即将上线" @click.stop="toast.push('PDF 摄取即将上线（B19）')">
                   <FileText :size="17" />
                 </span>
-                <span class="flex h-9 w-9 items-center justify-center rounded-xl bg-orange-50 text-orange-400" title="PPT 摄取即将上线" @click.stop="toast.push('PPT 摄取即将上线（B19）')">
+                <span class="flex h-9 w-9 items-center justify-center rounded-lg bg-orange-50 text-orange-400" title="PPT 摄取即将上线" @click.stop="toast.push('PPT 摄取即将上线（B19）')">
                   <Presentation :size="17" />
                 </span>
-                <span class="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 text-emerald-500" title="图片解题：在对话中发送" @click.stop="router.push('/chat'); toast.push('在对话中发送图片即可拍照解题')">
+                <span class="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-50 text-emerald-500" title="图片解题：在对话中发送" @click.stop="router.push('/chat'); toast.push('在对话中发送图片即可拍照解题')">
                   <ImageIcon :size="17" />
                 </span>
               </div>
@@ -426,7 +426,7 @@ watch(
             </section>
 
             <!-- AI 助手：与 /chat 共享会话（与左列 banner~今日复习同排，下边界对齐） -->
-            <section class="flex flex-col rounded-2xl border border-gray-100 bg-white p-6 shadow-sm lg:col-start-2 lg:row-start-1 lg:row-span-3">
+            <section class="flex flex-col rounded-lg border border-gray-100 bg-white p-6 shadow-sm lg:col-start-2 lg:row-start-1 lg:row-span-3">
               <div class="flex items-center justify-between">
                 <h2 class="flex items-center gap-2 text-[15px] font-bold text-gray-900">
                   <Sparkles :size="17" class="text-blue-500" />
@@ -452,7 +452,7 @@ watch(
                   </ul>
                 </div>
                 <template v-for="(msg, i) in agent.messages" :key="i">
-                  <div v-if="msg.role === 'user'" class="ml-auto w-fit max-w-[85%] whitespace-pre-wrap rounded-2xl bg-blue-500 px-3 py-2 text-[13px] text-white">
+                  <div v-if="msg.role === 'user'" class="ml-auto w-fit max-w-[85%] whitespace-pre-wrap rounded-lg bg-blue-500 px-3 py-2 text-[13px] text-white">
                     {{ msg.content }}
                   </div>
                   <div
@@ -472,7 +472,7 @@ watch(
                 <button
                   v-for="chip in ASSISTANT_CHIPS"
                   :key="chip.text"
-                  class="flex items-center gap-1.5 rounded-xl bg-blue-50/70 px-2.5 py-1.5 text-[11px] text-blue-600 transition-colors hover:bg-blue-100"
+                  class="flex items-center gap-1.5 rounded-lg bg-blue-50/70 px-2.5 py-1.5 text-[11px] text-blue-600 transition-colors hover:bg-blue-100"
                   @click="draft = chip.text"
                 >
                   <component :is="chip.icon" :size="13" />
@@ -501,7 +501,7 @@ watch(
             </section>
 
             <!-- 学习数据 -->
-            <section class="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm lg:col-start-2 lg:row-start-4">
+            <section class="rounded-lg border border-gray-100 bg-white p-6 shadow-sm lg:col-start-2 lg:row-start-4">
               <div class="flex items-center justify-between">
                 <h2 class="flex items-center gap-2 text-[15px] font-bold text-gray-900">
                   <BookOpen :size="17" class="text-blue-500" />
@@ -513,28 +513,28 @@ watch(
                 </RouterLink>
               </div>
               <div class="mt-4 grid grid-cols-2 gap-3">
-                <div class="rounded-2xl bg-gray-50 p-3.5">
+                <div class="rounded-lg bg-gray-50 p-3.5">
                   <div class="flex h-8 w-8 items-center justify-center rounded-full bg-blue-50 text-blue-500">
                     <Clock :size="15" />
                   </div>
                   <p class="mt-2 text-[20px] font-bold tabular-nums text-gray-900">{{ overview.stats.todayStudyMinutes }}</p>
                   <p class="mt-0.5 text-[11px] text-gray-400">今日学习时长（分钟）</p>
                 </div>
-                <div class="rounded-2xl bg-gray-50 p-3.5">
+                <div class="rounded-lg bg-gray-50 p-3.5">
                   <div class="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-50 text-emerald-500">
                     <MonitorPlay :size="15" />
                   </div>
                   <p class="mt-2 text-[20px] font-bold tabular-nums text-gray-900">{{ overview.stats.coursesTotal }}</p>
                   <p class="mt-0.5 text-[11px] text-gray-400">学习课程数</p>
                 </div>
-                <div class="rounded-2xl bg-gray-50 p-3.5">
+                <div class="rounded-lg bg-gray-50 p-3.5">
                   <div class="flex h-8 w-8 items-center justify-center rounded-full bg-amber-50 text-amber-500">
                     <CircleCheck :size="15" />
                   </div>
                   <p class="mt-2 text-[20px] font-bold tabular-nums text-gray-900">{{ overview.stats.reviewedToday }}</p>
                   <p class="mt-0.5 text-[11px] text-gray-400">今日已复习</p>
                 </div>
-                <div class="rounded-2xl bg-gray-50 p-3.5">
+                <div class="rounded-lg bg-gray-50 p-3.5">
                   <div class="flex h-8 w-8 items-center justify-center rounded-full bg-red-50 text-red-400">
                     <AlertTriangle :size="15" />
                   </div>
@@ -545,7 +545,7 @@ watch(
             </section>
 
             <!-- 坚持学习 -->
-            <section class="relative overflow-hidden rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-100 to-blue-50 p-5 lg:col-start-2 lg:row-start-5">
+            <section class="relative overflow-hidden rounded-lg border border-blue-100 bg-gradient-to-br from-blue-100 to-blue-50 p-5 lg:col-start-2 lg:row-start-5">
               <p class="text-[15px] font-bold text-gray-900">坚持学习</p>
               <p class="mt-1 max-w-[60%] text-[12px] leading-5 text-gray-500">会让你看到不一样的风景</p>
               <span class="pointer-events-none absolute -bottom-3 right-3 select-none text-[56px] leading-none">🌱</span>
