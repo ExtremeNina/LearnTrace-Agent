@@ -27,6 +27,8 @@ const loading = ref(true)
 const error = ref('')
 
 onMounted(async () => {
+  // 先确保 agentSocket 已连接（/chat 页挂载时才连，首页直连否则流式消息堵在 outbox）
+  agent.ensureSocketConnected()
   try {
     overview.value = await getHomeOverview()
   } catch (e) {
@@ -208,11 +210,9 @@ watch(
       </div>
 
       <template v-else-if="overview">
-        <div class="grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
-          <!-- 左主列：banner + 学习卡片（banner 与右栏 AI 助手同排） -->
-          <div class="flex min-w-0 flex-col gap-5">
+        <div class="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
             <!-- 问候 banner：蓝调渐变 + 手写标语（右上）+ 远山装饰 -->
-            <div class="relative overflow-hidden rounded-2xl border border-blue-100 bg-gradient-to-r from-blue-200 via-blue-100/70 to-white px-6 py-8 md:px-9 md:py-10">
+            <div class="relative min-w-0 overflow-hidden rounded-2xl border border-blue-100 bg-gradient-to-r from-blue-200 via-blue-100/70 to-white px-6 py-8 md:px-9 md:py-10 lg:col-start-1 lg:row-start-1">
               <svg class="pointer-events-none absolute bottom-0 right-0 h-20 w-96 text-blue-200/80" viewBox="0 0 384 80" fill="none" preserveAspectRatio="none">
                 <path d="M0 80 L70 26 L140 80 Z" fill="currentColor" opacity="0.45" />
                 <path d="M110 80 L192 10 L274 80 Z" fill="currentColor" opacity="0.65" />
@@ -228,7 +228,7 @@ watch(
             </div>
 
             <!-- 继续学习 -->
-            <section v-if="continueCourse" class="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+            <section v-if="continueCourse" class="min-w-0 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm lg:col-start-1 lg:row-start-2">
               <div class="flex items-center justify-between">
                 <h2 class="flex items-center gap-2 text-[15px] font-bold text-gray-900">
                   <MonitorPlay :size="17" class="text-blue-500" />
@@ -241,14 +241,14 @@ watch(
               </div>
               <div class="mt-5 flex flex-col gap-5 lg:flex-row">
                 <div class="flex min-w-0 flex-1 items-center gap-4">
-                  <div class="h-16 w-24 shrink-0 overflow-hidden rounded-xl bg-gradient-to-br from-blue-500 to-blue-600">
+                  <div class="h-36 w-44 shrink-0 self-stretch overflow-hidden rounded-xl bg-gradient-to-br from-blue-500 to-blue-600">
                     <img
                       v-if="coverUrl(continueCourse.id)"
                       :src="coverUrl(continueCourse.id)!"
                       class="h-full w-full object-cover"
                       alt=""
                     />
-                    <span v-else class="flex h-full w-full items-center justify-center text-[20px] font-bold text-white">
+                    <span v-else class="flex h-full w-full items-center justify-center text-[24px] font-bold text-white">
                       {{ (continueCourse.title || '课').slice(0, 1) }}
                     </span>
                   </div>
@@ -287,7 +287,7 @@ watch(
             </section>
 
             <!-- 今日复习 -->
-            <section class="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+            <section class="min-w-0 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm lg:col-start-1 lg:row-start-3">
               <div class="flex items-center justify-between">
                 <h2 class="flex items-center gap-2 text-[15px] font-bold text-gray-900">
                   <GraduationCap :size="17" class="text-blue-500" />
@@ -336,7 +336,7 @@ watch(
             </section>
 
             <!-- 最近学习 -->
-            <section class="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+            <section class="min-w-0 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm lg:col-start-1 lg:row-start-4">
               <div class="flex items-center justify-between">
                 <h2 class="flex items-center gap-2 text-[15px] font-bold text-gray-900">
                   <Clock :size="17" class="text-blue-500" />
@@ -388,7 +388,7 @@ watch(
 
             <!-- 上传资料：视频直传流水线；图片去对话拍照解题；PDF / PPT 随 B19 -->
             <section
-              class="flex cursor-pointer flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-blue-200 bg-white px-4 py-6 transition-colors hover:bg-blue-50/40 sm:flex-row sm:px-8"
+              class="flex min-w-0 cursor-pointer flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-blue-200 bg-white px-4 py-6 transition-colors hover:bg-blue-50/40 sm:flex-row sm:px-8 lg:col-start-1 lg:row-start-5"
               :class="uploadingCourse ? 'pointer-events-none opacity-60' : ''"
               @click="openUpload"
               @dragover.prevent
@@ -419,12 +419,9 @@ watch(
               </div>
               <input ref="uploadInputRef" type="file" accept="video/mp4,video/x-matroska,video/quicktime,video/webm,.mp4,.mkv,.mov,.webm" class="hidden" @change="onUploadFile" />
             </section>
-          </div>
 
-          <!-- 右辅列 -->
-          <aside class="flex flex-col gap-5">
-            <!-- AI 助手：与 /chat 共享会话 -->
-            <section class="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+            <!-- AI 助手：与 /chat 共享会话（与左列 banner~今日复习同排，下边界对齐） -->
+            <section class="flex flex-col rounded-2xl border border-gray-100 bg-white p-6 shadow-sm lg:col-start-2 lg:row-start-1 lg:row-span-3">
               <div class="flex items-center justify-between">
                 <h2 class="flex items-center gap-2 text-[15px] font-bold text-gray-900">
                   <Sparkles :size="17" class="text-blue-500" />
@@ -438,7 +435,7 @@ watch(
                   新对话
                 </button>
               </div>
-              <div ref="assistantBox" class="mt-3 flex max-h-[420px] min-h-44 flex-col gap-2.5 overflow-y-auto">
+              <div ref="assistantBox" class="mt-3 flex min-h-44 flex-1 flex-col gap-2.5 overflow-y-auto">
                 <div v-if="agent.messages.length === 0" class="text-[12px] leading-5 text-gray-500">
                   <p class="text-[13px] font-semibold text-gray-900">你好！我是你的学习助手</p>
                   <p class="mt-1.5">我可以帮你：</p>
@@ -466,7 +463,7 @@ watch(
                   ></div>
                 </template>
               </div>
-              <div class="mt-3 grid grid-cols-2 gap-2">
+              <div class="mt-auto grid grid-cols-2 gap-2 pt-3">
                 <button
                   v-for="chip in ASSISTANT_CHIPS"
                   :key="chip.text"
@@ -499,7 +496,7 @@ watch(
             </section>
 
             <!-- 学习数据 -->
-            <section class="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+            <section class="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm lg:col-start-2 lg:row-start-4">
               <div class="flex items-center justify-between">
                 <h2 class="flex items-center gap-2 text-[15px] font-bold text-gray-900">
                   <BookOpen :size="17" class="text-blue-500" />
@@ -543,12 +540,11 @@ watch(
             </section>
 
             <!-- 坚持学习 -->
-            <section class="relative overflow-hidden rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-100 to-blue-50 p-5">
+            <section class="relative overflow-hidden rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-100 to-blue-50 p-5 lg:col-start-2 lg:row-start-5">
               <p class="text-[15px] font-bold text-gray-900">坚持学习</p>
               <p class="mt-1 max-w-[60%] text-[12px] leading-5 text-gray-500">会让你看到不一样的风景</p>
               <span class="pointer-events-none absolute -bottom-3 right-3 select-none text-[56px] leading-none">🌱</span>
             </section>
-          </aside>
         </div>
       </template>
     </div>

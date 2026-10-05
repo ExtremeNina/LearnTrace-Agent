@@ -54,6 +54,9 @@ public class Course implements UserOwned {
     /** 最近一次播放上报时间 */
     private LocalDateTime lastStudiedAt;
 
+    /** 本课重点缓存（LLM 从转写提炼，JSON 数组字符串；无 AI 笔记时兜底） */
+    private String keyPoints;
+
     /** 处理状态：PENDING / PROCESSING / SUCCESS / FAILED */
     private String status;
 

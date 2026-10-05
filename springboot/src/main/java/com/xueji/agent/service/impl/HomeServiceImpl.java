@@ -19,17 +19,21 @@ import com.xueji.agent.service.LearningStatsService;
 import com.xueji.agent.service.ReviewService;
 import com.xueji.agent.service.StudyTimeService;
 import jakarta.annotation.Resource;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ThreadPoolExecutor;
 
 /**
  * 首页仪表盘聚合实现：纯确定性查询（无 LLM），复习口径复用 ReviewService，
  * 本周统计复用 LearningStatsService（与简报 / get_learning_status 同一份口径）
  */
+@Slf4j
 @Service
 public class HomeServiceImpl implements HomeService {
 
@@ -66,6 +70,13 @@ public class HomeServiceImpl implements HomeService {
 
     @Resource
     private StudyTimeService studyTimeService;
+
+    /** LLM 提炼本课重点用（无工具无记忆；仅本页兜底场景，异步执行） */
+    @Resource(name = "generationChatClient")
+    private ChatClient generationChatClient;
+
+    @Resource(name = "courseExecutor")
+    private ThreadPoolExecutor courseExecutor;
 
     @Override
     public Map<String, Object> overview(Long userId) {
@@ -151,11 +162,19 @@ public class HomeServiceImpl implements HomeService {
         return result;
     }
 
-    /** 本课重点：优先取课程最新 AI 笔记的「知识点」小节；无 AI 笔记（老课程 / 生成失败）回退转写前几段 */
+    /** 本课重点：优先 LLM 缓存 → 课程最新 AI 笔记「知识点」小节 → 转写前几段（并异步触发 LLM 提炼缓存） */
     private List<String> extractKeyPoints(Long userId, Course course) {
         if (course == null) {
             return List.of();
         }
+        // 1) 已缓存的 LLM 提炼重点
+        if (course.getKeyPoints() != null && !course.getKeyPoints().isBlank()) {
+            List<String> cached = parseKeyPointsJson(course.getKeyPoints());
+            if (!cached.isEmpty()) {
+                return cached;
+            }
+        }
+        // 2) 课程最新 AI 笔记的「知识点」小节
         Note note = noteMapper.selectOne(new QueryWrapper<Note>()
                 .eq("user_id", userId)
                 .eq("course_id", course.getId())
@@ -169,24 +188,69 @@ public class HomeServiceImpl implements HomeService {
                 return points;
             }
         }
-        // 回退：转写分段前几段（截断），保证「本课重点」面板有内容
+        // 3) 回退：转写分段（本次展示摘录；异步 LLM 提炼缓存，下次刷新生效）
         List<CourseTranscriptSegment> segments = transcriptSegmentMapper.selectList(new QueryWrapper<CourseTranscriptSegment>()
                 .eq("course_id", course.getId())
                 .orderByAsc("sort")
-                .last("LIMIT " + KEY_POINT_LIMIT));
+                .last("LIMIT 10"));
         List<String> points = new ArrayList<>();
+        StringBuilder corpus = new StringBuilder();
         for (CourseTranscriptSegment segment : segments) {
             String text = segment.getText();
             if (text == null || text.isBlank()) {
                 continue;
             }
             String trimmed = text.trim();
-            points.add(trimmed.length() > KEY_POINT_MAX_LEN ? trimmed.substring(0, KEY_POINT_MAX_LEN) + "…" : trimmed);
-            if (points.size() >= KEY_POINT_LIMIT) {
-                break;
+            corpus.append(trimmed).append('\n');
+            if (points.size() < KEY_POINT_LIMIT) {
+                points.add(trimmed.length() > KEY_POINT_MAX_LEN ? trimmed.substring(0, KEY_POINT_MAX_LEN) + "…" : trimmed);
             }
         }
+        // 转写有内容但还没提炼过：异步 LLM 生成并缓存（失败静默，下次重新触发）
+        if (!points.isEmpty() && course.getKeyPoints() == null && courseExecutor != null && generationChatClient != null) {
+            scheduleKeyPointGeneration(course.getId(), corpus.toString());
+        }
         return points;
+    }
+
+    /** 异步 LLM 提炼本课重点并缓存到 course.key_points（JSON 数组；失败静默，下次重新触发） */
+    private void scheduleKeyPointGeneration(Long courseId, String transcriptText) {
+        courseExecutor.execute(() -> {
+            try {
+                String content = generationChatClient.prompt()
+                        .system("你是课程助教。从网课转写内容中提炼 3~4 个课程重点，中文，每条不超过 40 字。只输出 JSON 字符串数组，不要输出任何其他内容。")
+                        .user("网课转写内容：\n" + transcriptText)
+                        .call()
+                        .content();
+                if (content == null || content.isBlank()) {
+                    return;
+                }
+                String json = content.trim().replaceFirst("^```(json)?", "").replaceFirst("```$", "").trim();
+                List<String> points = parseKeyPointsJson(json);
+                if (!points.isEmpty()) {
+                    courseMapper.updateById(new Course().setId(courseId).setKeyPoints(cn.hutool.json.JSONUtil.toJsonStr(points)));
+                }
+            } catch (Exception e) {
+                log.warn("本课重点 LLM 提炼失败, courseId={}", courseId, e);
+            }
+        });
+    }
+
+    /** 解析 JSON 数组字符串为要点列表（容错：非数组 / 空项跳过，上限 6 条） */
+    private static List<String> parseKeyPointsJson(String json) {
+        try {
+            List<Object> raw = cn.hutool.json.JSONUtil.parseArray(json);
+            List<String> points = new ArrayList<>();
+            for (Object item : raw) {
+                String s = String.valueOf(item).trim();
+                if (!s.isEmpty() && points.size() < 6) {
+                    points.add(s);
+                }
+            }
+            return points;
+        } catch (Exception e) {
+            return List.of();
+        }
     }
 
     /**

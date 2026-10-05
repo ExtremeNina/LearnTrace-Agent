@@ -165,6 +165,20 @@ class HomeServiceImplTest {
     }
 
     @Test
+    void overviewShouldPreferCachedKeyPoints() {
+        when(userMapper.selectById(1L)).thenReturn(new User().setId(1L));
+        Course course = new Course().setId(10L).setTitle("Java 并发").setKeyPoints("[\"要点一\",\"要点二\"]");
+        when(courseMapper.selectOne(any())).thenReturn(course);
+        when(courseMapper.selectList(any())).thenReturn(List.of(course));
+
+        Map<String, Object> result = service.overview(1L);
+
+        assertEquals(List.of("要点一", "要点二"), result.get("keyPoints"));
+        // 缓存命中不查 AI 笔记 / 转写
+        verify(noteMapper, times(0)).selectOne(any());
+    }
+
+    @Test
     void overviewShouldFallbackKeyPointsToTranscriptsAndMapCovers() {
         when(userMapper.selectById(1L)).thenReturn(new User().setId(1L));
         Course course = new Course().setId(10L).setTitle("Java 并发").setLastStudiedAt(java.time.LocalDateTime.now());
