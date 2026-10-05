@@ -221,7 +221,7 @@ export const useAgentStore = defineStore('agent', () => {
   /**
    * 发送一条用户消息：无活动会话时先创建；经 WS 发起回合（可附图 / 附视频）
    */
-  async function send(text: string) {
+  async function send(text: string, currentTimeSec?: number) {
     if (streaming.value) {
       return
     }
@@ -248,6 +248,8 @@ export const useAgentStore = defineStore('agent', () => {
       imageUrl,
       videoTempPath: video?.tempPath,
       videoDurationSec: video?.durationSec,
+      // 网课页学习场景：随消息透传当前播放位置（秒），后端 v2 消费课程上下文
+      currentTimeSec,
     })
   }
 

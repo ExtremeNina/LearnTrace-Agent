@@ -9,6 +9,8 @@ export interface ClientMessage {
   /** B11：对话视频（上传接口产出的本地临时路径与 ffprobe 时长） */
   videoTempPath?: string
   videoDurationSec?: number
+  // 网课页学习场景：随消息透传当前播放位置（秒）
+  currentTimeSec?: number
 }
 
 export interface ServerMessage {

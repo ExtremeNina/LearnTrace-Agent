@@ -2,7 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import {
-  Download, ArrowLeft, CircleCheck, LoaderCircle, Pencil, Save, X,
+  Download, ArrowLeft, CircleCheck, LoaderCircle, Pencil, Save, Send, X,
   Bold, Italic, Underline, Clock,
 } from 'lucide-vue-next'
 import { getCourseDetail, updateCourse, reportCourseProgress } from '../api/course'
@@ -11,19 +11,22 @@ import { updateNoteContent } from '../api/note'
 import { renderNoteHtml } from '../utils/markdown'
 import DOMPurify from 'dompurify'
 import MdSourceEditor from '../components/notes/MdSourceEditor.vue'
+import ChatPanel from '../components/chat/ChatPanel.vue'
+import { useAgentStore } from '../stores/agent'
 
 /**
  * 网课详情（PRD §4.1 + §3.2 时间戳同步观看）：
- * 左列视频 + 学习笔记（用户随想，工具栏含时间戳插入）；右列 AI 笔记 / 转写对照（整合关键帧与时间轴）。
- * 色彩与字号沿用全局规范，仅调整布局。
+ * 左列标题操作 + 视频 + 学习笔记（用户随想，工具栏含时间戳插入）；
+ * 右列 AI 笔记 / 转写对照 / AI 问答（与 /chat 共享会话，回答时间戳可跳视频）。
  */
 const route = useRoute()
 const courseId = Number(route.params.id)
+const agent = useAgentStore()
 
 const data = ref<CourseDetailData | null>(null)
 const loading = ref(true)
 const error = ref('')
-const activeTab = ref<'note' | 'transcript'>('note')
+const activeTab = ref<'note' | 'transcript' | 'ask'>('note')
 const videoRef = ref<HTMLVideoElement | null>(null)
 /** 视频元数据时长（老数据 duration 字段可能为空，用播放器时长兜底） */
 const videoDuration = ref(0)
@@ -51,6 +54,8 @@ function onVideoTimeUpdate() {
 }
 
 onMounted(async () => {
+  // AI 问答 tab 与 /chat 共用 agentSocket，进页面先建连
+  agent.ensureSocketConnected()
   try {
     data.value = await getCourseDetail(courseId)
     // 支持从笔记页时间戳跳转进入：/courses/1?t=08:24 → 加载后自动 seek
@@ -127,8 +132,21 @@ function onNoteClick(e: MouseEvent) {
   }
 }
 
-function onTabChange(tab: 'note' | 'transcript') {
+function onTabChange(tab: 'note' | 'transcript' | 'ask') {
   activeTab.value = tab
+}
+
+// ---- AI 问答（与 /chat 共享会话与流式状态；随消息透传当前播放位置） ----
+const askDraft = ref('')
+
+function sendAsk() {
+  const text = askDraft.value.trim()
+  if (!text || agent.streaming) {
+    return
+  }
+  askDraft.value = ''
+  const currentSec = data.value?.course.videoOssKey ? Math.floor(videoRef.value?.currentTime ?? 0) : 0
+  agent.send(text, currentSec > 0 ? currentSec : undefined)
 }
 
 // 在线编辑 AI 笔记：Markdown 源码编辑，保存回笔记正文接口。入口为右上角「编辑」按钮。
@@ -287,8 +305,11 @@ const timelineTicks = computed(() => {
       <div v-else-if="error" class="flex h-64 items-center justify-center text-[14px] text-red-500">{{ error }}</div>
 
       <template v-else-if="data">
-        <!-- 返回 + 标题 + 操作 -->
-        <div class="flex shrink-0 items-center gap-3">
+        <div class="grid min-h-0 flex-1 grid-cols-1 gap-5 lg:grid-cols-[3fr_2fr]">
+          <!-- 左：标题操作 + 视频 + 学习笔记 -->
+          <div class="flex min-h-0 flex-col">
+            <!-- 返回 + 标题 + 操作（标题行，与右侧 AI 模块上边界对齐） -->
+            <div class="flex shrink-0 items-center gap-3">
           <RouterLink
             to="/courses"
             class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-ink-2 hover:bg-line/60"
@@ -327,24 +348,21 @@ const timelineTicks = computed(() => {
               导出
             </button>
           </div>
-        </div>
+          </div>
 
-        <div class="mt-5 grid min-h-0 flex-1 grid-cols-1 gap-5 lg:grid-cols-[3fr_2fr]">
-          <!-- 左：视频 + 学习笔记 -->
-          <div class="flex min-h-0 flex-col">
-            <video
-              v-if="data.course.videoOssKey"
-              ref="videoRef"
-              class="aspect-video w-full shrink-0 rounded-2xl border border-line bg-black"
-              controls
-              preload="metadata"
-              :src="data.course.videoOssKey"
-              @timeupdate="onVideoTimeUpdate"
-              @pause="reportProgressNow"
-            />
-            <div v-else class="flex aspect-video w-full items-center justify-center rounded-2xl border border-line bg-panel text-[14px] text-ink-2">
-              视频处理中，稍后可在线观看
-            </div>
+          <video
+            v-if="data.course.videoOssKey"
+            ref="videoRef"
+            class="mt-5 aspect-video w-full shrink-0 rounded-2xl border border-line bg-black"
+            controls
+            preload="metadata"
+            :src="data.course.videoOssKey"
+            @timeupdate="onVideoTimeUpdate"
+            @pause="reportProgressNow"
+          />
+          <div v-else class="mt-5 flex aspect-video w-full items-center justify-center rounded-2xl border border-line bg-panel text-[14px] text-ink-2">
+            视频处理中，稍后可在线观看
+          </div>
 
             <div class="mt-3 flex shrink-0 items-center gap-1.5 rounded-xl border border-line bg-primary-soft/60 px-3 py-2 text-[12px] text-ink-2">
               <template v-if="data.course.status === 'SUCCESS'">
@@ -405,24 +423,49 @@ const timelineTicks = computed(() => {
             </div>
           </div>
 
-          <!-- 右：AI 笔记 / 转写对照 -->
+          <!-- 右：AI 笔记 / 转写对照 / AI 问答 -->
           <div class="flex min-h-0 flex-col rounded-xl bg-surface shadow-card">
             <div class="flex shrink-0 items-center gap-1 border-b border-line p-2">
               <button
                 v-for="tab in [
                   { key: 'note', label: 'AI 笔记' },
                   { key: 'transcript', label: '转写对照' },
+                  { key: 'ask', label: 'AI 问答' },
                 ]"
                 :key="tab.key"
                 class="flex-1 rounded-lg py-1.5 text-[14px] transition-colors"
                 :class="activeTab === tab.key ? 'bg-surface font-medium text-ink shadow-sm' : 'text-ink-2 hover:text-ink'"
-                @click="onTabChange(tab.key as 'note' | 'transcript')"
+                @click="onTabChange(tab.key as 'note' | 'transcript' | 'ask')"
               >
                 {{ tab.label }}
               </button>
             </div>
 
-            <div class="min-h-0 flex-1 overflow-y-auto p-3">
+            <!-- AI 问答：与 /chat 共享会话，回答时间戳可点击跳视频 -->
+            <div v-if="activeTab === 'ask'" class="flex min-h-0 flex-1 flex-col">
+              <ChatPanel chip-timestamps empty-title="学习中有疑问？直接问我" @chip="(ts) => seekTo(parseTs(ts))" />
+              <div class="shrink-0 border-t border-line p-3">
+                <div class="relative">
+                  <input
+                    v-model="askDraft"
+                    class="w-full rounded-full border border-line bg-white py-2 pl-4 pr-11 text-[13px] text-ink outline-none focus:border-primary"
+                    placeholder="问点什么…（AI 知道这门课的重点与转写）"
+                    @keydown.enter="sendAsk"
+                  />
+                  <button
+                    class="absolute right-1 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-primary text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+                    :disabled="agent.streaming || !askDraft.trim()"
+                    title="发送"
+                    @click="sendAsk"
+                  >
+                    <Send :size="13" />
+                  </button>
+                </div>
+                <p class="mt-1.5 text-[11px] text-ink-2">回答中的 [mm:ss] 时间戳可点击跳转视频对应位置</p>
+              </div>
+            </div>
+
+            <div v-else class="min-h-0 flex-1 overflow-y-auto p-3">
               <!-- AI 笔记 -->
               <template v-if="activeTab === 'note'">
                 <div v-if="noteEditing" class="px-1 pb-3">
