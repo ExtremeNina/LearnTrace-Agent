@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, nextTick, onActivated, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import DOMPurify from 'dompurify'
 import {
   Bold, Italic, Underline, Paintbrush, Highlighter, Eraser, Save, X,
@@ -321,6 +321,7 @@ async function deleteNoteLeaf(noteId: number) {
 const selectedId = ref<number | null>(null)
 const selectedDetail = ref<NoteDetailInfo | null>(null)
 const router = useRouter()
+const route = useRoute()
 const toast = useToastStore()
 
 const selectedNote = computed(() => selectedDetail.value)
@@ -570,6 +571,12 @@ function onMoveChange(e: Event) {
 onMounted(async () => {
   document.addEventListener('mousedown', onDocMouseDownWhileInlineInput)
   await loadTree()
+  await handleOpenQuery()
+})
+
+// 全局搜索跳转（/notes?open={id}）：KeepAlive 缓存下 onMounted 不再触发，经 onActivated 每次进入都处理
+onActivated(() => {
+  handleOpenQuery()
 })
 
 onUnmounted(() => {
@@ -578,6 +585,18 @@ onUnmounted(() => {
     stopActiveResize()
   }
 })
+
+/** 搜索结果直达：打开指定笔记 */
+async function handleOpenQuery() {
+  const open = route.query.open
+  if (!open) {
+    return
+  }
+  const id = Number(open)
+  if (!Number.isNaN(id)) {
+    await openNote(id)
+  }
+}
 
 /**
  * 重命名 / 新建输入打开时，点击输入框以外的空白区域即保存；

@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   GraduationCap, MonitorPlay, Clock, NotebookPen, BookOpen,
-  Play, ChevronRight, Sparkles,
+  Play, ChevronRight, Send, Sparkles,
 } from 'lucide-vue-next'
 import { getHomeOverview } from '../api/home'
 import type { HomeOverview } from '../api/home'
+import { useAgentStore } from '../stores/agent'
+import { renderMarkdown } from '../utils/markdown'
 
 /**
  * 首页学习仪表盘（B25 工单 3，PRD 待补章节）：
@@ -27,6 +29,11 @@ onMounted(async () => {
     error.value = e instanceof Error ? e.message : '加载失败'
   } finally {
     loading.value = false
+  }
+  // 助手面板续接上次会话（与 /chat 同一份状态）
+  agent.loadConversations()
+  if (agent.messages.length === 0) {
+    agent.restoreLastConversation()
   }
 })
 
@@ -73,6 +80,34 @@ function relativeTime(iso?: string | null): string {
 function truncate(text: string, max = 14): string {
   return text.length > max ? text.slice(0, max) + '…' : text
 }
+
+// ---- 右栏 AI 助手：与 /chat 共享同一会话（agent store + agentSocket，流式同步） ----
+const agent = useAgentStore()
+const draft = ref('')
+const assistantBox = ref<HTMLDivElement | null>(null)
+const ASSISTANT_CHIPS = ['我最近哪块最薄弱？', '总结我最近的网课内容', '帮我出 3 道相似题']
+
+function sendDraft() {
+  const text = draft.value.trim()
+  if (!text || agent.streaming) {
+    return
+  }
+  draft.value = ''
+  agent.send(text)
+}
+
+// 新消息或流式输出推进时滚到底部
+watch(
+  () => [agent.messages.length, agent.streaming],
+  () => {
+    nextTick(() => {
+      const box = assistantBox.value
+      if (box) {
+        box.scrollTop = box.scrollHeight
+      }
+    })
+  }
+)
 </script>
 
 <template>
@@ -213,6 +248,70 @@ function truncate(text: string, max = 14): string {
 
           <!-- 右辅列 -->
           <aside class="flex flex-col gap-5">
+            <!-- AI 助手：与 /chat 共享会话 -->
+            <section class="rounded-3xl border border-line bg-surface p-5">
+              <div class="flex items-center justify-between">
+                <h2 class="flex items-center gap-1.5 text-[15px] font-semibold text-ink">
+                  <Sparkles :size="16" class="text-primary" />
+                  AI 助手
+                </h2>
+                <button
+                  class="rounded-lg border border-line px-2.5 py-1 text-[12px] text-ink-2 hover:bg-panel hover:text-ink"
+                  title="开新会话（原会话保留在 /chat 历史）"
+                  @click="agent.startNew()"
+                >
+                  新对话
+                </button>
+              </div>
+              <div ref="assistantBox" class="mt-3 flex max-h-64 min-h-32 flex-col gap-2.5 overflow-y-auto">
+                <div v-if="agent.messages.length === 0" class="text-[12px] leading-5 text-ink-2">
+                  你好！我是你的学习助手，可以帮你：
+                  <ul class="mt-1 list-disc pl-4">
+                    <li>回顾错题与薄弱知识点</li>
+                    <li>基于笔记 / 网课内容答疑</li>
+                    <li>生成笔记、相似题与知识点总结</li>
+                  </ul>
+                </div>
+                <template v-for="(msg, i) in agent.messages" :key="i">
+                  <div v-if="msg.role === 'user'" class="ml-8 whitespace-pre-wrap rounded-2xl bg-primary-soft px-3 py-2 text-[13px] text-ink">
+                    {{ msg.content }}
+                  </div>
+                  <div
+                    v-else
+                    class="assistant-md mr-4 rounded-2xl border border-line px-3 py-2 text-[13px] leading-6 text-ink"
+                    v-html="renderMarkdown(msg.content)"
+                  ></div>
+                </template>
+              </div>
+              <div class="mt-2 flex flex-wrap gap-1.5">
+                <button
+                  v-for="chip in ASSISTANT_CHIPS"
+                  :key="chip"
+                  class="rounded-full border border-line px-2.5 py-1 text-[11px] text-ink-2 transition-colors hover:bg-panel hover:text-ink"
+                  @click="draft = chip"
+                >
+                  {{ chip }}
+                </button>
+              </div>
+              <div class="mt-2 flex items-center gap-2">
+                <input
+                  v-model="draft"
+                  class="min-w-0 flex-1 rounded-xl border border-line bg-surface px-3 py-2 text-[13px] text-ink outline-none focus:border-primary"
+                  placeholder="有问题尽管问我…"
+                  @keydown.enter="sendDraft"
+                />
+                <button
+                  class="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary text-white hover:opacity-90 disabled:opacity-40"
+                  :disabled="agent.streaming || !draft.trim()"
+                  title="发送"
+                  @click="sendDraft"
+                >
+                  <Send :size="14" />
+                </button>
+              </div>
+              <p v-if="agent.streaming" class="mt-1.5 text-[11px] text-ink-2">正在回答…</p>
+            </section>
+
             <!-- 学习数据 -->
             <section class="rounded-3xl border border-line bg-surface p-5">
               <div class="flex items-center justify-between">
@@ -279,3 +378,16 @@ function truncate(text: string, max = 14): string {
     </div>
   </div>
 </template>
+
+<style scoped>
+.assistant-md :deep(p) {
+  margin-bottom: 0.4rem;
+}
+.assistant-md :deep(p:last-child) {
+  margin-bottom: 0;
+}
+.assistant-md :deep(ul),
+.assistant-md :deep(ol) {
+  padding-left: 1.1rem;
+}
+</style>
