@@ -1,6 +1,7 @@
 package com.xueji.agent.controller;
 
 import com.xueji.agent.common.Result;
+import com.xueji.agent.domain.dto.CourseProgressDto;
 import com.xueji.agent.domain.dto.CourseUpdateDto;
 import com.xueji.agent.domain.entity.Course;
 import com.xueji.agent.service.CourseService;
@@ -78,6 +79,16 @@ public class CourseController {
         Long userId = UserUtils.getCurrentLoginId();
         courseService.retry(userId, id);
         return Result.ok("已重新提交处理");
+    }
+
+    /**
+     * 上报播放进度（播放器定时调用，B25 首页「继续学习 / 最近学习」供数）
+     */
+    @PostMapping("/{id}/progress")
+    public Result<Void> reportProgress(@PathVariable Long id, @RequestBody CourseProgressDto dto) {
+        Long userId = UserUtils.getCurrentLoginId();
+        courseService.reportProgress(userId, id, dto == null ? null : dto.getPositionSec());
+        return Result.ok();
     }
 
     /**

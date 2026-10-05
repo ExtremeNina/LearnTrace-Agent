@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.concurrent.ThreadPoolExecutor;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
@@ -138,6 +139,48 @@ class CourseServiceImplTest {
 
         assertThrows(BusinessException.class, () -> service.retry(1L, 15L));
         verify(rabbitTemplate, times(0)).convertAndSend(any(), any(), any(Object.class));
+    }
+
+    // ---- 播放进度上报 ----
+
+    @Test
+    void reportProgressShouldRecordPositionAndPercent() {
+        when(courseMapper.selectById(15L)).thenReturn(
+                new Course().setId(15L).setUserId(1L).setDeleted(0).setStatus(CourseStatus.SUCCESS).setDuration(600));
+
+        service.reportProgress(1L, 15L, 300);
+
+        ArgumentCaptor<Course> captor = ArgumentCaptor.forClass(Course.class);
+        verify(courseMapper).updateById(captor.capture());
+        Course saved = captor.getValue();
+        assertEquals(300, saved.getLastPositionSec());
+        assertEquals(50, saved.getProgressPct());
+        assertNotNull(saved.getLastStudiedAt());
+        assertNull(saved.getUpdatedAt());
+    }
+
+    @Test
+    void reportProgressShouldClampAndSkipPercentWithoutDuration() {
+        when(courseMapper.selectById(15L)).thenReturn(
+                new Course().setId(15L).setUserId(1L).setDeleted(0).setStatus(CourseStatus.SUCCESS));
+
+        service.reportProgress(1L, 15L, -30);
+
+        ArgumentCaptor<Course> captor = ArgumentCaptor.forClass(Course.class);
+        verify(courseMapper).updateById(captor.capture());
+        Course saved = captor.getValue();
+        assertEquals(0, saved.getLastPositionSec());
+        assertNull(saved.getProgressPct());
+        assertNotNull(saved.getLastStudiedAt());
+    }
+
+    @Test
+    void reportProgressShouldRejectNonOwner() {
+        when(courseMapper.selectById(15L)).thenReturn(
+                new Course().setId(15L).setUserId(2L).setDeleted(0));
+
+        assertThrows(BusinessException.class, () -> service.reportProgress(1L, 15L, 100));
+        verify(courseMapper, times(0)).updateById(any());
     }
 
     // ---- 删除 ----

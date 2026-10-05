@@ -45,6 +45,15 @@ public class Course implements UserOwned {
     /** 视频时长（秒） */
     private Integer duration;
 
+    /** 上次播放位置（秒，播放器定时上报） */
+    private Integer lastPositionSec;
+
+    /** 观看进度百分比（0~100，按位置 / 时长取整；无时长时为 NULL） */
+    private Integer progressPct;
+
+    /** 最近一次播放上报时间 */
+    private LocalDateTime lastStudiedAt;
+
     /** 处理状态：PENDING / PROCESSING / SUCCESS / FAILED */
     private String status;
 

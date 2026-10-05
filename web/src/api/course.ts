@@ -12,6 +12,12 @@ export interface CourseInfo {
   duration?: number | null
   /** 笔记生成使用的模型配置（上传时选择，NULL = 系统默认） */
   modelConfigId?: number | null
+  /** 上次播放位置（秒，播放器上报） */
+  lastPositionSec?: number | null
+  /** 观看进度百分比（0~100） */
+  progressPct?: number | null
+  /** 最近一次播放上报时间 */
+  lastStudiedAt?: string | null
   status: 'PENDING' | 'PROCESSING' | 'SUCCESS' | 'FAILED'
   errorMsg?: string | null
   createdAt: string
@@ -89,6 +95,10 @@ export function updateCourse(id: number, data: { title?: string; subject?: strin
 
 export function retryCourse(id: number): Promise<void> {
   return request<void>({ method: 'POST', url: `/courses/${id}/retry` })
+}
+
+export function reportCourseProgress(id: number, positionSec: number): Promise<void> {
+  return request<void>({ method: 'POST', url: `/courses/${id}/progress`, data: { positionSec } })
 }
 
 export function deleteCourse(id: number): Promise<void> {

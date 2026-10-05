@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   Download, ArrowLeft, CircleCheck, LoaderCircle, Pencil, Save, X,
   Bold, Italic, Underline, Clock,
 } from 'lucide-vue-next'
-import { getCourseDetail, updateCourse } from '../api/course'
+import { getCourseDetail, updateCourse, reportCourseProgress } from '../api/course'
 import type { CourseDetailData } from '../api/course'
 import { updateNoteContent } from '../api/note'
 import { renderNoteHtml } from '../utils/markdown'
@@ -28,6 +28,28 @@ const videoRef = ref<HTMLVideoElement | null>(null)
 /** 视频元数据时长（老数据 duration 字段可能为空，用播放器时长兜底） */
 const videoDuration = ref(0)
 
+/** 播放进度上报（B25 首页「继续学习 / 最近学习」供数）：15 秒节流，暂停 / 离开页面补报 */
+const PROGRESS_REPORT_INTERVAL_MS = 15_000
+let lastProgressAt = 0
+
+function reportProgressNow() {
+  const video = videoRef.value
+  if (!video || !data.value || video.currentTime <= 0) {
+    return
+  }
+  reportCourseProgress(courseId, Math.floor(video.currentTime)).catch(() => {
+    // 上报失败静默：下个节流窗口自然重试，不打断观看
+  })
+}
+
+function onVideoTimeUpdate() {
+  const now = Date.now()
+  if (now - lastProgressAt >= PROGRESS_REPORT_INTERVAL_MS) {
+    lastProgressAt = now
+    reportProgressNow()
+  }
+}
+
 onMounted(async () => {
   try {
     data.value = await getCourseDetail(courseId)
@@ -47,6 +69,14 @@ onMounted(async () => {
   } finally {
     loading.value = false
   }
+})
+
+// 离开页面（含浏览器关闭 / 刷新）补报一次进度，最长丢失不超过一个节流窗口
+window.addEventListener('pagehide', reportProgressNow)
+
+onUnmounted(() => {
+  window.removeEventListener('pagehide', reportProgressNow)
+  reportProgressNow()
 })
 
 function parseTs(ts: string): number {
@@ -309,6 +339,8 @@ const timelineTicks = computed(() => {
               controls
               preload="metadata"
               :src="data.course.videoOssKey"
+              @timeupdate="onVideoTimeUpdate"
+              @pause="reportProgressNow"
             />
             <div v-else class="flex aspect-video w-full items-center justify-center rounded-2xl border border-line bg-panel text-[14px] text-ink-2">
               视频处理中，稍后可在线观看

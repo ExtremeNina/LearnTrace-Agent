@@ -43,6 +43,12 @@ public interface CourseService {
     void retry(Long userId, Long courseId);
 
     /**
+     * 上报播放进度（播放器定时调用）：记录上次播放位置 / 百分比 / 最近学习时间，
+     * 供首页「继续学习 / 最近学习」使用（B25）。高频打点，不动 updatedAt
+     */
+    void reportProgress(Long userId, Long courseId, Integer positionSec);
+
+    /**
      * 删除网课（逻辑删除）：连带软删课程的 AI 笔记、清理指向该课的知识联系、
      * 移除 RAG 转写向量，并异步删除 OSS 上的视频 / 音频 / 关键帧。
      * 处理中（PROCESSING）的网课不可删除，避免与流水线并发写入

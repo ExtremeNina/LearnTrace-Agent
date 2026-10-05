@@ -62,7 +62,7 @@ LJ-Agent/
 | conversation / message | 会话与消息 | 物理删除（会话属临时数据，30 天定时清理） |
 | question_record | 拍照题目（image_oss_key NOT NULL） | 逻辑删除（deleted） |
 | similar_question | AI 相似题（source_question_id 可空、subject、conversation_id 溯源；is_correct 二期） | 逻辑删除（deleted） |
-| course | 网课（model_config_id = 上传时选择的笔记生成模型，NULL = 系统默认） | 逻辑删除（deleted；删除连带 AI 笔记 / 知识联系 / 向量 / OSS 清理） |
+| course | 网课（model_config_id = 上传时选择的笔记生成模型，NULL = 系统默认；last_position_sec / progress_pct / last_studied_at = 播放进度打点，播放器定时上报） | 逻辑删除（deleted；删除连带 AI 笔记 / 知识联系 / 向量 / OSS 清理） |
 | course_transcript_segment / course_frame | 转写分段 / 关键帧 | 随重试清理重建；随网课删除移出向量库 |
 | note / note_link | 笔记树与知识联系 | 笔记逻辑删除；note_link 物理删除（分组级联时双向清理） |
 | user | 用户（bio / theme / notify_task_enabled / deleted） | 注销为逻辑删除（deleted），登录拦截 |

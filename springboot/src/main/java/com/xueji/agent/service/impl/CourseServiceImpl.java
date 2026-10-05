@@ -189,6 +189,22 @@ public class CourseServiceImpl implements CourseService {
     }
 
     @Override
+    public void reportProgress(Long userId, Long courseId, Integer positionSec) {
+        Course course = checkOwnership(userId, courseId);
+        // 位置非负截断；老数据 duration 可能为 NULL（流水线前），无时长只记位置不记百分比
+        int position = positionSec == null || positionSec < 0 ? 0 : positionSec;
+        Integer progress = null;
+        if (course.getDuration() != null && course.getDuration() > 0) {
+            progress = Math.min(100, position * 100 / course.getDuration());
+        }
+        course.setLastPositionSec(position);
+        course.setProgressPct(progress);
+        course.setLastStudiedAt(LocalDateTime.now());
+        // 不动 updatedAt：播放进度是高频打点，updatedAt 保留给内容 / 元数据编辑语义
+        courseMapper.updateById(course);
+    }
+
+    @Override
     public void deleteByUser(Long userId, Long courseId) {
         Course course = checkOwnership(userId, courseId);
         if (CourseStatus.PROCESSING.equals(course.getStatus())) {
