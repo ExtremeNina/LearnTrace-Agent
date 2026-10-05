@@ -2,9 +2,9 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-  AlertTriangle, BookOpen, ChevronRight, CircleCheck, Clock, FileText, GraduationCap,
-  Image as ImageIcon, ListChecks, MessageSquareText, MonitorPlay, NotebookPen, Play, Plus,
-  Presentation, Send, Sparkles, Target, Video,
+  ChevronRight, Clock, GraduationCap,
+  ListChecks, MessageSquareText, MonitorPlay, NotebookPen, Play, Plus,
+  Send, Sparkles, Target,
 } from 'lucide-vue-next'
 import { getHomeOverview, heartbeatStudyTime } from '../api/home'
 import type { HomeOverview } from '../api/home'
@@ -16,8 +16,9 @@ import bannerWaterUrl from '../assets/banner-water.webp'
 
 /**
  * 首页学习仪表盘（B25，视觉按设计稿实现——靛蓝色系 / 渐变按钮 / 卡片白底圆角；深色主题适配后置）：
- * 问候 banner + 继续学习（本课重点）/ 今日复习 / 最近学习 / 上传资料（左主列）
- * + AI 助手（与 /chat 共享会话）/ 学习数据 / 坚持学习（右辅列）。推荐学习不做（拍板）。
+ * 问候 banner + 继续学习（本课重点）/ 今日复习 / 最近学习（左主列）
+ * + AI 助手（与 /chat 共享会话，高度与左列最近学习下边界对齐，输入框加号整合上传资料）。
+ * 学习数据 / 坚持学习 / 独立上传资料卡已按用户反馈移除。推荐学习不做（拍板）。
  */
 defineOptions({ name: 'HomeView' })
 
@@ -115,11 +116,14 @@ function coverUrl(id: number): string | null {
   return overview.value?.coverUrls?.[String(id)] ?? null
 }
 
-// ---- 上传资料（视频直传网课流水线；图片引导去对话拍照解题；PDF / PPT 随 B19 后置） ----
+// ---- 上传资料（整合进 AI 助手输入框加号；视频直传网课流水线；图片引导去对话拍照解题；PDF / PPT 随 B19 后置） ----
 const uploadInputRef = ref<HTMLInputElement | null>(null)
 const uploadingCourse = ref(false)
 
 function openUpload() {
+  if (uploadingCourse.value) {
+    return
+  }
   uploadInputRef.value?.click()
 }
 
@@ -127,13 +131,6 @@ function onUploadFile(e: Event) {
   const input = e.target as HTMLInputElement
   const file = input.files?.[0]
   input.value = ''
-  if (file) {
-    submitUpload(file)
-  }
-}
-
-function onDropFile(e: DragEvent) {
-  const file = e.dataTransfer?.files?.[0]
   if (file) {
     submitUpload(file)
   }
@@ -211,7 +208,7 @@ watch(
       </div>
 
       <template v-else-if="overview">
-        <div class="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <div class="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_400px]">
             <!-- 问候 banner：水中照片背景 + 浅蓝渐变遮罩（保证文字可读）+ 手写标语（右上） -->
             <div class="relative min-w-0 overflow-hidden rounded-lg border border-blue-100 px-6 py-8 md:px-9 md:py-10 lg:col-start-1 lg:row-start-1">
               <img :src="bannerWaterUrl" class="absolute inset-0 h-full w-full object-cover" alt="" />
@@ -391,42 +388,8 @@ watch(
               </div>
             </section>
 
-            <!-- 上传资料：视频直传流水线；图片去对话拍照解题；PDF / PPT 随 B19 -->
-            <section
-              class="flex min-w-0 cursor-pointer flex-col items-center gap-3 rounded-lg border-2 border-dashed border-blue-200 bg-white px-4 py-6 transition-colors hover:bg-blue-50/40 sm:flex-row sm:px-8 lg:col-start-1 lg:row-start-5"
-              :class="uploadingCourse ? 'pointer-events-none opacity-60' : ''"
-              @click="openUpload"
-              @dragover.prevent
-              @drop.prevent="onDropFile"
-            >
-              <div class="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-r from-blue-500 to-blue-600 text-white">
-                <Plus :size="18" />
-              </div>
-              <div class="min-w-0 flex-1 text-center sm:text-left">
-                <p class="text-[14px] font-semibold text-gray-900">
-                  {{ uploadingCourse ? '正在上传…' : '上传资料' }}
-                </p>
-                <p class="mt-0.5 text-[12px] text-gray-400">支持视频（点击或拖拽，自动转写）、图片等多种格式</p>
-              </div>
-              <div class="flex items-center gap-2.5">
-                <span class="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-blue-500" title="视频：点击或拖拽上传" @click.stop="openUpload">
-                  <Video :size="17" />
-                </span>
-                <span class="flex h-9 w-9 items-center justify-center rounded-lg bg-red-50 text-red-400" title="PDF 摄取即将上线" @click.stop="toast.push('PDF 摄取即将上线（B19）')">
-                  <FileText :size="17" />
-                </span>
-                <span class="flex h-9 w-9 items-center justify-center rounded-lg bg-orange-50 text-orange-400" title="PPT 摄取即将上线" @click.stop="toast.push('PPT 摄取即将上线（B19）')">
-                  <Presentation :size="17" />
-                </span>
-                <span class="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-50 text-emerald-500" title="图片解题：在对话中发送" @click.stop="router.push('/chat'); toast.push('在对话中发送图片即可拍照解题')">
-                  <ImageIcon :size="17" />
-                </span>
-              </div>
-              <input ref="uploadInputRef" type="file" accept="video/mp4,video/x-matroska,video/quicktime,video/webm,.mp4,.mkv,.mov,.webm" class="hidden" @change="onUploadFile" />
-            </section>
-
-            <!-- AI 助手：与 /chat 共享会话（与左列 banner~今日复习同排，下边界对齐） -->
-            <section class="flex flex-col rounded-lg border border-gray-100 bg-white p-6 shadow-sm lg:col-start-2 lg:row-start-1 lg:row-span-3">
+            <!-- AI 助手：与 /chat 共享会话（与左列 banner~最近学习同排，下边界对齐最近学习） -->
+            <section class="flex flex-col rounded-lg border border-gray-100 bg-white p-6 shadow-sm lg:col-start-2 lg:row-start-1 lg:row-span-4">
               <div class="flex items-center justify-between">
                 <h2 class="flex items-center gap-2 text-[15px] font-bold text-gray-900">
                   <Sparkles :size="17" class="text-blue-500" />
@@ -480,75 +443,37 @@ watch(
                 </button>
               </div>
               <div class="relative mt-3">
-                <input
-                  v-model="draft"
-                  class="w-full rounded-full border border-blue-200 bg-white py-2.5 pl-4 pr-12 text-[13px] text-ink outline-none focus:border-blue-400"
-                  placeholder="有问题尽管问我…"
-                  @keydown.enter="sendDraft"
-                />
-                <button
-                  class="absolute right-1 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-gradient-to-r from-blue-500 to-blue-600 text-white transition-opacity hover:opacity-90 disabled:opacity-40"
-                  :disabled="agent.streaming || !draft.trim()"
-                  title="发送"
-                  @click="sendDraft"
-                >
-                  <Send :size="14" />
-                </button>
+                <div class="flex items-center rounded-full border border-blue-200 bg-white pl-2 pr-1 transition-colors focus-within:border-blue-400">
+                  <!-- 加号：整合上传资料（视频直传转写，图片引导去对话） -->
+                  <button
+                    class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-ink-2 transition-colors hover:bg-blue-50 hover:text-blue-500"
+                    :class="uploadingCourse ? 'animate-pulse text-blue-400' : ''"
+                    :title="uploadingCourse ? '正在上传…' : '上传资料（视频自动转写）'"
+                    :disabled="uploadingCourse"
+                    @click="openUpload"
+                  >
+                    <Plus :size="17" />
+                  </button>
+                  <input
+                    v-model="draft"
+                    class="min-w-0 flex-1 bg-transparent py-2.5 pr-2 text-[13px] text-ink outline-none"
+                    placeholder="有问题尽管问我…"
+                    @keydown.enter="sendDraft"
+                  />
+                  <button
+                    class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-blue-500 to-blue-600 text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+                    :disabled="agent.streaming || !draft.trim()"
+                    title="发送"
+                    @click="sendDraft"
+                  >
+                    <Send :size="14" />
+                  </button>
+                </div>
               </div>
               <p class="mt-2 text-[11px] text-gray-300">
-                {{ agent.streaming ? '正在回答…' : '基于你的学习数据，提供更精准的回答' }}
+                {{ uploadingCourse ? '视频上传中，提交转写后可在「课程」查看进度…' : agent.streaming ? '正在回答…' : '基于你的学习数据，提供更精准的回答' }}
               </p>
-            </section>
-
-            <!-- 学习数据 -->
-            <section class="rounded-lg border border-gray-100 bg-white p-6 shadow-sm lg:col-start-2 lg:row-start-4">
-              <div class="flex items-center justify-between">
-                <h2 class="flex items-center gap-2 text-[15px] font-bold text-gray-900">
-                  <BookOpen :size="17" class="text-blue-500" />
-                  学习数据
-                </h2>
-                <RouterLink to="/review" class="flex items-center text-[12px] text-gray-400 transition-colors hover:text-blue-500">
-                  查看详情
-                  <ChevronRight :size="13" />
-                </RouterLink>
-              </div>
-              <div class="mt-4 grid grid-cols-2 gap-3">
-                <div class="rounded-lg bg-gray-50 p-3.5">
-                  <div class="flex h-8 w-8 items-center justify-center rounded-full bg-blue-50 text-blue-500">
-                    <Clock :size="15" />
-                  </div>
-                  <p class="mt-2 text-[20px] font-bold tabular-nums text-gray-900">{{ overview.stats.todayStudyMinutes }}</p>
-                  <p class="mt-0.5 text-[11px] text-gray-400">今日学习时长（分钟）</p>
-                </div>
-                <div class="rounded-lg bg-gray-50 p-3.5">
-                  <div class="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-50 text-emerald-500">
-                    <MonitorPlay :size="15" />
-                  </div>
-                  <p class="mt-2 text-[20px] font-bold tabular-nums text-gray-900">{{ overview.stats.coursesTotal }}</p>
-                  <p class="mt-0.5 text-[11px] text-gray-400">学习课程数</p>
-                </div>
-                <div class="rounded-lg bg-gray-50 p-3.5">
-                  <div class="flex h-8 w-8 items-center justify-center rounded-full bg-amber-50 text-amber-500">
-                    <CircleCheck :size="15" />
-                  </div>
-                  <p class="mt-2 text-[20px] font-bold tabular-nums text-gray-900">{{ overview.stats.reviewedToday }}</p>
-                  <p class="mt-0.5 text-[11px] text-gray-400">今日已复习</p>
-                </div>
-                <div class="rounded-lg bg-gray-50 p-3.5">
-                  <div class="flex h-8 w-8 items-center justify-center rounded-full bg-red-50 text-red-400">
-                    <AlertTriangle :size="15" />
-                  </div>
-                  <p class="mt-2 text-[20px] font-bold tabular-nums text-gray-900">{{ overview.stats.dueCount }}</p>
-                  <p class="mt-0.5 text-[11px] text-gray-400">待复习卡片</p>
-                </div>
-              </div>
-            </section>
-
-            <!-- 坚持学习 -->
-            <section class="relative overflow-hidden rounded-lg border border-blue-100 bg-gradient-to-br from-blue-100 to-blue-50 p-5 lg:col-start-2 lg:row-start-5">
-              <p class="text-[15px] font-bold text-gray-900">坚持学习</p>
-              <p class="mt-1 max-w-[60%] text-[12px] leading-5 text-gray-500">会让你看到不一样的风景</p>
-              <span class="pointer-events-none absolute -bottom-3 right-3 select-none text-[56px] leading-none">🌱</span>
+              <input ref="uploadInputRef" type="file" accept="video/mp4,video/x-matroska,video/quicktime,video/webm,.mp4,.mkv,.mov,.webm" class="hidden" @change="onUploadFile" />
             </section>
         </div>
       </template>
