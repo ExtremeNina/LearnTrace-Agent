@@ -1,10 +1,14 @@
 package com.xueji.agent.service;
 
 import com.xueji.agent.domain.entity.Course;
+import com.xueji.agent.domain.entity.CourseFrame;
+import com.xueji.agent.domain.entity.CourseTranscriptSegment;
 import com.xueji.agent.domain.entity.Note;
 import com.xueji.agent.domain.entity.User;
 import com.xueji.agent.domain.vo.ReviewCardVO;
+import com.xueji.agent.mapper.CourseFrameMapper;
 import com.xueji.agent.mapper.CourseMapper;
+import com.xueji.agent.mapper.CourseTranscriptSegmentMapper;
 import com.xueji.agent.mapper.NoteMapper;
 import com.xueji.agent.mapper.QuestionRecordMapper;
 import com.xueji.agent.mapper.UserMapper;
@@ -34,6 +38,8 @@ class HomeServiceImplTest {
     private CourseMapper courseMapper;
     private NoteMapper noteMapper;
     private QuestionRecordMapper questionRecordMapper;
+    private CourseFrameMapper courseFrameMapper;
+    private CourseTranscriptSegmentMapper transcriptSegmentMapper;
     private ReviewService reviewService;
     private LearningStatsService learningStatsService;
     private StudyTimeService studyTimeService;
@@ -45,6 +51,8 @@ class HomeServiceImplTest {
         courseMapper = mock(CourseMapper.class);
         noteMapper = mock(NoteMapper.class);
         questionRecordMapper = mock(QuestionRecordMapper.class);
+        courseFrameMapper = mock(CourseFrameMapper.class);
+        transcriptSegmentMapper = mock(CourseTranscriptSegmentMapper.class);
         reviewService = mock(ReviewService.class);
         learningStatsService = mock(LearningStatsService.class);
         studyTimeService = mock(StudyTimeService.class);
@@ -53,6 +61,8 @@ class HomeServiceImplTest {
         setField("courseMapper", courseMapper);
         setField("noteMapper", noteMapper);
         setField("questionRecordMapper", questionRecordMapper);
+        setField("courseFrameMapper", courseFrameMapper);
+        setField("transcriptSegmentMapper", transcriptSegmentMapper);
         setField("reviewService", reviewService);
         setField("learningStatsService", learningStatsService);
         setField("studyTimeService", studyTimeService);
@@ -145,13 +155,33 @@ class HomeServiceImplTest {
         when(userMapper.selectById(1L)).thenReturn(new User().setId(1L));
         Course course = new Course().setId(10L).setTitle("Java 并发");
         when(courseMapper.selectOne(any())).thenReturn(course);
-        when(courseMapper.selectList(any())).thenReturn(List.of());
+        when(courseMapper.selectList(any())).thenReturn(List.of(course));
         Note aiNote = new Note().setContent("## 课程概览\n- 概览条目\n\n## 知识点\n- **volatile** 关键字\n- CAS 与 AQS\n\n## 总结\n- 总结条目");
         when(noteMapper.selectOne(any())).thenReturn(aiNote);
 
         Map<String, Object> result = service.overview(1L);
 
         assertEquals(List.of("volatile 关键字", "CAS 与 AQS"), result.get("keyPoints"));
+    }
+
+    @Test
+    void overviewShouldFallbackKeyPointsToTranscriptsAndMapCovers() {
+        when(userMapper.selectById(1L)).thenReturn(new User().setId(1L));
+        Course course = new Course().setId(10L).setTitle("Java 并发").setLastStudiedAt(java.time.LocalDateTime.now());
+        when(courseMapper.selectOne(any())).thenReturn(course);
+        when(courseMapper.selectList(any())).thenReturn(List.of(course));
+        // 无 AI 笔记：本课重点回退转写前几段；封面取第一帧
+        when(noteMapper.selectOne(any())).thenReturn(null);
+        when(transcriptSegmentMapper.selectList(any())).thenReturn(List.of(
+                new CourseTranscriptSegment().setCourseId(10L).setSort(1).setText("第一段转写内容"),
+                new CourseTranscriptSegment().setCourseId(10L).setSort(2).setText("第二段")));
+        when(courseFrameMapper.selectOne(any())).thenReturn(
+                new CourseFrame().setCourseId(10L).setOssKey("https://oss/course/10/frames/0.jpg"));
+
+        Map<String, Object> result = service.overview(1L);
+
+        assertEquals(List.of("第一段转写内容", "第二段"), result.get("keyPoints"));
+        assertEquals("https://oss/course/10/frames/0.jpg", ((Map<?, ?>) result.get("coverUrls")).get("10"));
     }
 
     @Test

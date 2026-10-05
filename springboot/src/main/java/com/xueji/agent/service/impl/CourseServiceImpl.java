@@ -22,6 +22,7 @@ import com.xueji.agent.service.AiModelService;
 import com.xueji.agent.service.CourseService;
 import com.xueji.agent.service.ReviewService;
 import com.xueji.agent.utils.AliUploadUtils;
+import com.xueji.agent.utils.MediaUtils;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
@@ -202,6 +203,32 @@ public class CourseServiceImpl implements CourseService {
         course.setLastStudiedAt(LocalDateTime.now());
         // 不动 updatedAt：播放进度是高频打点，updatedAt 保留给内容 / 元数据编辑语义
         courseMapper.updateById(course);
+        probeMissingDuration(course, position);
+    }
+
+    /**
+     * 老课程 duration 缺失时懒探测：ffprobe 直接读 OSS URL 回填时长并补算百分比（一次生效，后续上报不再探测）
+     */
+    private void probeMissingDuration(Course course, int position) {
+        if (course.getDuration() != null || course.getVideoOssKey() == null || course.getVideoOssKey().isBlank()) {
+            return;
+        }
+        Long courseId = course.getId();
+        String videoUrl = course.getVideoOssKey();
+        courseExecutor.execute(() -> {
+            try {
+                int duration = MediaUtils.ffprobeDurationSec(videoUrl);
+                if (duration > 0) {
+                    Course update = new Course().setId(courseId)
+                            .setDuration(duration)
+                            .setProgressPct(Math.min(100, position * 100 / duration))
+                            .setUpdatedAt(LocalDateTime.now());
+                    courseMapper.updateById(update);
+                }
+            } catch (Exception e) {
+                log.warn("课程时长懒探测失败, courseId={}", courseId, e);
+            }
+        });
     }
 
     @Override

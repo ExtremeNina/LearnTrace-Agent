@@ -16,8 +16,15 @@ public final class MediaUtils {
      * ffprobe 探测视频时长（秒，四舍五入）
      */
     public static int ffprobeDurationSec(Path video) throws IOException, InterruptedException {
+        return ffprobeDurationSec(video.toString());
+    }
+
+    /**
+     * ffprobe 探测媒体时长（秒，四舍五入）；media 可为本地路径或 http(s) URL（OSS 视频懒探测回填时长用）
+     */
+    public static int ffprobeDurationSec(String media) throws IOException, InterruptedException {
         Process p = new ProcessBuilder("ffprobe", "-v", "error", "-show_entries", "format=duration",
-                "-of", "csv=p=0", video.toString()).start();
+                "-of", "csv=p=0", media).start();
         String out = new String(p.getInputStream().readAllBytes()).trim();
         p.waitFor();
         return (int) Math.round(Double.parseDouble(out));

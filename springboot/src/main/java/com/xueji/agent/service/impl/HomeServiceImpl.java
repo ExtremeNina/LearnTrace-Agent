@@ -2,11 +2,15 @@ package com.xueji.agent.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.xueji.agent.domain.entity.Course;
+import com.xueji.agent.domain.entity.CourseFrame;
+import com.xueji.agent.domain.entity.CourseTranscriptSegment;
 import com.xueji.agent.domain.entity.Note;
 import com.xueji.agent.domain.entity.QuestionRecord;
 import com.xueji.agent.domain.entity.User;
 import com.xueji.agent.domain.vo.ReviewCardVO;
+import com.xueji.agent.mapper.CourseFrameMapper;
 import com.xueji.agent.mapper.CourseMapper;
+import com.xueji.agent.mapper.CourseTranscriptSegmentMapper;
 import com.xueji.agent.mapper.NoteMapper;
 import com.xueji.agent.mapper.QuestionRecordMapper;
 import com.xueji.agent.mapper.UserMapper;
@@ -49,6 +53,12 @@ public class HomeServiceImpl implements HomeService {
     private QuestionRecordMapper questionRecordMapper;
 
     @Resource
+    private CourseFrameMapper courseFrameMapper;
+
+    @Resource
+    private CourseTranscriptSegmentMapper transcriptSegmentMapper;
+
+    @Resource
     private ReviewService reviewService;
 
     @Resource
@@ -89,6 +99,29 @@ public class HomeServiceImpl implements HomeService {
                 .last("ORDER BY last_studied_at IS NULL, last_studied_at DESC, updated_at DESC LIMIT " + RECENT_COURSE_LIMIT));
         result.put("recentCourses", recentCourses);
 
+        // 课程封面：各课第一张抽帧图（time_sec 最小，OSS 完整 URL）
+        List<Course> coverCourses = new ArrayList<>(recentCourses);
+        boolean continueInRecent = false;
+        for (Course item : recentCourses) {
+            if (continueCourse != null && item.getId().equals(continueCourse.getId())) {
+                continueInRecent = true;
+            }
+        }
+        if (continueCourse != null && !continueInRecent) {
+            coverCourses.add(continueCourse);
+        }
+        Map<String, String> coverUrls = new LinkedHashMap<>();
+        for (Course item : coverCourses) {
+            CourseFrame frame = courseFrameMapper.selectOne(new QueryWrapper<CourseFrame>()
+                    .eq("course_id", item.getId())
+                    .orderByAsc("time_sec")
+                    .last("LIMIT 1"));
+            if (frame != null && frame.getOssKey() != null) {
+                coverUrls.put(String.valueOf(item.getId()), frame.getOssKey());
+            }
+        }
+        result.put("coverUrls", coverUrls);
+
         // 今日复习：队列前几张作标签展示
         List<ReviewCardVO> queue = reviewService.todayQueue(userId);
         result.put("todayQueue", queue.size() > TODAY_QUEUE_LIMIT ? queue.subList(0, TODAY_QUEUE_LIMIT) : queue);
@@ -118,7 +151,7 @@ public class HomeServiceImpl implements HomeService {
         return result;
     }
 
-    /** 本课重点：继续学习课程最新 AI 笔记的「知识点」小节前几条（AI 笔记 Markdown 固定结构） */
+    /** 本课重点：优先取课程最新 AI 笔记的「知识点」小节；无 AI 笔记（老课程 / 生成失败）回退转写前几段 */
     private List<String> extractKeyPoints(Long userId, Course course) {
         if (course == null) {
             return List.of();
@@ -130,10 +163,30 @@ public class HomeServiceImpl implements HomeService {
                 .eq("deleted", 0)
                 .orderByDesc("id")
                 .last("LIMIT 1"));
-        if (note == null) {
-            return List.of();
+        if (note != null) {
+            List<String> points = parseKnowledgePoints(note.getContent(), KEY_POINT_LIMIT);
+            if (!points.isEmpty()) {
+                return points;
+            }
         }
-        return parseKnowledgePoints(note.getContent(), KEY_POINT_LIMIT);
+        // 回退：转写分段前几段（截断），保证「本课重点」面板有内容
+        List<CourseTranscriptSegment> segments = transcriptSegmentMapper.selectList(new QueryWrapper<CourseTranscriptSegment>()
+                .eq("course_id", course.getId())
+                .orderByAsc("sort")
+                .last("LIMIT " + KEY_POINT_LIMIT));
+        List<String> points = new ArrayList<>();
+        for (CourseTranscriptSegment segment : segments) {
+            String text = segment.getText();
+            if (text == null || text.isBlank()) {
+                continue;
+            }
+            String trimmed = text.trim();
+            points.add(trimmed.length() > KEY_POINT_MAX_LEN ? trimmed.substring(0, KEY_POINT_MAX_LEN) + "…" : trimmed);
+            if (points.size() >= KEY_POINT_LIMIT) {
+                break;
+            }
+        }
+        return points;
     }
 
     /**

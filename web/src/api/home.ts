@@ -23,6 +23,8 @@ export interface HomeOverview {
   /** 继续学习课程的「本课重点」（最新 AI 笔记知识点小节，最多 4 条） */
   keyPoints: string[]
   recentCourses: HomeCourseInfo[]
+  /** 课程封面（courseId → 第一帧抽帧图 OSS URL） */
+  coverUrls: Record<string, string>
   todayQueue: HomeQueueCard[]
   stats: {
     dueCount: number

@@ -107,6 +107,11 @@ function truncate(text: string, max = 14): string {
   return text.length > max ? text.slice(0, max) + '…' : text
 }
 
+/** 课程封面：第一帧抽帧图（overview.coverUrls），无则回退首字块 */
+function coverUrl(id: number): string | null {
+  return overview.value?.coverUrls?.[String(id)] ?? null
+}
+
 // ---- 上传资料（视频直传网课流水线；图片引导去对话拍照解题；PDF / PPT 随 B19 后置） ----
 const uploadInputRef = ref<HTMLInputElement | null>(null)
 const uploadingCourse = ref(false)
@@ -223,7 +228,7 @@ watch(
             </div>
 
             <!-- 继续学习 -->
-            <section v-if="continueCourse" class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+            <section v-if="continueCourse" class="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
               <div class="flex items-center justify-between">
                 <h2 class="flex items-center gap-2 text-[15px] font-bold text-gray-900">
                   <MonitorPlay :size="17" class="text-blue-500" />
@@ -234,15 +239,23 @@ watch(
                   <ChevronRight :size="13" />
                 </RouterLink>
               </div>
-              <div class="mt-4 flex flex-col gap-4 lg:flex-row">
+              <div class="mt-5 flex flex-col gap-5 lg:flex-row">
                 <div class="flex min-w-0 flex-1 items-center gap-4">
-                  <div class="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 text-[20px] font-bold text-white">
-                    {{ (continueCourse.title || '课').slice(0, 1) }}
+                  <div class="h-16 w-24 shrink-0 overflow-hidden rounded-xl bg-gradient-to-br from-blue-500 to-blue-600">
+                    <img
+                      v-if="coverUrl(continueCourse.id)"
+                      :src="coverUrl(continueCourse.id)!"
+                      class="h-full w-full object-cover"
+                      alt=""
+                    />
+                    <span v-else class="flex h-full w-full items-center justify-center text-[20px] font-bold text-white">
+                      {{ (continueCourse.title || '课').slice(0, 1) }}
+                    </span>
                   </div>
                   <div class="min-w-0 flex-1">
                     <p class="truncate text-[16px] font-semibold text-gray-900">{{ continueCourse.title }}</p>
                     <p class="mt-0.5 text-[12px] text-gray-400">
-                      网课 · 课程进度 {{ continueCourse.progressPct ?? 0 }}%
+                      网课 · 课程进度 {{ continueCourse.progressPct != null ? continueCourse.progressPct + '%' : '—' }}
                     </p>
                     <p class="mt-1 text-[12px] tabular-nums text-gray-500">
                       {{ formatTs(continueCourse.lastPositionSec) }} / {{ formatDuration(continueCourse.duration) }}
@@ -274,7 +287,7 @@ watch(
             </section>
 
             <!-- 今日复习 -->
-            <section class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+            <section class="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
               <div class="flex items-center justify-between">
                 <h2 class="flex items-center gap-2 text-[15px] font-bold text-gray-900">
                   <GraduationCap :size="17" class="text-blue-500" />
@@ -287,7 +300,7 @@ watch(
               </div>
               <div
                 v-if="dueCount > 0"
-                class="mt-4 flex flex-col gap-3 rounded-2xl bg-blue-50/70 px-4 py-4 sm:flex-row sm:items-center"
+                class="mt-4 flex flex-col gap-3 rounded-2xl bg-blue-50/70 px-4 py-5 sm:flex-row sm:items-center"
               >
                 <div class="flex min-w-0 flex-1 items-start gap-3">
                   <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white text-blue-500 shadow-sm">
@@ -323,7 +336,7 @@ watch(
             </section>
 
             <!-- 最近学习 -->
-            <section class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+            <section class="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
               <div class="flex items-center justify-between">
                 <h2 class="flex items-center gap-2 text-[15px] font-bold text-gray-900">
                   <Clock :size="17" class="text-blue-500" />
@@ -339,25 +352,33 @@ watch(
                   v-for="course in overview.recentCourses"
                   :key="course.id"
                   :to="`/courses/${course.id}`"
-                  class="rounded-2xl border border-gray-100 p-4 transition-all hover:border-blue-200 hover:shadow-sm"
+                  class="rounded-2xl border border-gray-100 p-5 transition-all hover:border-blue-200 hover:shadow-sm"
                 >
                   <div class="flex items-center gap-2.5">
-                    <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-blue-400 to-blue-600 text-[13px] font-bold text-white">
-                      {{ (course.title || '课').slice(0, 1) }}
+                    <div class="h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-gradient-to-br from-blue-400 to-blue-600">
+                      <img
+                        v-if="coverUrl(course.id)"
+                        :src="coverUrl(course.id)!"
+                        class="h-full w-full object-cover"
+                        alt=""
+                      />
+                      <span v-else class="flex h-full w-full items-center justify-center text-[13px] font-bold text-white">
+                        {{ (course.title || '课').slice(0, 1) }}
+                      </span>
                     </div>
                     <p class="min-w-0 flex-1 truncate text-[13px] font-medium text-gray-900">{{ course.title }}</p>
                   </div>
-                  <p class="mt-2.5 text-[11px] text-gray-400">上次学到 {{ formatTs(course.lastPositionSec) }}</p>
-                  <div class="mt-2 flex items-center gap-2">
+                  <p class="mt-3 text-[11px] text-gray-400">上次学到 {{ formatTs(course.lastPositionSec) }}</p>
+                  <div class="mt-2.5 flex items-center gap-2">
                     <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-100">
                       <div
                         class="h-full rounded-full bg-gradient-to-r from-blue-400 to-blue-600"
                         :style="{ width: (course.progressPct ?? 0) + '%' }"
                       />
                     </div>
-                    <span class="text-[11px] tabular-nums text-gray-400">{{ course.progressPct ?? 0 }}%</span>
+                    <span class="text-[11px] tabular-nums text-gray-400">{{ course.progressPct != null ? course.progressPct + '%' : '—' }}</span>
                   </div>
-                  <p class="mt-2 text-[11px] text-gray-400/80">{{ relativeTime(course.lastStudiedAt || course.updatedAt) }}</p>
+                  <p class="mt-2.5 text-[11px] text-gray-400/80">{{ relativeTime(course.lastStudiedAt || course.updatedAt) }}</p>
                 </RouterLink>
               </div>
               <div v-else class="mt-4 rounded-2xl border border-dashed border-blue-100 px-4 py-6 text-center text-[13px] text-gray-400">
@@ -403,7 +424,7 @@ watch(
           <!-- 右辅列 -->
           <aside class="flex flex-col gap-5">
             <!-- AI 助手：与 /chat 共享会话 -->
-            <section class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+            <section class="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
               <div class="flex items-center justify-between">
                 <h2 class="flex items-center gap-2 text-[15px] font-bold text-gray-900">
                   <Sparkles :size="17" class="text-blue-500" />
@@ -417,7 +438,7 @@ watch(
                   新对话
                 </button>
               </div>
-              <div ref="assistantBox" class="mt-3 flex max-h-60 min-h-28 flex-col gap-2.5 overflow-y-auto">
+              <div ref="assistantBox" class="mt-3 flex max-h-[420px] min-h-44 flex-col gap-2.5 overflow-y-auto">
                 <div v-if="agent.messages.length === 0" class="text-[12px] leading-5 text-gray-500">
                   <p class="text-[13px] font-semibold text-gray-900">你好！我是你的学习助手</p>
                   <p class="mt-1.5">我可以帮你：</p>
@@ -431,6 +452,12 @@ watch(
                 <template v-for="(msg, i) in agent.messages" :key="i">
                   <div v-if="msg.role === 'user'" class="ml-8 whitespace-pre-wrap rounded-2xl bg-blue-500 px-3 py-2 text-[13px] text-white">
                     {{ msg.content }}
+                  </div>
+                  <div
+                    v-else-if="msg.streaming && !msg.content"
+                    class="mr-4 rounded-2xl bg-blue-50/60 px-3 py-2.5 text-[12px] text-blue-400"
+                  >
+                    正在思考<span class="animate-pulse">…</span>
                   </div>
                   <div
                     v-else
@@ -472,7 +499,7 @@ watch(
             </section>
 
             <!-- 学习数据 -->
-            <section class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+            <section class="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
               <div class="flex items-center justify-between">
                 <h2 class="flex items-center gap-2 text-[15px] font-bold text-gray-900">
                   <BookOpen :size="17" class="text-blue-500" />
