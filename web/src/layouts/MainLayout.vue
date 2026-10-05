@@ -189,7 +189,7 @@ async function remindReview() {
 
     <!-- 右列：顶栏 + 主区 -->
     <div class="flex min-w-0 flex-1 flex-col">
-      <header class="flex h-12 shrink-0 items-center gap-2 border-b border-gray-100 bg-white px-3 md:h-14 md:px-5">
+      <header class="flex h-12 shrink-0 items-center gap-2 border-b border-gray-200 bg-panel px-3 md:h-14 md:px-5">
         <button
           class="flex h-8 w-8 items-center justify-center rounded-lg text-ink-2 hover:bg-line/60 hover:text-ink md:hidden"
           title="菜单"
@@ -205,7 +205,7 @@ async function remindReview() {
           <input
             ref="searchInputRef"
             v-model="searchQuery"
-            class="w-full rounded-lg border border-line bg-surface py-1.5 pl-8 pr-9 text-[13px] text-ink outline-none focus:border-primary"
+            class="w-full rounded-lg border border-line bg-line/40 py-1.5 pl-8 pr-9 text-[13px] text-ink outline-none focus:border-primary focus:bg-surface"
             placeholder="搜索课程、笔记、知识点…（Ctrl+K）"
             @input="onSearchInput"
             @keydown="onSearchKeydown"
