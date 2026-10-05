@@ -2,8 +2,8 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-  ChevronRight, Clock, GraduationCap,
-  ListChecks, MessageSquareText, MonitorPlay, NotebookPen, Play, Plus,
+  ChevronRight, Clock, Film, GraduationCap,
+  LoaderCircle, MonitorPlay, Play, Plus,
   Send, Sparkles, Target,
 } from 'lucide-vue-next'
 import { getHomeOverview, heartbeatStudyTime } from '../api/home'
@@ -118,12 +118,6 @@ const agent = useAgentStore()
 const draft = ref('')
 const assistantBox = ref<HTMLDivElement | null>(null)
 const uploadInputRef = ref<HTMLInputElement | null>(null)
-const ASSISTANT_CHIPS = [
-  { icon: MessageSquareText, text: '解析这段内容' },
-  { icon: NotebookPen, text: '生成本章笔记' },
-  { icon: ListChecks, text: '出 5 道相关习题' },
-  { icon: Sparkles, text: '总结知识点' },
-]
 
 // ---- 上传资料（整合进 AI 助手输入框加号，统一走对话分流：
 // ≤30min 默认语音转写 / >30min 或「做成课程」走课程流水线，进度回流对话） ----
@@ -386,32 +380,48 @@ watch(
                   </ul>
                 </div>
                 <template v-for="(msg, i) in agent.messages" :key="i">
-                  <div v-if="msg.role === 'user'" class="ml-auto w-fit max-w-[85%] whitespace-pre-wrap rounded-lg bg-blue-500 px-3 py-2 text-[13px] text-white">
-                    {{ msg.content }}
+                  <div v-if="msg.role === 'user'" class="ml-auto w-fit max-w-[85%] rounded-lg bg-blue-500 px-3 py-2 text-[13px] text-white">
+                    <!-- B11 视频消息标识（与 ChatPanel 一致） -->
+                    <div v-if="msg.video" class="mb-1.5 flex items-center gap-1.5 rounded-md bg-white/15 px-2 py-1 text-[12px]">
+                      <Film :size="13" />
+                      视频<span v-if="msg.video.durationSec" class="text-white/80">（{{ formatDuration(msg.video.durationSec) }}）</span>
+                    </div>
+                    <span class="whitespace-pre-wrap">{{ msg.content }}</span>
                   </div>
                   <div
-                    v-else-if="msg.streaming && !msg.content"
+                    v-else-if="msg.streaming && !msg.content && !msg.transcribe && !msg.courseTask"
                     class="mr-4 text-[12px] text-blue-400"
                   >
                     正在思考<span class="animate-pulse">…</span>
                   </div>
+                  <!-- B11 后台任务进度：转写分片 / 课程流水线阶段 -->
+                  <div
+                    v-else-if="msg.transcribe?.status === 'processing' || msg.courseTask?.status === 'processing'"
+                    class="mr-4 flex items-center gap-2 py-1 text-[12px] text-blue-400"
+                  >
+                    <LoaderCircle :size="13" class="animate-spin" />
+                    {{ msg.transcribe
+                      ? (msg.transcribe.total > 0 && msg.transcribe.done > 0 ? `正在转写第 ${msg.transcribe.done + 1} / ${msg.transcribe.total} 段…` : '正在提取音频…')
+                      : (msg.courseTask?.text || '课程处理中…') }}
+                  </div>
+                  <!-- B11 课程任务完成：附跳转链接 -->
+                  <template v-else-if="msg.courseTask?.status === 'done'">
+                    <div class="mr-4 text-[13px] leading-6 text-gray-700">{{ msg.courseTask.text }}</div>
+                    <RouterLink
+                      v-if="msg.courseTask.link"
+                      :to="msg.courseTask.link"
+                      class="mr-4 mt-1.5 inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1.5 text-[12px] text-blue-600 transition-colors hover:bg-blue-100"
+                    >
+                      <MonitorPlay :size="13" />
+                      查看课程与 AI 笔记
+                    </RouterLink>
+                  </template>
                   <div
                     v-else
                     class="assistant-md mr-4 text-[13px] leading-6 text-gray-700"
                     v-html="renderMarkdown(msg.content)"
                   ></div>
                 </template>
-              </div>
-              <div class="mt-auto grid grid-cols-2 gap-2 pt-3">
-                <button
-                  v-for="chip in ASSISTANT_CHIPS"
-                  :key="chip.text"
-                  class="flex items-center gap-1.5 rounded-lg bg-blue-50/70 px-2.5 py-1.5 text-[11px] text-blue-600 transition-colors hover:bg-blue-100"
-                  @click="draft = chip.text"
-                >
-                  <component :is="chip.icon" :size="13" />
-                  {{ chip.text }}
-                </button>
               </div>
               <div class="relative mt-3">
                 <div class="flex items-center rounded-full border border-blue-200 bg-white pl-2 pr-1 transition-colors focus-within:border-blue-400">
