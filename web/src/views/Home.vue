@@ -226,7 +226,7 @@ watch(
             </div>
 
             <!-- 继续学习 -->
-            <section v-if="continueCourse" class="min-w-0 rounded-lg border border-gray-100 bg-white p-6 shadow-sm transition-all hover:border-blue-200 hover:shadow-md lg:col-start-1 lg:row-start-2">
+            <section v-if="continueCourse" class="min-w-0 rounded-lg border border-gray-100 bg-white p-6 shadow-sm lg:col-start-1 lg:row-start-2">
               <div class="flex items-center justify-between">
                 <h2 class="flex items-center gap-2 text-[15px] font-bold text-gray-900">
                   <MonitorPlay :size="17" class="text-blue-500" />
@@ -239,7 +239,7 @@ watch(
               </div>
               <div class="mt-5 flex flex-col gap-4 lg:flex-row">
                 <!-- 左：软底面板——封面 + 文字列（进度条 / 时间）+ 右下角继续按钮 -->
-                <div class="flex min-w-0 flex-1 items-stretch gap-4 rounded-lg bg-gray-50/80 p-4">
+                <div class="flex min-w-0 flex-1 items-stretch gap-4 rounded-lg border border-transparent bg-gray-50/80 p-4 transition-all hover:border-blue-200 hover:bg-white hover:shadow-sm">
                   <div class="w-36 shrink-0 self-stretch overflow-hidden rounded-lg bg-gradient-to-br from-blue-500 to-blue-600">
                     <img
                       v-if="coverUrl(continueCourse.id)"
@@ -277,7 +277,7 @@ watch(
                   </div>
                 </div>
                 <!-- 右：本课重点（最新 AI 笔记知识点 / LLM 从转写提炼） -->
-                <div v-if="keyPoints.length > 0" class="rounded-lg bg-blue-50/70 p-4 lg:w-60 lg:shrink-0">
+                <div v-if="keyPoints.length > 0" class="rounded-lg border border-transparent bg-blue-50/70 p-4 transition-all hover:border-blue-200 hover:shadow-sm lg:w-60 lg:shrink-0">
                   <p class="text-[13px] font-semibold text-gray-900">本课重点</p>
                   <ul class="mt-2 flex flex-col gap-1.5">
                     <li
