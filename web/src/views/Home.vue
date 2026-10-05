@@ -239,9 +239,10 @@ watch(
                   <ChevronRight :size="13" />
                 </RouterLink>
               </div>
-              <div class="mt-5 flex flex-col gap-5 lg:flex-row">
-                <div class="flex min-w-0 flex-1 items-center gap-4">
-                  <div class="h-36 w-44 shrink-0 self-stretch overflow-hidden rounded-xl bg-gradient-to-br from-blue-500 to-blue-600">
+              <div class="mt-5 flex flex-col gap-4 lg:flex-row">
+                <!-- 左：软底面板——封面 + 文字列（进度条 / 时间）+ 右下角继续按钮 -->
+                <div class="flex min-w-0 flex-1 items-stretch gap-4 rounded-2xl bg-gray-50/80 p-4">
+                  <div class="w-36 shrink-0 self-stretch overflow-hidden rounded-xl bg-gradient-to-br from-blue-500 to-blue-600">
                     <img
                       v-if="coverUrl(continueCourse.id)"
                       :src="coverUrl(continueCourse.id)!"
@@ -252,25 +253,33 @@ watch(
                       {{ (continueCourse.title || '课').slice(0, 1) }}
                     </span>
                   </div>
-                  <div class="min-w-0 flex-1">
+                  <div class="flex min-w-0 flex-1 flex-col py-0.5">
                     <p class="truncate text-[16px] font-semibold text-gray-900">{{ continueCourse.title }}</p>
-                    <p class="mt-0.5 text-[12px] text-gray-400">
-                      网课 · 课程进度 {{ continueCourse.progressPct != null ? continueCourse.progressPct + '%' : '—' }}
+                    <p class="mt-1 text-[12px] text-gray-400">
+                      {{ continueCourse.subject || '网课' }} · 课程进度 {{ continueCourse.progressPct != null ? continueCourse.progressPct + '%' : '—' }}
                     </p>
-                    <p class="mt-1 text-[12px] tabular-nums text-gray-500">
-                      {{ formatTs(continueCourse.lastPositionSec) }} / {{ formatDuration(continueCourse.duration) }}
-                    </p>
-                    <button
-                      class="mt-2.5 flex items-center gap-1.5 rounded-full bg-gradient-to-r from-blue-500 to-blue-600 px-4 py-2 text-[13px] font-medium text-white transition-opacity hover:opacity-90"
-                      @click="router.push(`/courses/${continueCourse.id}`)"
-                    >
-                      <Play :size="14" />
-                      继续学习
-                    </button>
+                    <div class="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-gray-200/70">
+                      <div
+                        class="h-full rounded-full bg-gradient-to-r from-blue-400 to-blue-600"
+                        :style="{ width: (continueCourse.progressPct ?? 0) + '%' }"
+                      />
+                    </div>
+                    <div class="mt-auto flex items-end justify-between pt-3">
+                      <p class="text-[12px] tabular-nums text-gray-500">
+                        {{ formatTs(continueCourse.lastPositionSec) }} / {{ formatDuration(continueCourse.duration) }}
+                      </p>
+                      <button
+                        class="flex shrink-0 items-center gap-1.5 rounded-full bg-gradient-to-r from-blue-500 to-blue-600 px-4 py-2 text-[13px] font-medium text-white transition-opacity hover:opacity-90"
+                        @click="router.push(`/courses/${continueCourse.id}`)"
+                      >
+                        <Play :size="14" />
+                        继续学习
+                      </button>
+                    </div>
                   </div>
                 </div>
-                <!-- 本课重点：来自该课最新 AI 笔记的知识点小节 -->
-                <div v-if="keyPoints.length > 0" class="rounded-2xl bg-blue-50/70 p-4 lg:w-64 lg:shrink-0">
+                <!-- 右：本课重点（最新 AI 笔记知识点 / LLM 从转写提炼） -->
+                <div v-if="keyPoints.length > 0" class="rounded-2xl bg-blue-50/70 p-4 lg:w-60 lg:shrink-0">
                   <p class="text-[13px] font-semibold text-gray-900">本课重点</p>
                   <ul class="mt-2 flex flex-col gap-1.5">
                     <li
@@ -352,24 +361,22 @@ watch(
                   v-for="course in overview.recentCourses"
                   :key="course.id"
                   :to="`/courses/${course.id}`"
-                  class="rounded-2xl border border-gray-100 p-5 transition-all hover:border-blue-200 hover:shadow-sm"
+                  class="rounded-2xl border border-gray-100 bg-white p-4 transition-all hover:border-blue-200 hover:shadow-sm"
                 >
-                  <div class="flex items-center gap-2.5">
-                    <div class="h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-gradient-to-br from-blue-400 to-blue-600">
-                      <img
-                        v-if="coverUrl(course.id)"
-                        :src="coverUrl(course.id)!"
-                        class="h-full w-full object-cover"
-                        alt=""
-                      />
-                      <span v-else class="flex h-full w-full items-center justify-center text-[13px] font-bold text-white">
-                        {{ (course.title || '课').slice(0, 1) }}
-                      </span>
-                    </div>
-                    <p class="min-w-0 flex-1 truncate text-[13px] font-medium text-gray-900">{{ course.title }}</p>
+                  <div class="h-16 w-24 overflow-hidden rounded-lg bg-gradient-to-br from-blue-400 to-blue-600">
+                    <img
+                      v-if="coverUrl(course.id)"
+                      :src="coverUrl(course.id)!"
+                      class="h-full w-full object-cover"
+                      alt=""
+                    />
+                    <span v-else class="flex h-full w-full items-center justify-center text-[16px] font-bold text-white">
+                      {{ (course.title || '课').slice(0, 1) }}
+                    </span>
                   </div>
-                  <p class="mt-3 text-[11px] text-gray-400">上次学到 {{ formatTs(course.lastPositionSec) }}</p>
-                  <div class="mt-2.5 flex items-center gap-2">
+                  <p class="mt-2.5 truncate text-[14px] font-semibold text-gray-900">{{ course.title }}</p>
+                  <p class="mt-1.5 text-[11px] text-gray-400">上次学到: {{ formatTs(course.lastPositionSec) }}</p>
+                  <div class="mt-2 flex items-center gap-2">
                     <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-100">
                       <div
                         class="h-full rounded-full bg-gradient-to-r from-blue-400 to-blue-600"
