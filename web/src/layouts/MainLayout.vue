@@ -1,54 +1,52 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted } from 'vue'
-import { ChevronsRight, Menu } from 'lucide-vue-next'
+import { onMounted, onUnmounted, ref } from 'vue'
+import { Menu, Search } from 'lucide-vue-next'
 import { useUiStore } from '../stores/ui'
 import { useUserStore } from '../stores/user'
+import { useAuthStore } from '../stores/auth'
 import { useToastStore } from '../stores/toast'
 import * as reviewApi from '../api/review'
-import IconRail from '../components/layout/IconRail.vue'
-import SidebarContent from '../components/layout/SidebarContent.vue'
+import SideNav from '../components/layout/SideNav.vue'
+import ProfileModal from '../components/ProfileModal.vue'
 import ToastHost from '../components/ToastHost.vue'
 
+/**
+ * 全局布局（B25 导航重构）：主 SideNav（桌面常驻 / 移动抽屉）+ 顶栏（搜索占位 / 用户入口）。
+ * 会话侧栏不再挂布局层——对话页 /chat 内嵌自己的会话栏。
+ */
 const ui = useUiStore()
 const userStore = useUserStore()
+const auth = useAuthStore()
 const toast = useToastStore()
+const showProfile = ref(false)
 
 onMounted(async () => {
   // 个人页面数据 + 网课任务状态轮询（任务完成 / 失败右上角通知）
   userStore.loadMe()
+  auth.loadUser()
   toast.startTaskWatcher()
   // 主动复习提醒：有到期卡且当天未提醒过时轻推一次（受个人页面的任务通知开关控制）
   await remindReview()
+  window.addEventListener('keydown', onGlobalKeydown)
 })
 
 onUnmounted(() => {
   toast.stopTaskWatcher()
-  stopResize()
+  window.removeEventListener('keydown', onGlobalKeydown)
 })
 
-/** 拖拽侧栏右边界调整宽度（200~480px，持久化） */
-function startResize(e: MouseEvent) {
-  e.preventDefault()
-  const startX = e.clientX
-  const startWidth = ui.sidebarWidth
-  const onMove = (ev: MouseEvent) => {
-    ui.setSidebarWidth(startWidth + (ev.clientX - startX))
+function openProfile() {
+  if (auth.isLoggedIn) {
+    showProfile.value = true
   }
-  const onUp = () => {
-    window.removeEventListener('mousemove', onMove)
-    window.removeEventListener('mouseup', onUp)
-    document.body.style.cursor = ''
-    document.body.style.userSelect = ''
-  }
-  document.body.style.cursor = 'col-resize'
-  document.body.style.userSelect = 'none'
-  window.addEventListener('mousemove', onMove)
-  window.addEventListener('mouseup', onUp)
 }
 
-function stopResize() {
-  document.body.style.cursor = ''
-  document.body.style.userSelect = ''
+/** Ctrl+, / Cmd+, 打开个人页面 */
+function onGlobalKeydown(e: KeyboardEvent) {
+  if ((e.ctrlKey || e.metaKey) && e.key === ',') {
+    e.preventDefault()
+    openProfile()
+  }
 }
 
 async function remindReview() {
@@ -74,86 +72,65 @@ async function remindReview() {
 
 <template>
   <div class="flex h-full overflow-hidden bg-surface text-ink">
-    <!-- 图标栏：桌面端 -->
-    <IconRail class="hidden md:flex" />
-
-    <!-- Sidebar：桌面端（可收缩，双模式） -->
-    <aside
-      v-if="!ui.sidebarCollapsed"
-      class="panel-gradient relative hidden shrink-0 flex-col border-r border-line md:flex"
-      :style="{ width: ui.sidebarWidth + 'px' }"
-    >
-      <button
-        class="absolute right-2 top-3.5 z-10 flex h-7 w-7 items-center justify-center rounded-lg text-ink-2 hover:bg-line/60 hover:text-ink"
-        title="收起侧栏"
-        @click="ui.toggleSidebarCollapsed()"
-      >
-        <ChevronsRight :size="16" />
-      </button>
-      <SidebarContent :mode="ui.sidebarMode" collapsible />
-      <!-- 分隔竖线 + 拖拽调宽手柄 -->
-      <div
-        class="absolute inset-y-0 right-0 z-10 w-[3px] cursor-col-resize bg-line transition-colors hover:bg-primary"
-        title="拖拽调整宽度"
-        @mousedown="startResize"
-      ></div>
+    <!-- SideNav：桌面端常驻 -->
+    <aside class="panel-gradient hidden w-52 shrink-0 border-r border-line md:block">
+      <SideNav @open-profile="openProfile" />
     </aside>
-    <!-- 收缩后的展开入口（悬停桌面图标栏旁） -->
-    <button
-      v-if="ui.sidebarCollapsed"
-      class="panel-gradient hidden h-full w-2 shrink-0 border-r border-line md:block hover:w-14 transition-all group relative"
-      title="展开侧栏"
-      @click="ui.showSidebar(ui.sidebarMode)"
-    >
-      <ChevronsRight :size="16" class="absolute left-1/2 top-6 -translate-x-1/2 rotate-180 text-ink-2 opacity-0 transition-opacity group-hover:opacity-100" />
-    </button>
 
-    <!-- Sidebar：移动端抽屉（带模式切换） -->
+    <!-- SideNav：移动端抽屉 -->
     <Transition name="fade">
-      <div
-        v-if="ui.sidebarOpen"
-        class="fixed inset-0 z-40 bg-black/30 md:hidden"
-        @click="ui.closeSidebar()"
-      />
+      <div v-if="ui.sidebarOpen" class="fixed inset-0 z-40 bg-black/30 md:hidden" @click="ui.closeSidebar()" />
     </Transition>
     <Transition name="slide">
-      <aside
-        v-if="ui.sidebarOpen"
-        class="panel-gradient fixed inset-y-0 left-0 z-50 w-64 flex-col border-r border-line md:hidden"
-      >
-        <div class="flex shrink-0 gap-1 px-3 pt-3">
-          <button
-            class="flex-1 rounded-xl py-2 text-[13px] transition-colors"
-            :class="ui.sidebarMode === 'chat' ? 'bg-line/70 font-medium text-ink' : 'text-ink-2'"
-            @click="ui.showSidebar('chat')"
-          >
-            对话
-          </button>
-          <button
-            class="flex-1 rounded-xl py-2 text-[13px] transition-colors"
-            :class="ui.sidebarMode === 'study' ? 'bg-line/70 font-medium text-ink' : 'text-ink-2'"
-            @click="ui.showSidebar('study')"
-          >
-            学习台
-          </button>
-        </div>
-        <div class="min-h-0 flex-1">
-          <SidebarContent :mode="ui.sidebarMode" @navigate="ui.closeSidebar()" />
-        </div>
+      <aside v-if="ui.sidebarOpen" class="panel-gradient fixed inset-y-0 left-0 z-50 w-60 border-r border-line md:hidden">
+        <SideNav @navigate="ui.closeSidebar()" @open-profile="ui.closeSidebar(); openProfile()" />
       </aside>
     </Transition>
 
-    <!-- 主区 -->
+    <!-- 右列：顶栏 + 主区 -->
     <div class="flex min-w-0 flex-1 flex-col">
-      <!-- 移动端顶栏 -->
-      <header class="flex h-12 shrink-0 items-center gap-3 border-b border-line bg-panel px-3 md:hidden">
+      <header class="flex h-12 shrink-0 items-center gap-2 border-b border-line bg-panel px-3 md:h-14 md:px-5">
         <button
-          class="flex h-8 w-8 items-center justify-center rounded-lg text-ink-2 hover:bg-line/60 hover:text-ink"
+          class="flex h-8 w-8 items-center justify-center rounded-lg text-ink-2 hover:bg-line/60 hover:text-ink md:hidden"
+          title="菜单"
           @click="ui.openSidebar()"
         >
           <Menu :size="20" />
         </button>
-        <span class="text-[14px] font-medium">学迹</span>
+        <span class="text-[15px] font-medium md:hidden">学迹</span>
+
+        <!-- 全局搜索占位（B25 工单 4 落地 B15 全局搜索） -->
+        <div class="relative mx-auto hidden w-full max-w-md md:block">
+          <Search :size="15" class="absolute left-3 top-1/2 -translate-y-1/2 text-ink-2" />
+          <input
+            class="w-full cursor-not-allowed rounded-xl border border-line bg-surface py-1.5 pl-8 pr-3 text-[13px] text-ink-2 outline-none"
+            placeholder="搜索课程、笔记、知识点…（即将上线）"
+            disabled
+          />
+        </div>
+
+        <!-- 用户入口：头像 + 昵称（打开个人页面） -->
+        <button
+          class="ml-auto flex items-center gap-2 rounded-full p-1 pr-2 transition-colors hover:bg-line/50"
+          title="个人页面"
+          @click="openProfile"
+        >
+          <img
+            v-if="userStore.profile?.avatarUrl"
+            :src="userStore.profile.avatarUrl"
+            class="h-7 w-7 rounded-full object-cover"
+            alt=""
+          />
+          <span
+            v-else
+            class="flex h-7 w-7 items-center justify-center rounded-full bg-primary-soft text-[12px] font-medium text-primary"
+          >
+            {{ (userStore.profile?.nickname || auth.user?.username || '?').slice(0, 1) }}
+          </span>
+          <span class="hidden text-[13px] text-ink sm:block">
+            {{ userStore.profile?.nickname || auth.user?.username || '' }}
+          </span>
+        </button>
       </header>
 
       <main class="min-h-0 flex-1">
@@ -166,6 +143,8 @@ async function remindReview() {
       </main>
     </div>
 
+    <!-- 个人页面弹窗：资料 / 偏好 / 账号 -->
+    <ProfileModal v-model:open="showProfile" />
     <!-- 全局轻提示：任务完成 / 失败通知 -->
     <ToastHost />
   </div>

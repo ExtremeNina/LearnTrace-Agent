@@ -2,20 +2,12 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
 /**
- * 布局 UI 状态：移动端抽屉开关、桌面端侧栏模式（对话 / 学习台）与收缩、侧栏宽度（可拖拽）
+ * 布局 UI 状态（B25 导航重构后）：移动端抽屉开关 + 笔记页栏宽（可拖拽持久化）。
+ * 旧的三模式侧栏（对话 / 学习台）状态随导航重构移除——会话栏下沉至 /chat 页内。
  */
-export type SidebarMode = 'chat' | 'study'
 
-const MODE_KEY = 'xj_sidebar_mode'
-const COLLAPSED_KEY = 'xj_sidebar_collapsed'
-const WIDTH_KEY = 'xj_sidebar_width'
 const NOTES_TREE_WIDTH_KEY = 'xj_notes_tree_width'
 const NOTES_LINKS_WIDTH_KEY = 'xj_notes_links_width'
-
-/** 侧栏宽度边界（拖拽调宽的下限与上限） */
-export const SIDEBAR_MIN_WIDTH = 200
-export const SIDEBAR_MAX_WIDTH = 480
-export const SIDEBAR_DEFAULT_WIDTH = 240
 
 /** 笔记页三栏宽度边界（拖拽调宽的下限与上限；默认值 = 原 w-72 / w-80） */
 export const NOTES_TREE_MIN_WIDTH = 200
@@ -35,18 +27,8 @@ function persistedWidth(key: string, fallback: number, min: number, max: number)
 }
 
 export const useUiStore = defineStore('ui', () => {
+  /** 移动端 SideNav 抽屉开关 */
   const sidebarOpen = ref(false)
-
-  /** 侧栏当前模式：chat = 新对话与会话历史 / study = 学习台（复习 / 练习 / 学习资产）；
-      历史遗留的 assets / tasks / quiz 值归一为 chat */
-  const savedMode = localStorage.getItem(MODE_KEY)
-  const sidebarMode = ref<SidebarMode>(savedMode === 'chat' || savedMode === 'study' ? savedMode : 'chat')
-
-  /** 桌面端侧栏是否收缩（移动端抽屉不受影响） */
-  const sidebarCollapsed = ref(localStorage.getItem(COLLAPSED_KEY) === '1')
-
-  /** 侧栏宽度（px，拖拽可调，持久化） */
-  const sidebarWidth = ref(Number(localStorage.getItem(WIDTH_KEY)) || SIDEBAR_DEFAULT_WIDTH)
 
   function openSidebar() {
     sidebarOpen.value = true
@@ -54,24 +36,6 @@ export const useUiStore = defineStore('ui', () => {
 
   function closeSidebar() {
     sidebarOpen.value = false
-  }
-
-  /** 切换侧栏模式并展开（同时持久化，刷新后保持） */
-  function showSidebar(mode: SidebarMode) {
-    sidebarMode.value = mode
-    sidebarCollapsed.value = false
-    localStorage.setItem(MODE_KEY, mode)
-    localStorage.setItem(COLLAPSED_KEY, '0')
-  }
-
-  function toggleSidebarCollapsed() {
-    sidebarCollapsed.value = !sidebarCollapsed.value
-    localStorage.setItem(COLLAPSED_KEY, sidebarCollapsed.value ? '1' : '0')
-  }
-
-  function setSidebarWidth(width: number) {
-    sidebarWidth.value = Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, width))
-    localStorage.setItem(WIDTH_KEY, String(sidebarWidth.value))
   }
 
   /** 笔记页栏宽（px，拖拽可调，持久化）：分层树 / 知识联系；编辑区占剩余空间 */
@@ -90,14 +54,8 @@ export const useUiStore = defineStore('ui', () => {
 
   return {
     sidebarOpen,
-    sidebarMode,
-    sidebarCollapsed,
-    sidebarWidth,
     openSidebar,
     closeSidebar,
-    showSidebar,
-    toggleSidebarCollapsed,
-    setSidebarWidth,
     notesTreeWidth,
     notesLinksWidth,
     setNotesTreeWidth,

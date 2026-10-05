@@ -20,11 +20,11 @@ const router = createRouter({
       path: '/',
       component: () => import('../layouts/MainLayout.vue'),
       children: [
-        // Agent 为首页（PRD §4）
-        { path: '', name: 'agent', component: () => import('../views/Agent.vue') },
+        // 首页仪表盘（B25）；对话迁至 /chat
+        { path: '', name: 'home', component: () => import('../views/Home.vue') },
+        { path: 'chat', name: 'agent', component: () => import('../views/Agent.vue') },
         { path: 'review', name: 'review', component: () => import('../views/Review.vue') },
         { path: 'quiz', name: 'quiz', component: () => import('../views/Quiz.vue') },
-        // 切片二 / 三占位
         { path: 'courses', name: 'courses', component: () => import('../views/Courses.vue') },
         { path: 'courses/:id', name: 'courseDetail', component: () => import('../views/CourseDetail.vue') },
         { path: 'questions', name: 'questions', component: () => import('../views/Questions.vue') },
@@ -40,7 +40,7 @@ router.beforeEach((to) => {
     return { name: 'login' }
   }
   if (to.meta.public && auth.isLoggedIn) {
-    return { name: 'agent' }
+    return { name: 'home' }
   }
 })
 

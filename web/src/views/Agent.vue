@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
-import { ArrowUp, Check, ChevronDown, Copy, Cpu, Film, LoaderCircle, Pencil, Plus, RefreshCw, Share2, Sparkles, Square, ThumbsDown, ThumbsUp, Volume2, X } from 'lucide-vue-next'
+import { ArrowUp, Check, ChevronsRight, ChevronDown, Copy, Cpu, Film, History, LoaderCircle, Pencil, Plus, RefreshCw, Share2, Sparkles, Square, ThumbsDown, ThumbsUp, Volume2, X } from 'lucide-vue-next'
 import { useAgentStore } from '../stores/agent'
 import * as modelApi from '../api/model'
 import type { AiModelConfigInfo } from '../types/api'
 import ModelManageModal from '../components/ModelManageModal.vue'
+import SidebarContent from '../components/layout/SidebarContent.vue'
 import { renderMarkdown } from '../utils/markdown'
 
 /**
@@ -12,6 +13,9 @@ import { renderMarkdown } from '../utils/markdown'
  * 输入框左下角常驻当前模型指示器：点击切换模型 / 进入管理模型弹窗。
  */
 const agent = useAgentStore()
+/** 会话侧栏（原布局侧栏下沉为页内栏，B25）：桌面内嵌可收缩，移动端抽屉 */
+const chatNavOpen = ref(true)
+const chatDrawerOpen = ref(false)
 const draft = ref('')
 const scrollBox = ref<HTMLElement | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
@@ -182,7 +186,39 @@ function onSend() {
 </script>
 
 <template>
-  <div class="relative flex h-full flex-col bg-surface">
+  <div class="flex h-full min-h-0">
+    <!-- 会话侧栏：桌面端内嵌（可收缩） -->
+    <aside v-if="chatNavOpen" class="panel-gradient relative hidden w-60 shrink-0 border-r border-line md:block">
+      <SidebarContent mode="chat" collapsible @collapse="chatNavOpen = false" />
+    </aside>
+    <button
+      v-if="!chatNavOpen"
+      class="panel-gradient group relative hidden w-2 shrink-0 border-r border-line transition-all hover:w-12 md:block"
+      title="展开会话侧栏"
+      @click="chatNavOpen = true"
+    >
+      <ChevronsRight :size="16" class="absolute left-1/2 top-6 -translate-x-1/2 rotate-180 text-ink-2 opacity-0 transition-opacity group-hover:opacity-100" />
+    </button>
+
+    <!-- 会话侧栏：移动端抽屉 -->
+    <Transition name="fade">
+      <div v-if="chatDrawerOpen" class="fixed inset-0 z-40 bg-black/30 md:hidden" @click="chatDrawerOpen = false" />
+    </Transition>
+    <Transition name="slide">
+      <aside v-if="chatDrawerOpen" class="panel-gradient fixed inset-y-0 left-0 z-50 w-64 border-r border-line md:hidden">
+        <SidebarContent mode="chat" @navigate="chatDrawerOpen = false" />
+      </aside>
+    </Transition>
+
+    <div class="relative flex h-full min-w-0 flex-1 flex-col bg-surface">
+      <!-- 移动端会话历史入口 -->
+      <button
+        class="absolute left-3 top-3 z-10 flex items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-[12px] text-ink-2 hover:text-ink md:hidden"
+        @click="chatDrawerOpen = true"
+      >
+        <History :size="14" />
+        会话
+      </button>
     <!-- 消息流 / 空状态 -->
     <div ref="scrollBox" class="min-h-0 flex-1 overflow-y-auto">
       <div v-if="agent.messages.length === 0" class="flex h-full flex-col items-center justify-center gap-5 px-4">
@@ -447,5 +483,25 @@ function onSend() {
 
     <!-- 管理模型弹窗 -->
     <ModelManageModal v-model:open="showModelManage" @changed="onModelManageChanged" />
+    </div>
   </div>
 </template>
+
+<style scoped>
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.15s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+.slide-enter-active,
+.slide-leave-active {
+  transition: transform 0.2s ease;
+}
+.slide-enter-from,
+.slide-leave-to {
+  transform: translateX(-100%);
+}
+</style>
