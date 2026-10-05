@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { LoaderCircle, Menu, Search } from 'lucide-vue-next'
+import { LoaderCircle, Bell, Menu, Search } from 'lucide-vue-next'
 import { useUiStore } from '../stores/ui'
 import { useUserStore } from '../stores/user'
 import { useAuthStore } from '../stores/auth'
@@ -23,6 +23,8 @@ const auth = useAuthStore()
 const toast = useToastStore()
 const router = useRouter()
 const showProfile = ref(false)
+/** 顶栏通知红点：有到期复习卡时亮起（与主动提醒同一份数据） */
+const bellDue = ref(0)
 
 // ---- 全局搜索（B15）：语义检索本人学习片段，300ms 防抖 + Ctrl+K 聚焦 ----
 const searchQuery = ref('')
@@ -157,6 +159,7 @@ async function remindReview() {
       return
     }
     const stats = await reviewApi.getReviewStats()
+    bellDue.value = stats.dueCount
     if (stats.dueCount > 0) {
       localStorage.setItem('xj_review_reminded', today)
       toast.push(`有 ${stats.dueCount} 张卡片该复习了，要现在开始吗？`)
@@ -241,9 +244,19 @@ async function remindReview() {
           </div>
         </div>
 
+        <!-- 通知：有到期复习卡时红点，点击进入复习 -->
+        <button
+          class="relative ml-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-ink-2 hover:bg-line/60 hover:text-ink"
+          title="今日待复习"
+          @click="router.push('/review')"
+        >
+          <Bell :size="18" />
+          <span v-if="bellDue > 0" class="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-red-500" />
+        </button>
+
         <!-- 用户入口：头像 + 昵称（打开个人页面） -->
         <button
-          class="ml-auto flex items-center gap-2 rounded-full p-1 pr-2 transition-colors hover:bg-line/50"
+          class="flex items-center gap-2 rounded-full p-1 pr-2 transition-colors hover:bg-line/50"
           title="个人页面"
           @click="openProfile"
         >

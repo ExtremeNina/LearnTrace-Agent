@@ -1,23 +1,27 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-  GraduationCap, MonitorPlay, Clock, NotebookPen, BookOpen,
-  Play, ChevronRight, Send, Sparkles,
+  AlertTriangle, BookOpen, ChevronRight, CircleCheck, Clock, FileText, GraduationCap,
+  Image as ImageIcon, ListChecks, MessageSquareText, MonitorPlay, NotebookPen, Play, Plus,
+  Presentation, Send, Sparkles, Target, Video,
 } from 'lucide-vue-next'
-import { getHomeOverview } from '../api/home'
+import { getHomeOverview, heartbeatStudyTime } from '../api/home'
 import type { HomeOverview } from '../api/home'
+import { uploadCourse } from '../api/course'
 import { useAgentStore } from '../stores/agent'
+import { useToastStore } from '../stores/toast'
 import { renderMarkdown } from '../utils/markdown'
 
 /**
- * 首页学习仪表盘（B25 工单 3，PRD 待补章节）：
- * 问候 banner（纯 CSS 渐变）+ 继续学习 / 今日复习 / 最近学习（左主列）
- * + 学习数据 / 本周统计（右辅列，只读）。推荐学习与右栏 AI 助手不在本期范围（拍板）。
+ * 首页学习仪表盘（B25，视觉按设计稿实现——靛蓝色系 / 渐变按钮 / 卡片白底圆角；深色主题适配后置）：
+ * 问候 banner + 继续学习（本课重点）/ 今日复习 / 最近学习 / 上传资料（左主列）
+ * + AI 助手（与 /chat 共享会话）/ 学习数据 / 坚持学习（右辅列）。推荐学习不做（拍板）。
  */
 defineOptions({ name: 'HomeView' })
 
 const router = useRouter()
+const toast = useToastStore()
 const overview = ref<HomeOverview | null>(null)
 const loading = ref(true)
 const error = ref('')
@@ -35,6 +39,27 @@ onMounted(async () => {
   if (agent.messages.length === 0) {
     agent.restoreLastConversation()
   }
+  // 学习时长心跳：每 60 秒上报一次在站时长（仅页面可见时）
+  heartbeatTimer = setInterval(() => flushStudyTime(60), 60_000)
+})
+
+// ---- 学习时长心跳（今日学习时长供数） ----
+let heartbeatTimer: ReturnType<typeof setInterval> | null = null
+
+function flushStudyTime(seconds: number) {
+  if (document.visibilityState !== 'visible') {
+    return
+  }
+  heartbeatStudyTime(seconds).catch(() => {
+    // 心跳失败静默，下一轮继续
+  })
+}
+
+onUnmounted(() => {
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer)
+  }
+  flushStudyTime(60)
 })
 
 const greeting = computed(() => {
@@ -45,6 +70,7 @@ const greeting = computed(() => {
 })
 
 const continueCourse = computed(() => overview.value?.continueCourse ?? null)
+const keyPoints = computed(() => overview.value?.keyPoints ?? [])
 const dueCount = computed(() => overview.value?.stats.dueCount ?? 0)
 /** 复习时长建议：每张卡约 3 分钟，最少 5 分钟 */
 const suggestMinutes = computed(() => Math.max(5, dueCount.value * 3))
@@ -81,11 +107,66 @@ function truncate(text: string, max = 14): string {
   return text.length > max ? text.slice(0, max) + '…' : text
 }
 
+// ---- 上传资料（视频直传网课流水线；图片引导去对话拍照解题；PDF / PPT 随 B19 后置） ----
+const uploadInputRef = ref<HTMLInputElement | null>(null)
+const uploadingCourse = ref(false)
+
+function openUpload() {
+  uploadInputRef.value?.click()
+}
+
+function onUploadFile(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (file) {
+    submitUpload(file)
+  }
+}
+
+function onDropFile(e: DragEvent) {
+  const file = e.dataTransfer?.files?.[0]
+  if (file) {
+    submitUpload(file)
+  }
+}
+
+async function submitUpload(file: File) {
+  const isVideo = file.type.startsWith('video/') || /\.(mp4|mkv|mov|avi|webm|m4v)$/i.test(file.name)
+  if (!isVideo) {
+    if (file.type.startsWith('image/')) {
+      toast.push('图片解题请在对话中发送图片，已为你打开对话')
+      router.push('/chat')
+    } else {
+      toast.push('PDF / PPT 摄取即将上线（B19），当前支持视频与图片')
+    }
+    return
+  }
+  if (uploadingCourse.value) {
+    return
+  }
+  uploadingCourse.value = true
+  try {
+    await uploadCourse(file, file.name)
+    toast.push('视频已提交转写处理，可在「课程」查看进度')
+    overview.value = await getHomeOverview()
+  } catch (e) {
+    toast.push(e instanceof Error ? e.message : '上传失败', 'error')
+  } finally {
+    uploadingCourse.value = false
+  }
+}
+
 // ---- 右栏 AI 助手：与 /chat 共享同一会话（agent store + agentSocket，流式同步） ----
 const agent = useAgentStore()
 const draft = ref('')
 const assistantBox = ref<HTMLDivElement | null>(null)
-const ASSISTANT_CHIPS = ['我最近哪块最薄弱？', '总结我最近的网课内容', '帮我出 3 道相似题']
+const ASSISTANT_CHIPS = [
+  { icon: MessageSquareText, text: '解析这段内容' },
+  { icon: NotebookPen, text: '生成本章笔记' },
+  { icon: ListChecks, text: '出 5 道相关习题' },
+  { icon: Sparkles, text: '总结知识点' },
+]
 
 function sendDraft() {
   const text = draft.value.trim()
@@ -122,102 +203,133 @@ watch(
       </div>
 
       <template v-else-if="overview">
-        <!-- 问候 banner：纯 CSS 渐变，语义令牌配色 -->
-        <div class="rounded-3xl border border-line bg-gradient-to-r from-primary-soft/70 via-panel to-panel px-6 py-6 md:px-8">
-          <h1 class="text-[22px] font-semibold tracking-tight text-ink md:text-[26px]">
+        <!-- 问候 banner：蓝调渐变 + 手写标语 + 远山装饰 -->
+        <div class="relative overflow-hidden rounded-2xl border border-indigo-100 bg-gradient-to-r from-blue-100 via-indigo-50 to-white px-6 py-7 md:px-9 md:py-9">
+          <svg class="pointer-events-none absolute bottom-0 right-0 h-16 w-72 text-indigo-200/70" viewBox="0 0 288 64" fill="none" preserveAspectRatio="none">
+            <path d="M0 64 L48 22 L96 64 Z" fill="currentColor" opacity="0.5" />
+            <path d="M80 64 L150 8 L220 64 Z" fill="currentColor" opacity="0.7" />
+            <path d="M190 64 L245 26 L300 64 Z" fill="currentColor" opacity="0.45" />
+          </svg>
+          <p class="relative text-[13px] font-medium italic text-indigo-300" style="transform: rotate(-3deg)">
+            学习，让你遇见更大的自己
+          </p>
+          <h1 class="relative mt-1 text-[24px] font-bold tracking-tight text-gray-900 md:text-[28px]">
             {{ greeting }}，{{ overview.nickname || '同学' }} 👋
           </h1>
-          <p class="mt-1.5 text-[13px] text-ink-2">今天也要加油学习呀！你的知识正在一点点积累～</p>
+          <p class="relative mt-1.5 text-[13px] text-gray-500">今天也要加油学习呀！你的知识正在一点点积累～</p>
         </div>
 
-        <div class="mt-5 grid grid-cols-1 items-start gap-5 lg:grid-cols-[1fr_300px]">
+        <div class="mt-5 grid grid-cols-1 items-start gap-5 lg:grid-cols-[1fr_320px]">
           <!-- 左主列 -->
           <div class="flex min-w-0 flex-col gap-5">
             <!-- 继续学习 -->
-            <section v-if="continueCourse" class="rounded-3xl border border-line bg-surface p-5">
+            <section v-if="continueCourse" class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
               <div class="flex items-center justify-between">
-                <h2 class="flex items-center gap-1.5 text-[15px] font-semibold text-ink">
-                  <MonitorPlay :size="16" class="text-primary" />
+                <h2 class="flex items-center gap-2 text-[15px] font-bold text-gray-900">
+                  <MonitorPlay :size="17" class="text-indigo-500" />
                   继续学习
                 </h2>
-                <RouterLink to="/courses" class="flex items-center text-[12px] text-ink-2 hover:text-ink">
+                <RouterLink to="/courses" class="flex items-center text-[12px] text-gray-400 transition-colors hover:text-indigo-500">
                   查看全部
                   <ChevronRight :size="13" />
                 </RouterLink>
               </div>
-              <div class="mt-4 flex items-center gap-4">
-                <div class="min-w-0 flex-1">
-                  <p class="truncate text-[16px] font-medium text-ink">{{ continueCourse.title }}</p>
-                  <p class="mt-1 text-[12px] text-ink-2">
-                    上次学到 {{ formatTs(continueCourse.lastPositionSec) }} / {{ formatDuration(continueCourse.duration) }}
-                    <template v-if="continueCourse.progressPct != null"> · 进度 {{ continueCourse.progressPct }}%</template>
-                  </p>
-                  <div class="mt-2 h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-line/60">
-                    <div class="h-full rounded-full bg-primary transition-all" :style="{ width: (continueCourse.progressPct ?? 0) + '%' }" />
+              <div class="mt-4 flex flex-col gap-4 lg:flex-row">
+                <div class="flex min-w-0 flex-1 items-center gap-4">
+                  <div class="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-500 text-[20px] font-bold text-white">
+                    {{ (continueCourse.title || '课').slice(0, 1) }}
+                  </div>
+                  <div class="min-w-0 flex-1">
+                    <p class="truncate text-[16px] font-semibold text-gray-900">{{ continueCourse.title }}</p>
+                    <p class="mt-0.5 text-[12px] text-gray-400">
+                      网课 · 课程进度 {{ continueCourse.progressPct ?? 0 }}%
+                    </p>
+                    <p class="mt-1 text-[12px] tabular-nums text-gray-500">
+                      {{ formatTs(continueCourse.lastPositionSec) }} / {{ formatDuration(continueCourse.duration) }}
+                    </p>
+                    <button
+                      class="mt-2.5 flex items-center gap-1.5 rounded-full bg-gradient-to-r from-indigo-500 to-violet-500 px-4 py-2 text-[13px] font-medium text-white transition-opacity hover:opacity-90"
+                      @click="router.push(`/courses/${continueCourse.id}`)"
+                    >
+                      <Play :size="14" />
+                      继续学习
+                    </button>
                   </div>
                 </div>
-                <button
-                  class="flex shrink-0 items-center gap-1.5 rounded-xl bg-primary px-4 py-2.5 text-[13px] text-white hover:opacity-90"
-                  @click="router.push(`/courses/${continueCourse.id}`)"
-                >
-                  <Play :size="14" />
-                  继续学习
-                </button>
+                <!-- 本课重点：来自该课最新 AI 笔记的知识点小节 -->
+                <div v-if="keyPoints.length > 0" class="rounded-2xl bg-indigo-50/70 p-4 lg:w-64 lg:shrink-0">
+                  <p class="text-[13px] font-semibold text-gray-900">本课重点</p>
+                  <ul class="mt-2 flex flex-col gap-1.5">
+                    <li
+                      v-for="point in keyPoints"
+                      :key="point"
+                      class="flex items-start gap-1.5 text-[12px] leading-5 text-gray-600"
+                    >
+                      <span class="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-indigo-400" />
+                      <span class="min-w-0">{{ point }}</span>
+                    </li>
+                  </ul>
+                </div>
               </div>
             </section>
 
             <!-- 今日复习 -->
-            <section class="rounded-3xl border border-line bg-surface p-5">
+            <section class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
               <div class="flex items-center justify-between">
-                <h2 class="flex items-center gap-1.5 text-[15px] font-semibold text-ink">
-                  <GraduationCap :size="16" class="text-primary" />
+                <h2 class="flex items-center gap-2 text-[15px] font-bold text-gray-900">
+                  <GraduationCap :size="17" class="text-indigo-500" />
                   今日复习
                 </h2>
-                <RouterLink to="/review" class="flex items-center text-[12px] text-ink-2 hover:text-ink">
+                <RouterLink to="/review" class="flex items-center text-[12px] text-gray-400 transition-colors hover:text-indigo-500">
                   查看全部
                   <ChevronRight :size="13" />
                 </RouterLink>
               </div>
               <div
                 v-if="dueCount > 0"
-                class="mt-4 flex flex-col gap-3 rounded-2xl bg-primary-soft/50 px-4 py-4 sm:flex-row sm:items-center"
+                class="mt-4 flex flex-col gap-3 rounded-2xl bg-indigo-50/70 px-4 py-4 sm:flex-row sm:items-center"
               >
-                <div class="min-w-0 flex-1">
-                  <p class="text-[14px] text-ink">
-                    有 <span class="font-semibold text-primary">{{ dueCount }}</span> 张卡片到期，建议花
-                    约 {{ suggestMinutes }} 分钟进行复习
-                  </p>
-                  <div v-if="overview.todayQueue.length > 0" class="mt-2 flex flex-wrap gap-1.5">
-                    <span
-                      v-for="card in overview.todayQueue"
-                      :key="card.frontText"
-                      class="rounded-full border border-line bg-surface px-2.5 py-0.5 text-[11px] text-ink-2"
-                    >
-                      {{ truncate(card.frontText) }}
-                    </span>
+                <div class="flex min-w-0 flex-1 items-start gap-3">
+                  <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white text-indigo-500 shadow-sm">
+                    <Target :size="20" />
+                  </div>
+                  <div class="min-w-0">
+                    <p class="text-[14px] font-medium text-gray-900">
+                      发现 <span class="text-indigo-500">{{ dueCount }}</span> 个薄弱知识点
+                    </p>
+                    <p class="mt-0.5 text-[12px] text-gray-500">建议花 {{ suggestMinutes }} 分钟进行复习</p>
+                    <div v-if="overview.todayQueue.length > 0" class="mt-2 flex flex-wrap gap-1.5">
+                      <span
+                        v-for="card in overview.todayQueue"
+                        :key="card.frontText"
+                        class="rounded-full bg-white px-2.5 py-0.5 text-[11px] text-gray-500"
+                      >
+                        {{ truncate(card.frontText, 10) }}
+                      </span>
+                    </div>
                   </div>
                 </div>
                 <button
-                  class="flex shrink-0 items-center gap-1.5 self-start rounded-xl bg-primary px-4 py-2.5 text-[13px] text-white hover:opacity-90 sm:self-center"
+                  class="flex shrink-0 items-center gap-1.5 self-start rounded-full bg-gradient-to-r from-indigo-500 to-violet-500 px-5 py-2.5 text-[13px] font-medium text-white transition-opacity hover:opacity-90 sm:self-center"
                   @click="router.push('/review')"
                 >
                   开始复习
                   <ChevronRight :size="14" />
                 </button>
               </div>
-              <div v-else class="mt-4 rounded-2xl border border-dashed border-line px-4 py-6 text-center text-[13px] text-ink-2">
+              <div v-else class="mt-4 rounded-2xl border border-dashed border-indigo-100 px-4 py-6 text-center text-[13px] text-gray-400">
                 今日复习已清空 ✅ 到题目 / 笔记详情页「加入复习」，卡片会按记忆曲线出现在这里
               </div>
             </section>
 
             <!-- 最近学习 -->
-            <section class="rounded-3xl border border-line bg-surface p-5">
+            <section class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
               <div class="flex items-center justify-between">
-                <h2 class="flex items-center gap-1.5 text-[15px] font-semibold text-ink">
-                  <Clock :size="16" class="text-primary" />
+                <h2 class="flex items-center gap-2 text-[15px] font-bold text-gray-900">
+                  <Clock :size="17" class="text-indigo-500" />
                   最近学习
                 </h2>
-                <RouterLink to="/courses" class="flex items-center text-[12px] text-ink-2 hover:text-ink">
+                <RouterLink to="/courses" class="flex items-center text-[12px] text-gray-400 transition-colors hover:text-indigo-500">
                   查看全部
                   <ChevronRight :size="13" />
                 </RouterLink>
@@ -227,150 +339,187 @@ watch(
                   v-for="course in overview.recentCourses"
                   :key="course.id"
                   :to="`/courses/${course.id}`"
-                  class="group rounded-2xl border border-line p-4 transition-colors hover:bg-panel"
+                  class="rounded-2xl border border-gray-100 p-4 transition-all hover:border-indigo-200 hover:shadow-sm"
                 >
-                  <p class="truncate text-[14px] font-medium text-ink">{{ course.title }}</p>
-                  <p class="mt-1.5 text-[11px] text-ink-2">上次学到 {{ formatTs(course.lastPositionSec) }}</p>
-                  <div class="mt-2 flex items-center gap-2">
-                    <div class="h-1 flex-1 overflow-hidden rounded-full bg-line/60">
-                      <div class="h-full rounded-full bg-primary" :style="{ width: (course.progressPct ?? 0) + '%' }" />
+                  <div class="flex items-center gap-2.5">
+                    <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-400 to-violet-400 text-[13px] font-bold text-white">
+                      {{ (course.title || '课').slice(0, 1) }}
                     </div>
-                    <span class="text-[11px] text-ink-2">{{ course.progressPct ?? 0 }}%</span>
+                    <p class="min-w-0 flex-1 truncate text-[13px] font-medium text-gray-900">{{ course.title }}</p>
                   </div>
-                  <p class="mt-2 text-[11px] text-ink-2/80">{{ relativeTime(course.lastStudiedAt || course.updatedAt) }}</p>
+                  <p class="mt-2.5 text-[11px] text-gray-400">上次学到 {{ formatTs(course.lastPositionSec) }}</p>
+                  <div class="mt-2 flex items-center gap-2">
+                    <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-100">
+                      <div
+                        class="h-full rounded-full bg-gradient-to-r from-indigo-400 to-violet-400"
+                        :style="{ width: (course.progressPct ?? 0) + '%' }"
+                      />
+                    </div>
+                    <span class="text-[11px] tabular-nums text-gray-400">{{ course.progressPct ?? 0 }}%</span>
+                  </div>
+                  <p class="mt-2 text-[11px] text-gray-400/80">{{ relativeTime(course.lastStudiedAt || course.updatedAt) }}</p>
                 </RouterLink>
               </div>
-              <div v-else class="mt-4 rounded-2xl border border-dashed border-line px-4 py-6 text-center text-[13px] text-ink-2">
-                暂无学习记录，去「课程」上传第一门网课吧
+              <div v-else class="mt-4 rounded-2xl border border-dashed border-indigo-100 px-4 py-6 text-center text-[13px] text-gray-400">
+                暂无学习记录，上传第一门网课吧
               </div>
+            </section>
+
+            <!-- 上传资料：视频直传流水线；图片去对话拍照解题；PDF / PPT 随 B19 -->
+            <section
+              class="flex cursor-pointer flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-indigo-200 bg-indigo-50/30 px-4 py-6 transition-colors hover:bg-indigo-50/60 sm:flex-row sm:px-8"
+              :class="uploadingCourse ? 'pointer-events-none opacity-60' : ''"
+              @click="openUpload"
+              @dragover.prevent
+              @drop.prevent="onDropFile"
+            >
+              <div class="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-r from-indigo-500 to-violet-500 text-white">
+                <Plus :size="18" />
+              </div>
+              <div class="min-w-0 flex-1 text-center sm:text-left">
+                <p class="text-[14px] font-semibold text-gray-900">
+                  {{ uploadingCourse ? '正在上传…' : '上传资料' }}
+                </p>
+                <p class="mt-0.5 text-[12px] text-gray-400">支持视频（点击或拖拽，自动转写）、图片等多种格式</p>
+              </div>
+              <div class="flex items-center gap-2.5">
+                <span class="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-500" title="视频：点击或拖拽上传" @click.stop="openUpload">
+                  <Video :size="17" />
+                </span>
+                <span class="flex h-9 w-9 items-center justify-center rounded-xl bg-red-50 text-red-400" title="PDF 摄取即将上线" @click.stop="toast.push('PDF 摄取即将上线（B19）')">
+                  <FileText :size="17" />
+                </span>
+                <span class="flex h-9 w-9 items-center justify-center rounded-xl bg-orange-50 text-orange-400" title="PPT 摄取即将上线" @click.stop="toast.push('PPT 摄取即将上线（B19）')">
+                  <Presentation :size="17" />
+                </span>
+                <span class="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 text-emerald-500" title="图片解题：在对话中发送" @click.stop="router.push('/chat'); toast.push('在对话中发送图片即可拍照解题')">
+                  <ImageIcon :size="17" />
+                </span>
+              </div>
+              <input ref="uploadInputRef" type="file" accept="video/mp4,video/x-matroska,video/quicktime,video/webm,.mp4,.mkv,.mov,.webm" class="hidden" @change="onUploadFile" />
             </section>
           </div>
 
           <!-- 右辅列 -->
           <aside class="flex flex-col gap-5">
             <!-- AI 助手：与 /chat 共享会话 -->
-            <section class="rounded-3xl border border-line bg-surface p-5">
+            <section class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
               <div class="flex items-center justify-between">
-                <h2 class="flex items-center gap-1.5 text-[15px] font-semibold text-ink">
-                  <Sparkles :size="16" class="text-primary" />
+                <h2 class="flex items-center gap-2 text-[15px] font-bold text-gray-900">
+                  <Sparkles :size="17" class="text-indigo-500" />
                   AI 助手
                 </h2>
                 <button
-                  class="rounded-lg border border-line px-2.5 py-1 text-[12px] text-ink-2 hover:bg-panel hover:text-ink"
+                  class="rounded-full border border-indigo-200 px-3 py-1 text-[12px] text-indigo-500 transition-colors hover:bg-indigo-50"
                   title="开新会话（原会话保留在 /chat 历史）"
                   @click="agent.startNew()"
                 >
                   新对话
                 </button>
               </div>
-              <div ref="assistantBox" class="mt-3 flex max-h-64 min-h-32 flex-col gap-2.5 overflow-y-auto">
-                <div v-if="agent.messages.length === 0" class="text-[12px] leading-5 text-ink-2">
-                  你好！我是你的学习助手，可以帮你：
+              <div ref="assistantBox" class="mt-3 flex max-h-60 min-h-28 flex-col gap-2.5 overflow-y-auto">
+                <div v-if="agent.messages.length === 0" class="text-[12px] leading-5 text-gray-500">
+                  <p class="text-[13px] font-semibold text-gray-900">你好！我是你的学习助手</p>
+                  <p class="mt-1.5">我可以帮你：</p>
                   <ul class="mt-1 list-disc pl-4">
-                    <li>回顾错题与薄弱知识点</li>
-                    <li>基于笔记 / 网课内容答疑</li>
-                    <li>生成笔记、相似题与知识点总结</li>
+                    <li>解析课程内容</li>
+                    <li>回答学习问题</li>
+                    <li>生成笔记、练习题</li>
+                    <li>整理知识点和错题</li>
                   </ul>
                 </div>
                 <template v-for="(msg, i) in agent.messages" :key="i">
-                  <div v-if="msg.role === 'user'" class="ml-8 whitespace-pre-wrap rounded-2xl bg-primary-soft px-3 py-2 text-[13px] text-ink">
+                  <div v-if="msg.role === 'user'" class="ml-8 whitespace-pre-wrap rounded-2xl bg-indigo-500 px-3 py-2 text-[13px] text-white">
                     {{ msg.content }}
                   </div>
                   <div
                     v-else
-                    class="assistant-md mr-4 rounded-2xl border border-line px-3 py-2 text-[13px] leading-6 text-ink"
+                    class="assistant-md mr-4 rounded-2xl bg-indigo-50/60 px-3 py-2 text-[13px] leading-6 text-gray-700"
                     v-html="renderMarkdown(msg.content)"
                   ></div>
                 </template>
               </div>
-              <div class="mt-2 flex flex-wrap gap-1.5">
+              <div class="mt-3 grid grid-cols-2 gap-2">
                 <button
                   v-for="chip in ASSISTANT_CHIPS"
-                  :key="chip"
-                  class="rounded-full border border-line px-2.5 py-1 text-[11px] text-ink-2 transition-colors hover:bg-panel hover:text-ink"
-                  @click="draft = chip"
+                  :key="chip.text"
+                  class="flex items-center gap-1.5 rounded-xl bg-indigo-50/70 px-2.5 py-1.5 text-[11px] text-indigo-600 transition-colors hover:bg-indigo-100"
+                  @click="draft = chip.text"
                 >
-                  {{ chip }}
+                  <component :is="chip.icon" :size="13" />
+                  {{ chip.text }}
                 </button>
               </div>
-              <div class="mt-2 flex items-center gap-2">
+              <div class="mt-3 flex items-center gap-2">
                 <input
                   v-model="draft"
-                  class="min-w-0 flex-1 rounded-xl border border-line bg-surface px-3 py-2 text-[13px] text-ink outline-none focus:border-primary"
+                  class="min-w-0 flex-1 rounded-full border border-indigo-200 bg-white px-4 py-2 text-[13px] text-ink outline-none focus:border-indigo-400"
                   placeholder="有问题尽管问我…"
                   @keydown.enter="sendDraft"
                 />
                 <button
-                  class="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary text-white hover:opacity-90 disabled:opacity-40"
+                  class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-indigo-500 to-violet-500 text-white transition-opacity hover:opacity-90 disabled:opacity-40"
                   :disabled="agent.streaming || !draft.trim()"
                   title="发送"
                   @click="sendDraft"
                 >
-                  <Send :size="14" />
+                  <Send :size="15" />
                 </button>
               </div>
-              <p v-if="agent.streaming" class="mt-1.5 text-[11px] text-ink-2">正在回答…</p>
+              <p class="mt-2 text-[11px] text-gray-300">
+                {{ agent.streaming ? '正在回答…' : '基于你的学习数据，提供更精准的回答' }}
+              </p>
             </section>
 
             <!-- 学习数据 -->
-            <section class="rounded-3xl border border-line bg-surface p-5">
+            <section class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
               <div class="flex items-center justify-between">
-                <h2 class="flex items-center gap-1.5 text-[15px] font-semibold text-ink">
-                  <BookOpen :size="16" class="text-primary" />
+                <h2 class="flex items-center gap-2 text-[15px] font-bold text-gray-900">
+                  <BookOpen :size="17" class="text-indigo-500" />
                   学习数据
                 </h2>
-                <RouterLink to="/review" class="flex items-center text-[12px] text-ink-2 hover:text-ink">
+                <RouterLink to="/review" class="flex items-center text-[12px] text-gray-400 transition-colors hover:text-indigo-500">
                   查看详情
                   <ChevronRight :size="13" />
                 </RouterLink>
               </div>
               <div class="mt-4 grid grid-cols-2 gap-3">
-                <div class="rounded-2xl border border-line px-3 py-3.5">
-                  <p class="text-[20px] font-semibold text-primary">{{ overview.stats.dueCount }}</p>
-                  <p class="mt-0.5 text-[11px] text-ink-2">待复习卡片</p>
+                <div class="rounded-2xl border border-gray-100 p-3.5">
+                  <div class="flex h-8 w-8 items-center justify-center rounded-full bg-blue-50 text-blue-500">
+                    <Clock :size="15" />
+                  </div>
+                  <p class="mt-2 text-[20px] font-bold tabular-nums text-gray-900">{{ overview.stats.todayStudyMinutes }}</p>
+                  <p class="mt-0.5 text-[11px] text-gray-400">今日学习时长（分钟）</p>
                 </div>
-                <div class="rounded-2xl border border-line px-3 py-3.5">
-                  <p class="text-[20px] font-semibold text-ink">{{ overview.stats.reviewedToday }}</p>
-                  <p class="mt-0.5 text-[11px] text-ink-2">今日已复习</p>
+                <div class="rounded-2xl border border-gray-100 p-3.5">
+                  <div class="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-50 text-emerald-500">
+                    <MonitorPlay :size="15" />
+                  </div>
+                  <p class="mt-2 text-[20px] font-bold tabular-nums text-gray-900">{{ overview.stats.coursesTotal }}</p>
+                  <p class="mt-0.5 text-[11px] text-gray-400">学习课程数</p>
                 </div>
-                <div class="rounded-2xl border border-line px-3 py-3.5">
-                  <p class="text-[20px] font-semibold text-ink">{{ overview.stats.coursesTotal }}</p>
-                  <p class="mt-0.5 text-[11px] text-ink-2">网课</p>
+                <div class="rounded-2xl border border-gray-100 p-3.5">
+                  <div class="flex h-8 w-8 items-center justify-center rounded-full bg-amber-50 text-amber-500">
+                    <CircleCheck :size="15" />
+                  </div>
+                  <p class="mt-2 text-[20px] font-bold tabular-nums text-gray-900">{{ overview.stats.reviewedToday }}</p>
+                  <p class="mt-0.5 text-[11px] text-gray-400">今日已复习</p>
                 </div>
-                <div class="rounded-2xl border border-line px-3 py-3.5">
-                  <p class="text-[20px] font-semibold text-ink">{{ overview.stats.notesTotal }}</p>
-                  <p class="mt-0.5 text-[11px] text-ink-2">笔记</p>
-                </div>
-                <div class="rounded-2xl border border-line px-3 py-3.5">
-                  <p class="text-[20px] font-semibold text-ink">{{ overview.stats.questionsTotal }}</p>
-                  <p class="mt-0.5 text-[11px] text-ink-2">题目</p>
-                </div>
-                <div class="rounded-2xl border border-line px-3 py-3.5">
-                  <p class="text-[20px] font-semibold text-ink">{{ overview.stats.totalCards }}</p>
-                  <p class="mt-0.5 text-[11px] text-ink-2">复习队列</p>
+                <div class="rounded-2xl border border-gray-100 p-3.5">
+                  <div class="flex h-8 w-8 items-center justify-center rounded-full bg-red-50 text-red-400">
+                    <AlertTriangle :size="15" />
+                  </div>
+                  <p class="mt-2 text-[20px] font-bold tabular-nums text-gray-900">{{ overview.stats.dueCount }}</p>
+                  <p class="mt-0.5 text-[11px] text-gray-400">待复习卡片</p>
                 </div>
               </div>
             </section>
 
-            <!-- 本周统计（只读；目标功能为后续增强） -->
-            <section class="rounded-3xl border border-line bg-surface p-5">
-              <h2 class="flex items-center gap-1.5 text-[15px] font-semibold text-ink">
-                <Sparkles :size="16" class="text-primary" />
-                本周统计
-              </h2>
-              <div class="mt-3 flex flex-col gap-2 text-[13px] text-ink">
-                <div class="flex items-center gap-2">
-                  <NotebookPen :size="15" class="text-ink-2" />
-                  新增笔记 <span class="font-semibold">{{ overview.week.newNotes }}</span> 篇
-                </div>
-                <div class="flex items-center gap-2">
-                  <GraduationCap :size="15" class="text-ink-2" />
-                  完成复习 <span class="font-semibold">{{ overview.week.reviewed }}</span> 次
-                </div>
-              </div>
-              <p class="mt-3 text-[11px] leading-4 text-ink-2">
-                坚持学习，会让你看到不一样的风景
-              </p>
+            <!-- 坚持学习 -->
+            <section class="relative overflow-hidden rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50 via-blue-50/60 to-emerald-50/50 p-5">
+              <p class="text-[15px] font-bold text-gray-900">坚持学习</p>
+              <p class="mt-1 text-[12px] leading-5 text-gray-500">会让你看到不一样的风景</p>
+              <span class="pointer-events-none absolute -bottom-2 right-3 select-none text-[44px] leading-none">🌱</span>
             </section>
           </aside>
         </div>

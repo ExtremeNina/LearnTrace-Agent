@@ -20,6 +20,8 @@ export interface HomeQueueCard {
 export interface HomeOverview {
   nickname: string | null
   continueCourse: HomeCourseInfo | null
+  /** 继续学习课程的「本课重点」（最新 AI 笔记知识点小节，最多 4 条） */
+  keyPoints: string[]
   recentCourses: HomeCourseInfo[]
   todayQueue: HomeQueueCard[]
   stats: {
@@ -29,6 +31,7 @@ export interface HomeOverview {
     coursesTotal: number
     notesTotal: number
     questionsTotal: number
+    todayStudyMinutes: number
   }
   week: {
     newNotes: number
@@ -38,4 +41,9 @@ export interface HomeOverview {
 
 export function getHomeOverview(): Promise<HomeOverview> {
   return request<HomeOverview>({ method: 'GET', url: '/home/overview' })
+}
+
+/** 学习时长心跳：本次在站秒数（前端每 60 秒上报，后端截断单次 ≤300s） */
+export function heartbeatStudyTime(seconds: number): Promise<void> {
+  return request<void>({ method: 'POST', url: '/home/study-time', data: { seconds } })
 }

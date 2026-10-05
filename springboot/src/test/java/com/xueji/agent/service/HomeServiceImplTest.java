@@ -1,6 +1,7 @@
 package com.xueji.agent.service;
 
 import com.xueji.agent.domain.entity.Course;
+import com.xueji.agent.domain.entity.Note;
 import com.xueji.agent.domain.entity.User;
 import com.xueji.agent.domain.vo.ReviewCardVO;
 import com.xueji.agent.mapper.CourseMapper;
@@ -35,6 +36,7 @@ class HomeServiceImplTest {
     private QuestionRecordMapper questionRecordMapper;
     private ReviewService reviewService;
     private LearningStatsService learningStatsService;
+    private StudyTimeService studyTimeService;
     private HomeServiceImpl service;
 
     @BeforeEach
@@ -45,6 +47,7 @@ class HomeServiceImplTest {
         questionRecordMapper = mock(QuestionRecordMapper.class);
         reviewService = mock(ReviewService.class);
         learningStatsService = mock(LearningStatsService.class);
+        studyTimeService = mock(StudyTimeService.class);
         service = new HomeServiceImpl();
         setField("userMapper", userMapper);
         setField("courseMapper", courseMapper);
@@ -52,6 +55,7 @@ class HomeServiceImplTest {
         setField("questionRecordMapper", questionRecordMapper);
         setField("reviewService", reviewService);
         setField("learningStatsService", learningStatsService);
+        setField("studyTimeService", studyTimeService);
 
         Map<String, Object> reviewStats = new HashMap<>();
         reviewStats.put("dueCount", 2);
@@ -62,6 +66,7 @@ class HomeServiceImplTest {
         when(learningStatsService.getStatsSnapshot(1L)).thenReturn(Map.of(
                 "notesCreatedThisWeek", 6,
                 "reviewedThisWeek", 4));
+        when(studyTimeService.todayMinutes(1L)).thenReturn(12);
         when(courseMapper.selectCount(any())).thenReturn(3L);
         when(noteMapper.selectCount(any())).thenReturn(6L);
         when(questionRecordMapper.selectCount(any())).thenReturn(8L);
@@ -99,6 +104,7 @@ class HomeServiceImplTest {
         assertEquals(3L, stats.get("coursesTotal"));
         assertEquals(6L, stats.get("notesTotal"));
         assertEquals(8L, stats.get("questionsTotal"));
+        assertEquals(12, stats.get("todayStudyMinutes"));
 
         @SuppressWarnings("unchecked")
         Map<String, Object> week = (Map<String, Object>) result.get("week");
@@ -132,5 +138,27 @@ class HomeServiceImplTest {
         assertTrue(((List<?>) result.get("recentCourses")).isEmpty());
         // 聚合只读，从不写库
         verify(courseMapper, times(0)).updateById(any(Course.class));
+    }
+
+    @Test
+    void overviewShouldExtractKeyPointsFromAiNote() {
+        when(userMapper.selectById(1L)).thenReturn(new User().setId(1L));
+        Course course = new Course().setId(10L).setTitle("Java 并发");
+        when(courseMapper.selectOne(any())).thenReturn(course);
+        when(courseMapper.selectList(any())).thenReturn(List.of());
+        Note aiNote = new Note().setContent("## 课程概览\n- 概览条目\n\n## 知识点\n- **volatile** 关键字\n- CAS 与 AQS\n\n## 总结\n- 总结条目");
+        when(noteMapper.selectOne(any())).thenReturn(aiNote);
+
+        Map<String, Object> result = service.overview(1L);
+
+        assertEquals(List.of("volatile 关键字", "CAS 与 AQS"), result.get("keyPoints"));
+    }
+
+    @Test
+    void parseKnowledgePointsShouldFallbackAndStrip() {
+        assertTrue(HomeServiceImpl.parseKnowledgePoints(null, 4).isEmpty());
+        // 无「知识点」小节：回退为全文列表项，数字 / 星号 / 顿号列表皆识别
+        assertEquals(List.of("甲", "乙"), HomeServiceImpl.parseKnowledgePoints("## 概览\n- 甲\n1. 乙", 4));
+        assertEquals(List.of("丙"), HomeServiceImpl.parseKnowledgePoints("## 知识点\n- **丙**\n", 4));
     }
 }

@@ -67,6 +67,7 @@ LJ-Agent/
 | note / note_link | 笔记树与知识联系 | 笔记逻辑删除；note_link 物理删除（分组级联时双向清理） |
 | user | 用户（bio / theme / notify_task_enabled / deleted） | 注销为逻辑删除（deleted），登录拦截 |
 | review_card / review_log | 复习卡（调度状态）与评分流水 | 复习卡逻辑删除（移出队列）；来源实体删除时级联移出 |
+| study_time_log | 学习时长日志（一天一行，前端心跳累计；今日学习时长供数） | 随账号保留 |
 | daily_briefing | 每日学习简报（惰性生成，当天缓存） | 物理删除不适用（随账号保留） |
 | ai_model_config | 用户自建模型配置（Base URL / Key / 模型名；Key 明文落库、接口脱敏） | 注销时物理删除（含密钥） |
 | user_model_pref | 用户按模块的模型偏好（chat / course_note / briefing → config_id，NULL = 系统默认） | 配置删除时级联清除（回退系统默认） |

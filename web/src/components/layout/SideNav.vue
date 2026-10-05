@@ -1,10 +1,13 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { Home, MonitorPlay, NotebookPen, Camera, ListChecks, Settings } from 'lucide-vue-next'
+import { Clock, Home, MonitorPlay, NotebookPen, Camera, ListChecks, Settings, Sprout } from 'lucide-vue-next'
+import { getHomeOverview } from '../../api/home'
 
-/** 主导航侧栏（B25 导航重构）：品牌区 + 内容导航 + 底部我的区；桌面常驻、移动端抽屉复用 */
-const emit = defineEmits<{ navigate: []; 'open-profile': [] }>()
+/**
+ * 主导航侧栏（B25 导航重构，视觉对齐设计稿）：品牌区 + 内容导航 + 我的（学习轨迹 / 设置）+ 本周学习目标卡
+ */
+const emit = defineEmits<{ navigate: []; 'open-profile': []; 'open-track': [] }>()
 
 const route = useRoute()
 
@@ -21,13 +24,27 @@ const activePath = computed(() => route.path)
 function isActive(path: string): boolean {
   return path === '/' ? activePath.value === '/' : activePath.value.startsWith(path)
 }
+
+// 本周学习目标卡（只读版：本周复习 / 新增笔记）
+const weekReviewed = ref(0)
+const weekNewNotes = ref(0)
+
+onMounted(async () => {
+  try {
+    const overview = await getHomeOverview()
+    weekReviewed.value = overview.week.reviewed
+    weekNewNotes.value = overview.week.newNotes
+  } catch {
+    // 目标卡数据加载失败静默
+  }
+})
 </script>
 
 <template>
   <div class="flex h-full min-h-0 flex-col">
     <!-- 品牌区 -->
     <div class="px-5 pb-4 pt-5">
-      <p class="text-[20px] font-semibold tracking-tight text-ink">学迹</p>
+      <p class="text-[20px] font-bold tracking-tight text-ink">学迹</p>
       <p class="mt-0.5 text-[11px] text-ink-2">让学习更有轨迹</p>
     </div>
 
@@ -37,25 +54,46 @@ function isActive(path: string): boolean {
         v-for="item in items"
         :key="item.path"
         :to="item.path"
-        class="mb-0.5 flex items-center gap-3 rounded-2xl px-3.5 py-2.5 text-[14px] transition-colors"
-        :class="isActive(item.path) ? 'bg-line/60 font-medium text-ink' : 'text-ink-2 hover:bg-line/50 hover:text-ink'"
+        class="mb-1 flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-[14px] transition-colors"
+        :class="isActive(item.path) ? 'bg-indigo-50 font-medium text-indigo-600' : 'text-gray-600 hover:bg-indigo-50/60 hover:text-ink'"
         @click="$emit('navigate')"
       >
         <component :is="item.icon" :size="18" />
         {{ item.label }}
       </RouterLink>
+
+      <!-- 我的 -->
+      <div class="mt-4 border-t border-line pt-3">
+        <p class="px-3.5 pb-1 text-[11px] text-gray-400">我的</p>
+        <button
+          class="mb-1 flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-[14px] text-gray-600 transition-colors hover:bg-indigo-50/60 hover:text-ink"
+          @click="$emit('open-track')"
+        >
+          <Clock :size="18" />
+          学习轨迹
+        </button>
+        <button
+          class="flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-[14px] text-gray-600 transition-colors hover:bg-indigo-50/60 hover:text-ink"
+          @click="$emit('open-profile')"
+        >
+          <Settings :size="18" />
+          设置
+        </button>
+      </div>
     </nav>
 
-    <!-- 我的 -->
-    <div class="shrink-0 border-t border-line px-3 py-3">
-      <button
-        class="flex w-full items-center gap-3 rounded-2xl px-3.5 py-2.5 text-[14px] text-ink-2 transition-colors hover:bg-line/50 hover:text-ink"
-        @click="$emit('open-profile')"
-      >
-        <Settings :size="18" />
-        设置
-        <span class="ml-auto text-[11px] text-ink-2/70">Ctrl+,</span>
-      </button>
+    <!-- 本周学习目标（只读版：本周复习 / 新增笔记） -->
+    <div class="shrink-0 px-3 pb-4">
+      <div class="rounded-2xl bg-gradient-to-br from-emerald-50 to-indigo-50/60 p-4">
+        <p class="flex items-center gap-1.5 text-[13px] font-semibold text-ink">
+          <Sprout :size="15" class="text-emerald-500" />
+          本周学习目标
+        </p>
+        <p class="mt-1.5 text-[12px] text-ink-2">
+          复习 <span class="font-semibold text-ink">{{ weekReviewed }}</span> 次 · 新增笔记
+          <span class="font-semibold text-ink">{{ weekNewNotes }}</span> 篇
+        </p>
+      </div>
     </div>
   </div>
 </template>
