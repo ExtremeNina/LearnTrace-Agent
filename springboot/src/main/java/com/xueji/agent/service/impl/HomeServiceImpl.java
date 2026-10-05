@@ -64,13 +64,20 @@ public class HomeServiceImpl implements HomeService {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("nickname", user == null ? null : user.getNickname());
 
-        // 继续学习：最近一门有播放记录的网课（没有则为 null，前端隐藏该卡）
+        // 继续学习：最近一门有播放记录的网课；无打点记录（老数据 / 未播放过）时回退最近更新的一门，保证卡片常驻可见
         Course continueCourse = courseMapper.selectOne(new QueryWrapper<Course>()
                 .eq("user_id", userId)
                 .eq("deleted", 0)
                 .isNotNull("last_studied_at")
                 .orderByDesc("last_studied_at")
                 .last("LIMIT 1"));
+        if (continueCourse == null) {
+            continueCourse = courseMapper.selectOne(new QueryWrapper<Course>()
+                    .eq("user_id", userId)
+                    .eq("deleted", 0)
+                    .orderByDesc("updated_at")
+                    .last("LIMIT 1"));
+        }
         result.put("continueCourse", continueCourse);
         // 本课重点：继续学习课程最新 AI 笔记的「知识点」小节（无笔记 / 无小节则空列表，前端隐藏面板）
         result.put("keyPoints", extractKeyPoints(userId, continueCourse));

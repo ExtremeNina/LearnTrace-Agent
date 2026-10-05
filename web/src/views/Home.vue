@@ -192,7 +192,7 @@ watch(
 </script>
 
 <template>
-  <div class="h-full overflow-y-auto">
+  <div class="h-full overflow-y-auto bg-gray-50">
     <div class="mx-auto max-w-6xl px-4 py-5 md:px-6">
       <!-- 加载 / 错误 -->
       <div v-if="loading" class="flex h-64 items-center justify-center text-[13px] text-ink-2">
@@ -203,17 +203,17 @@ watch(
       </div>
 
       <template v-else-if="overview">
-        <!-- 问候 banner：蓝调渐变 + 手写标语 + 远山装饰 -->
-        <div class="relative overflow-hidden rounded-2xl border border-indigo-100 bg-gradient-to-r from-blue-100 via-indigo-50 to-white px-6 py-7 md:px-9 md:py-9">
-          <svg class="pointer-events-none absolute bottom-0 right-0 h-16 w-72 text-indigo-200/70" viewBox="0 0 288 64" fill="none" preserveAspectRatio="none">
-            <path d="M0 64 L48 22 L96 64 Z" fill="currentColor" opacity="0.5" />
-            <path d="M80 64 L150 8 L220 64 Z" fill="currentColor" opacity="0.7" />
-            <path d="M190 64 L245 26 L300 64 Z" fill="currentColor" opacity="0.45" />
+        <!-- 问候 banner：蓝调渐变 + 手写标语（右上）+ 远山装饰 -->
+        <div class="relative overflow-hidden rounded-2xl border border-blue-100 bg-gradient-to-r from-blue-200 via-indigo-100/70 to-white px-6 py-8 md:px-9 md:py-10">
+          <svg class="pointer-events-none absolute bottom-0 right-0 h-20 w-96 text-indigo-200/80" viewBox="0 0 384 80" fill="none" preserveAspectRatio="none">
+            <path d="M0 80 L70 26 L140 80 Z" fill="currentColor" opacity="0.45" />
+            <path d="M110 80 L192 10 L274 80 Z" fill="currentColor" opacity="0.65" />
+            <path d="M250 80 L318 32 L386 80 Z" fill="currentColor" opacity="0.4" />
           </svg>
-          <p class="relative text-[13px] font-medium italic text-indigo-300" style="transform: rotate(-3deg)">
+          <p class="pointer-events-none absolute right-8 top-5 select-none text-[14px] font-medium italic text-indigo-400/90 md:right-10 md:top-6" style="transform: rotate(-4deg)">
             学习，让你遇见更大的自己
           </p>
-          <h1 class="relative mt-1 text-[24px] font-bold tracking-tight text-gray-900 md:text-[28px]">
+          <h1 class="relative mt-2 text-[24px] font-bold tracking-tight text-gray-900 md:text-[28px]">
             {{ greeting }}，{{ overview.nickname || '同学' }} 👋
           </h1>
           <p class="relative mt-1.5 text-[13px] text-gray-500">今天也要加油学习呀！你的知识正在一点点积累～</p>
@@ -367,7 +367,7 @@ watch(
 
             <!-- 上传资料：视频直传流水线；图片去对话拍照解题；PDF / PPT 随 B19 -->
             <section
-              class="flex cursor-pointer flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-indigo-200 bg-indigo-50/30 px-4 py-6 transition-colors hover:bg-indigo-50/60 sm:flex-row sm:px-8"
+              class="flex cursor-pointer flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-indigo-200 bg-white px-4 py-6 transition-colors hover:bg-indigo-50/40 sm:flex-row sm:px-8"
               :class="uploadingCourse ? 'pointer-events-none opacity-60' : ''"
               @click="openUpload"
               @dragover.prevent
@@ -450,20 +450,20 @@ watch(
                   {{ chip.text }}
                 </button>
               </div>
-              <div class="mt-3 flex items-center gap-2">
+              <div class="relative mt-3">
                 <input
                   v-model="draft"
-                  class="min-w-0 flex-1 rounded-full border border-indigo-200 bg-white px-4 py-2 text-[13px] text-ink outline-none focus:border-indigo-400"
+                  class="w-full rounded-full border border-indigo-200 bg-white py-2.5 pl-4 pr-12 text-[13px] text-ink outline-none focus:border-indigo-400"
                   placeholder="有问题尽管问我…"
                   @keydown.enter="sendDraft"
                 />
                 <button
-                  class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-indigo-500 to-violet-500 text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+                  class="absolute right-1 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-gradient-to-r from-indigo-500 to-violet-500 text-white transition-opacity hover:opacity-90 disabled:opacity-40"
                   :disabled="agent.streaming || !draft.trim()"
                   title="发送"
                   @click="sendDraft"
                 >
-                  <Send :size="15" />
+                  <Send :size="14" />
                 </button>
               </div>
               <p class="mt-2 text-[11px] text-gray-300">
@@ -484,28 +484,28 @@ watch(
                 </RouterLink>
               </div>
               <div class="mt-4 grid grid-cols-2 gap-3">
-                <div class="rounded-2xl border border-gray-100 p-3.5">
+                <div class="rounded-2xl bg-gray-50 p-3.5">
                   <div class="flex h-8 w-8 items-center justify-center rounded-full bg-blue-50 text-blue-500">
                     <Clock :size="15" />
                   </div>
                   <p class="mt-2 text-[20px] font-bold tabular-nums text-gray-900">{{ overview.stats.todayStudyMinutes }}</p>
                   <p class="mt-0.5 text-[11px] text-gray-400">今日学习时长（分钟）</p>
                 </div>
-                <div class="rounded-2xl border border-gray-100 p-3.5">
+                <div class="rounded-2xl bg-gray-50 p-3.5">
                   <div class="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-50 text-emerald-500">
                     <MonitorPlay :size="15" />
                   </div>
                   <p class="mt-2 text-[20px] font-bold tabular-nums text-gray-900">{{ overview.stats.coursesTotal }}</p>
                   <p class="mt-0.5 text-[11px] text-gray-400">学习课程数</p>
                 </div>
-                <div class="rounded-2xl border border-gray-100 p-3.5">
+                <div class="rounded-2xl bg-gray-50 p-3.5">
                   <div class="flex h-8 w-8 items-center justify-center rounded-full bg-amber-50 text-amber-500">
                     <CircleCheck :size="15" />
                   </div>
                   <p class="mt-2 text-[20px] font-bold tabular-nums text-gray-900">{{ overview.stats.reviewedToday }}</p>
                   <p class="mt-0.5 text-[11px] text-gray-400">今日已复习</p>
                 </div>
-                <div class="rounded-2xl border border-gray-100 p-3.5">
+                <div class="rounded-2xl bg-gray-50 p-3.5">
                   <div class="flex h-8 w-8 items-center justify-center rounded-full bg-red-50 text-red-400">
                     <AlertTriangle :size="15" />
                   </div>
@@ -516,10 +516,10 @@ watch(
             </section>
 
             <!-- 坚持学习 -->
-            <section class="relative overflow-hidden rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50 via-blue-50/60 to-emerald-50/50 p-5">
+            <section class="relative overflow-hidden rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-100 to-blue-50 p-5">
               <p class="text-[15px] font-bold text-gray-900">坚持学习</p>
-              <p class="mt-1 text-[12px] leading-5 text-gray-500">会让你看到不一样的风景</p>
-              <span class="pointer-events-none absolute -bottom-2 right-3 select-none text-[44px] leading-none">🌱</span>
+              <p class="mt-1 max-w-[60%] text-[12px] leading-5 text-gray-500">会让你看到不一样的风景</p>
+              <span class="pointer-events-none absolute -bottom-3 right-3 select-none text-[56px] leading-none">🌱</span>
             </section>
           </aside>
         </div>

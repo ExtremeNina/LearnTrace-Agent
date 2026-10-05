@@ -173,7 +173,7 @@ async function remindReview() {
 <template>
   <div class="flex h-full overflow-hidden bg-surface text-ink">
     <!-- SideNav：桌面端常驻 -->
-    <aside class="panel-gradient hidden w-52 shrink-0 border-r border-line md:block">
+    <aside class="hidden w-52 shrink-0 border-r border-gray-100 bg-[#f8f9fb] md:block">
       <SideNav @open-profile="openProfile" />
     </aside>
 
@@ -182,14 +182,14 @@ async function remindReview() {
       <div v-if="ui.sidebarOpen" class="fixed inset-0 z-40 bg-black/30 md:hidden" @click="ui.closeSidebar()" />
     </Transition>
     <Transition name="slide">
-      <aside v-if="ui.sidebarOpen" class="panel-gradient fixed inset-y-0 left-0 z-50 w-60 border-r border-line md:hidden">
+      <aside v-if="ui.sidebarOpen" class="fixed inset-y-0 left-0 z-50 w-60 border-r border-gray-100 bg-[#f8f9fb] md:hidden">
         <SideNav @navigate="ui.closeSidebar()" @open-profile="ui.closeSidebar(); openProfile()" />
       </aside>
     </Transition>
 
     <!-- 右列：顶栏 + 主区 -->
     <div class="flex min-w-0 flex-1 flex-col">
-      <header class="flex h-12 shrink-0 items-center gap-2 border-b border-line bg-panel px-3 md:h-14 md:px-5">
+      <header class="flex h-12 shrink-0 items-center gap-2 border-b border-gray-100 bg-white px-3 md:h-14 md:px-5">
         <button
           class="flex h-8 w-8 items-center justify-center rounded-lg text-ink-2 hover:bg-line/60 hover:text-ink md:hidden"
           title="菜单"
