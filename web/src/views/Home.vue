@@ -12,6 +12,7 @@ import { uploadCourse } from '../api/course'
 import { useAgentStore } from '../stores/agent'
 import { useToastStore } from '../stores/toast'
 import { renderMarkdown } from '../utils/markdown'
+import bannerWaterUrl from '../assets/banner-water.webp'
 
 /**
  * 首页学习仪表盘（B25，视觉按设计稿实现——靛蓝色系 / 渐变按钮 / 卡片白底圆角；深色主题适配后置）：
@@ -211,20 +212,17 @@ watch(
 
       <template v-else-if="overview">
         <div class="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
-            <!-- 问候 banner：蓝调渐变 + 手写标语（右上）+ 远山装饰 -->
-            <div class="relative min-w-0 overflow-hidden rounded-2xl border border-blue-100 bg-gradient-to-r from-blue-200 via-blue-100/70 to-white px-6 py-8 md:px-9 md:py-10 lg:col-start-1 lg:row-start-1">
-              <svg class="pointer-events-none absolute bottom-0 right-0 h-20 w-96 text-blue-200/80" viewBox="0 0 384 80" fill="none" preserveAspectRatio="none">
-                <path d="M0 80 L70 26 L140 80 Z" fill="currentColor" opacity="0.45" />
-                <path d="M110 80 L192 10 L274 80 Z" fill="currentColor" opacity="0.65" />
-                <path d="M250 80 L318 32 L386 80 Z" fill="currentColor" opacity="0.4" />
-              </svg>
-              <p class="pointer-events-none absolute right-8 top-5 select-none text-[14px] font-medium italic text-blue-400/90 md:right-10 md:top-6" style="transform: rotate(-4deg)">
+            <!-- 问候 banner：水中照片背景 + 浅蓝渐变遮罩（保证文字可读）+ 手写标语（右上） -->
+            <div class="relative min-w-0 overflow-hidden rounded-2xl border border-blue-100 px-6 py-8 md:px-9 md:py-10 lg:col-start-1 lg:row-start-1">
+              <img :src="bannerWaterUrl" class="absolute inset-0 h-full w-full object-cover" alt="" />
+              <div class="absolute inset-0 bg-gradient-to-r from-blue-100/90 via-blue-50/75 to-blue-100/30" />
+              <p class="pointer-events-none absolute right-8 top-5 select-none text-[14px] font-medium italic text-blue-500/90 md:right-10 md:top-6" style="transform: rotate(-4deg)">
                 学习，让你遇见更大的自己
               </p>
               <h1 class="relative mt-2 text-[24px] font-bold tracking-tight text-gray-900 md:text-[28px]">
                 {{ greeting }}，{{ overview.nickname || '同学' }} 👋
               </h1>
-              <p class="relative mt-1.5 text-[13px] text-gray-500">今天也要加油学习呀！你的知识正在一点点积累～</p>
+              <p class="relative mt-1.5 text-[13px] text-gray-700/90">今天也要加油学习呀！你的知识正在一点点积累～</p>
             </div>
 
             <!-- 继续学习 -->
