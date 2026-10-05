@@ -10,11 +10,15 @@ import com.xueji.agent.domain.enums.CourseStatus;
 import com.xueji.agent.domain.entity.Course;
 import com.xueji.agent.domain.entity.CourseFrame;
 import com.xueji.agent.domain.entity.CourseTranscriptSegment;
+import com.xueji.agent.domain.entity.Message;
+import com.xueji.agent.domain.vo.ChatEvent;
 import com.xueji.agent.mapper.CourseFrameMapper;
 import com.xueji.agent.mapper.CourseMapper;
 import com.xueji.agent.mapper.CourseTranscriptSegmentMapper;
+import com.xueji.agent.mapper.MessageMapper;
 import com.xueji.agent.utils.AliUploadUtils;
 import com.xueji.agent.utils.MediaUtils;
+import com.xueji.agent.ws.AgentEventPushService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -74,6 +78,12 @@ public class CoursePipelineService {
     @Resource
     private RagIngestService ragIngestService;
 
+    @Resource
+    private MessageMapper messageMapper;
+
+    @Resource
+    private AgentEventPushService pushService;
+
     @Resource(name = "courseExecutor")
     private ThreadPoolExecutor courseExecutor;
 
@@ -91,14 +101,22 @@ public class CoursePipelineService {
         }
         updateStatus(course, CourseStatus.PROCESSING, null);
 
+        // 对话创建的课程任务占位消息（页面路径上传为 NULL，跳过推送）
+        Message taskMessage = messageMapper.selectOne(new QueryWrapper<Message>()
+                .eq("msg_type", "course_task")
+                .eq("course_id", courseId)
+                .orderByDesc("id")
+                .last("LIMIT 1"));
+
         Path video = Path.of(tempPath == null ? "" : tempPath);
         if (!Files.exists(video)) {
-            markFailed(course, "本地上传文件已丢失，请删除后重新上传该网课");
+            markFailed(course, "本地上传文件已丢失，请删除后重新上传该网课", taskMessage);
             return;
         }
 
         try {
             // 0. 视频上传 OSS
+            pushCourseStage(course, taskMessage, "UPLOADING", "正在上传视频到云存储…", null);
             String videoUrl = aliUploadUtils.uploadLocalFile(video, "course/" + courseId + "/video."
                     + extOf(video.getFileName().toString()));
             course.setVideoOssKey(videoUrl).setVideoSize(Files.size(video));
@@ -107,12 +125,14 @@ public class CoursePipelineService {
             int durationSec = MediaUtils.ffprobeDurationSec(video);
 
             // 2. FFmpeg：抽音频 + 抽关键帧（场景检测，不足时回退定间隔）
+            pushCourseStage(course, taskMessage, "EXTRACTING", "正在提取音频与关键帧…", null);
             Path audio = Files.createTempFile("xj-audio-", ".wav");
             MediaUtils.extractAudio(video, audio);
             List<Integer> frameSecs = new ArrayList<>();
             List<Path> frameFiles = extractFrames(video, frameSecs, durationSec);
 
             // 3. 音频通道：上传音频 → Qwen ASR 转写（句级分段；ASR 单次上限 300s，长音频按 280s 分片）
+            pushCourseStage(course, taskMessage, "TRANSCRIBING", "正在转写语音…", null);
             List<AsrSegment> asrSegments = new ArrayList<>();
             String transcriptError = null;
             try {
@@ -141,6 +161,7 @@ public class CoursePipelineService {
             }
 
             // 4. 画面通道：帧图上传 OSS → 批量 OCR（线程池并发，单帧失败不影响其他帧）
+            pushCourseStage(course, taskMessage, "ANALYZING", "正在识别画面关键帧…", null);
             List<Future<CourseFrame>> futures = new ArrayList<>();
             for (int i = 0; i < frameFiles.size(); i++) {
                 Path frameFile = frameFiles.get(i);
@@ -201,11 +222,12 @@ public class CoursePipelineService {
             }
             if (!audioOk && !framesOk) {
                 markFailed(course, "转写与画面识别均失败"
-                        + (transcriptError != null ? "（转写：" + transcriptError + "）" : ""));
+                        + (transcriptError != null ? "（转写：" + transcriptError + "）" : ""), taskMessage);
                 return;
             }
 
             // 7. 流水线末端 LLM：生成 AI 笔记并入库（失败不影响课程状态，仅记录原因）
+            pushCourseStage(course, taskMessage, "NOTE_GENERATING", "正在生成 AI 笔记…", null);
             String noteError = null;
             try {
                 List<CourseTranscriptSegment> transcriptRows = transcriptMapper.selectList(
@@ -220,6 +242,9 @@ public class CoursePipelineService {
                     .setErrorMsg(noteError == null ? null : "网课处理完成，但 AI 笔记生成失败：" + noteError)
                     .setUpdatedAt(LocalDateTime.now());
             courseMapper.updateById(course);
+            pushCourseStage(course, taskMessage, "COMPLETED",
+                    "课程《" + course.getTitle() + "》处理完成" + (noteError == null ? "，AI 笔记已生成" : "，但 AI 笔记生成失败"),
+                    "/courses/" + courseId);
             // 转写分段参与 RAG 检索（异步，失败不影响课程状态）
             ragIngestService.ingestCourseTranscriptsAsync(course, transcriptMapper.selectList(
                     new QueryWrapper<CourseTranscriptSegment>()
@@ -230,7 +255,7 @@ public class CoursePipelineService {
                     transcriptChars, noteError != null);
         } catch (Exception e) {
             log.error("网课流水线异常, courseId={}", courseId, e);
-            markFailed(course, "处理异常：" + truncate(e.getMessage()));
+            markFailed(course, "处理异常：" + truncate(e.getMessage()), taskMessage);
         } finally {
             cleanupQuietly(video);
         }
@@ -319,9 +344,46 @@ public class CoursePipelineService {
         courseMapper.updateById(course);
     }
 
-    private void markFailed(Course course, String message) {
+    private void markFailed(Course course, String message, Message taskMessage) {
         log.error("网课处理失败, courseId={}: {}", course.getId(), message);
         updateStatus(course, CourseStatus.FAILED, truncate(message));
+        pushCourseStage(course, taskMessage, "FAILED", "课程处理失败：" + truncate(message), null);
+    }
+
+    /**
+     * 课程任务进度回流（B11 分流）：更新占位消息 payload / 完成内容并推送 COURSE 事件。
+     * taskMessage 为空（页面路径上传）时静默跳过
+     */
+    private void pushCourseStage(Course course, Message taskMessage, String stage, String text, String extra) {
+        if (taskMessage == null) {
+            return;
+        }
+        try {
+            cn.hutool.json.JSONObject payload;
+            try {
+                payload = cn.hutool.json.JSONUtil.parseObj(taskMessage.getPayload() == null ? "{}" : taskMessage.getPayload());
+            } catch (Exception e) {
+                payload = new cn.hutool.json.JSONObject();
+            }
+            boolean done = "COMPLETED".equals(stage);
+            boolean failed = "FAILED".equals(stage);
+            payload.set("status", done ? "done" : failed ? "failed" : "processing");
+            payload.set("stage", stage);
+            if (extra != null) {
+                payload.set("link", extra);
+            }
+            taskMessage.setPayload(payload.toString());
+            if (done) {
+                taskMessage.setContent(text + "。点击链接查看课程与 AI 笔记：" + extra);
+            } else if (failed) {
+                taskMessage.setContent(text);
+            }
+            messageMapper.updateById(taskMessage);
+            pushService.pushToUser(course.getUserId(), ChatEvent.course(taskMessage.getId(), stage, text, extra));
+        } catch (Exception e) {
+            // 进度推送失败不影响流水线主流程
+            log.warn("课程任务进度推送失败, courseId={}, stage={}", course.getId(), stage, e);
+        }
     }
 
     private String truncate(String s) {

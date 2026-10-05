@@ -23,6 +23,13 @@ public interface CourseService {
     Course upload(Long userId, MultipartFile file, String title, String subject, String expectations, Long modelConfigId);
 
     /**
+     * 从本地临时视频文件创建课程（B11 对话上传分流）：
+     * 文件已由 /upload/chat-video 暂存（对话路径），直接建课（PENDING）并投递 MQ。
+     * title 缺省从文件名推导，expectations 可空，笔记模型走系统默认
+     */
+    Course uploadFromLocal(Long userId, java.nio.file.Path temp, String title, String expectations);
+
+    /**
      * 用户的网课列表（按创建时间倒序）
      */
     List<Course> listByUser(Long userId);

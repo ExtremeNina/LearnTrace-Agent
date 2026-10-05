@@ -2,6 +2,7 @@ package com.xueji.agent.config;
 
 import com.xueji.agent.ai.memory.RedisChatMemoryRepository;
 import com.xueji.agent.ai.tool.AliyunOcrTool;
+import com.xueji.agent.ai.tool.CreateCourseFromVideoTool;
 import com.xueji.agent.ai.tool.CreateNoteTool;
 import com.xueji.agent.ai.tool.TranscribeVideoTool;
 import com.xueji.agent.ai.tool.LearningStatusTool;
@@ -171,6 +172,16 @@ public class SpringAIConfig {
         return new CreateNoteTool(noteService, messageMapper);
     }
 
+    /**
+     * 对话视频创建课程工具（B11 分流）：「做成课程」意图或 >30 分钟时由模型调用，异步走完整流水线。
+     * CourseService 标记 @Lazy 断开循环依赖（chatClient → 本工具 → CourseService → AiModelService → chatClient）
+     */
+    @Bean
+    public CreateCourseFromVideoTool createCourseFromVideoTool(@org.springframework.context.annotation.Lazy com.xueji.agent.service.CourseService courseService,
+                                                               com.xueji.agent.mapper.MessageMapper messageMapper) {
+        return new CreateCourseFromVideoTool(courseService, messageMapper);
+    }
+
     @Bean
     @Primary
     public EmbeddingModel embeddingModel(
@@ -232,11 +243,12 @@ public class SpringAIConfig {
                                  RagSearchTool ragSearchTool,
                                  LearningStatusTool learningStatusTool,
                                  TranscribeVideoTool transcribeVideoTool,
-                                 CreateNoteTool createNoteTool) {
+                                 CreateNoteTool createNoteTool,
+                                 CreateCourseFromVideoTool createCourseFromVideoTool) {
         return chatClientBuilder
                 .defaultAdvisors(messageChatMemoryAdvisor, loggerAdvisor)
                 .defaultTools(questionSaveTool, ragSearchTool, learningStatusTool,
-                        transcribeVideoTool, createNoteTool)
+                        transcribeVideoTool, createNoteTool, createCourseFromVideoTool)
                 .build();
     }
 

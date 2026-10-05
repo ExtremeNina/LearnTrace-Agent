@@ -43,8 +43,8 @@ import java.util.concurrent.ThreadPoolExecutor;
 @Service
 public class CourseServiceImpl implements CourseService {
 
-    /** 视频大小上限（PRD §21：500MB） */
-    private static final long MAX_VIDEO_SIZE = 500L * 1024 * 1024;
+    /** 视频大小上限（1GB，与对话上传一致——长视频普遍较大） */
+    private static final long MAX_VIDEO_SIZE = 1024L * 1024 * 1024;
 
     @Resource
     private CourseMapper courseMapper;
@@ -85,7 +85,7 @@ public class CourseServiceImpl implements CourseService {
             throw new BusinessException("请选择要上传的视频文件");
         }
         if (file.getSize() > MAX_VIDEO_SIZE) {
-            throw new BusinessException("视频大小不能超过 500MB");
+            throw new BusinessException("视频大小不能超过 1GB");
         }
         // 上传时选择的笔记生成模型必须属于本人（NULL = 系统默认）
         aiModelService.validateUserConfig(userId, modelConfigId);
@@ -106,12 +106,20 @@ public class CourseServiceImpl implements CourseService {
             throw new BusinessException("视频保存失败，请重试");
         }
 
+        Course course = uploadFromLocal(userId, temp, derivedTitle, expectations);
+        // 页面上传路径回填学科与笔记模型（对话路径两者走默认）
+        course.setSubject(subject == null || subject.isBlank() ? null : subject.trim())
+                .setModelConfigId(modelConfigId);
+        courseMapper.updateById(course);
+        return course;
+    }
+
+    @Override
+    public Course uploadFromLocal(Long userId, Path temp, String title, String expectations) {
         Course course = new Course()
                 .setUserId(userId)
-                .setTitle(derivedTitle)
-                .setSubject(subject == null || subject.isBlank() ? null : subject.trim())
+                .setTitle(title)
                 .setExpectations(expectations == null || expectations.isBlank() ? null : expectations.trim())
-                .setModelConfigId(modelConfigId)
                 .setStatus(CourseStatus.PENDING)
                 .setCreatedAt(LocalDateTime.now())
                 .setUpdatedAt(LocalDateTime.now());

@@ -60,4 +60,9 @@ public class ChatEvent {
     public static ChatEvent transcribe(Long messageId, String status, String text, Integer done, Integer total, String errorMessage) {
         return new ChatEvent("TRANSCRIBE", null, text, messageId, null, errorMessage, status, done, total);
     }
+
+    /** 课程流水线阶段进度事件（B11 分流，后台推送；message = 完成时的课程链接路径 / 失败原因） */
+    public static ChatEvent course(Long messageId, String stage, String text, String extra) {
+        return new ChatEvent("COURSE", null, text, messageId, null, extra, stage, null, null);
+    }
 }

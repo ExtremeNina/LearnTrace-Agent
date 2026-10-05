@@ -15,8 +15,8 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * 对话视频上传实现：复用网课的格式白名单与大小口径；
- * 时长同步 ffprobe 探测（秒级拒绝，优于进转写任务后异步失败）
+ * 对话视频上传实现：复用网课的格式白名单；
+ * 时长仅探测不拒绝（≤30min 轻量转写 / >30min 课程流水线，分流在 TranscribeVideoTool）
  */
 @Slf4j
 @Service
@@ -33,7 +33,7 @@ public class ChatVideoServiceImpl implements ChatVideoService {
             throw new BusinessException("不支持的视频格式，仅支持 mp4 / mov / mkv / avi / webm / m4v");
         }
         if (file.getSize() > MAX_CHAT_VIDEO_SIZE) {
-            throw new BusinessException("视频大小不能超过 500MB");
+            throw new BusinessException("视频大小不能超过 1GB");
         }
 
         Path temp = null;
@@ -41,10 +41,6 @@ public class ChatVideoServiceImpl implements ChatVideoService {
             temp = Files.createTempFile("xj-chat-video-", "." + ext);
             file.transferTo(temp);
             int durationSec = MediaUtils.ffprobeDurationSec(temp);
-            if (durationSec > MAX_CHAT_VIDEO_SEC) {
-                throw new BusinessException(
-                        "视频时长超过 30 分钟（当前 " + durationSec / 60 + " 分钟），请到「学习台 → 学习资产 → 视频管理」上传完整网课");
-            }
             log.info("对话视频上传完成, 时长={}s, 大小={}B", durationSec, file.getSize());
             return new ChatVideoUploadVO().setTempPath(temp.toString()).setDurationSec(durationSec);
         } catch (BusinessException e) {
@@ -57,14 +53,6 @@ public class ChatVideoServiceImpl implements ChatVideoService {
             }
             log.error("对话视频保存失败", e);
             throw new BusinessException("视频上传失败，请稍后重试");
-        }
-    }
-
-    /** 校验逻辑独立出来便于单测（时长上限 / 提示文案） */
-    void assertDurationAllowed(int durationSec) {
-        if (durationSec > MAX_CHAT_VIDEO_SEC) {
-            throw new BusinessException(
-                    "视频时长超过 30 分钟（当前 " + durationSec / 60 + " 分钟），请到「学习台 → 学习资产 → 视频管理」上传完整网课");
         }
     }
 

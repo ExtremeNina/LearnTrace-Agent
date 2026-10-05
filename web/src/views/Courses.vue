@@ -1,17 +1,16 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { Plus, AlertCircle, Check, LoaderCircle, RotateCcw, Search, Trash2, X } from 'lucide-vue-next'
-import { listCourses, uploadCourse, retryCourse, batchDeleteCourses } from '../api/course'
-import { listModels } from '../api/model'
-import type { AiModelConfigInfo } from '../types/api'
+import { AlertCircle, Check, LoaderCircle, RotateCcw, Search, Trash2 } from 'lucide-vue-next'
+import { listCourses, retryCourse, batchDeleteCourses } from '../api/course'
 import type { CourseInfo } from '../api/course'
 import { SUBJECTS } from '../constants/subjects'
 
 /**
- * 网课记录列表（PRD §3.2）：视频库式竖向卡片网格 + 上传弹窗（含"您希望的内容"）。
+ * 网课记录列表（PRD §3.2）：视频库式竖向卡片网格。
  * 数据来自后端 /courses；支持标题关键词、状态、日期与学科筛选，处理中的课程定时轮询状态。
  * 支持批量管理模式：勾选多门网课一次性删除（处理中的不可选）。
+ * 上传入口已收敛到 AI 对话（B11 分流），本页只做管理：列表 / 进度 / 播放 / 删除 / 重试。
  */
 const router = useRouter()
 const courses = ref<CourseInfo[]>([])
@@ -26,19 +25,6 @@ const subjectFilter = ref('')
 const selectMode = ref(false)
 const selectedIds = ref<number[]>([])
 const batchDeleting = ref(false)
-
-// 上传弹窗
-const showUpload = ref(false)
-const uploadFile = ref<File | null>(null)
-const uploadTitle = ref('')
-const uploadSubject = ref('')
-const uploadExpectations = ref('')
-const uploading = ref(false)
-const uploadError = ref('')
-const fileInput = ref<HTMLInputElement | null>(null)
-/** 本次上传用于笔记生成的模型（null = 系统默认） */
-const uploadModelConfigId = ref<number | null>(null)
-const modelConfigs = ref<AiModelConfigInfo[]>([])
 
 let pollTimer: number | null = null
 
@@ -66,41 +52,6 @@ onUnmounted(() => {
     window.clearTimeout(pollTimer)
   }
 })
-
-function openUpload() {
-  uploadFile.value = null
-  uploadTitle.value = ''
-  uploadSubject.value = ''
-  uploadExpectations.value = ''
-  uploadError.value = ''
-  uploadModelConfigId.value = null
-  // 打开弹窗时拉取用户的模型配置清单（失败静默，下拉仅剩系统默认）
-  listModels().then((list) => (modelConfigs.value = list)).catch(() => (modelConfigs.value = []))
-  showUpload.value = true
-}
-
-function onFileChange(e: Event) {
-  const input = e.target as HTMLInputElement
-  uploadFile.value = input.files?.[0] ?? null
-}
-
-async function submitUpload() {
-  if (!uploadFile.value) {
-    uploadError.value = '请选择视频文件'
-    return
-  }
-  uploading.value = true
-  uploadError.value = ''
-  try {
-    await uploadCourse(uploadFile.value, uploadTitle.value, uploadExpectations.value, uploadSubject.value, uploadModelConfigId.value)
-    showUpload.value = false
-    await load()
-  } catch (e) {
-    uploadError.value = e instanceof Error ? e.message : '上传失败，请重试'
-  } finally {
-    uploading.value = false
-  }
-}
 
 async function retry(c: CourseInfo) {
   await retryCourse(c.id)
@@ -243,10 +194,6 @@ async function batchDelete() {
             <Trash2 v-else :size="16" />
             {{ selectMode ? '退出批量管理' : '批量管理' }}
           </button>
-          <button class="flex items-center gap-1.5 rounded-xl bg-primary px-3.5 py-2 text-[14px] text-white hover:opacity-90" @click="openUpload">
-            <Plus :size="16" />
-            上传视频
-          </button>
         </div>
       </div>
 
@@ -376,7 +323,7 @@ async function batchDelete() {
       <!-- 空状态 -->
       <div v-if="filtered.length === 0" class="mt-10 rounded-2xl border border-dashed border-line py-16 text-center">
         <p class="text-[14px] text-ink-2">没有符合条件的网课</p>
-        <p class="mt-1 text-[12px] text-ink-2">调整筛选条件，或点击右上角上传新视频</p>
+        <p class="mt-1 text-[12px] text-ink-2">调整筛选条件，或在 AI 对话中上传视频（发送后按意图转写或建课）</p>
       </div>
     </div>
 
@@ -401,86 +348,5 @@ async function batchDelete() {
         {{ batchDeleting ? '删除中…' : `删除所选（${selectedIds.length}）` }}
       </button>
     </div>
-
-    <!-- 上传弹窗 -->
-    <template v-if="showUpload">
-      <div class="fixed inset-0 z-40 bg-black/40" @click="showUpload = false" />
-      <div class="fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-line bg-surface p-6 shadow-xl">
-        <div class="flex items-center justify-between">
-          <h2 class="text-[16px] font-semibold text-ink">上传网课</h2>
-          <button class="flex h-8 w-8 items-center justify-center rounded-lg text-ink-2 hover:bg-line/60" @click="showUpload = false">
-            <X :size="16" />
-          </button>
-        </div>
-
-        <div class="mt-4 flex flex-col gap-4">
-          <div>
-            <label class="mb-1 block text-[12px] text-ink-2">视频文件（mp4 / mov / mkv / avi / webm，≤500MB）</label>
-            <button
-              class="flex w-full items-center justify-between rounded-xl border border-line px-3 py-2.5 text-left text-[13px] hover:border-primary"
-              @click="fileInput?.click()"
-            >
-              <span class="truncate" :class="uploadFile ? 'text-ink' : 'text-ink-2'">
-                {{ uploadFile ? uploadFile.name : '选择视频文件' }}
-              </span>
-            </button>
-            <input ref="fileInput" type="file" accept="video/mp4,video/quicktime,video/x-matroska,video/x-msvideo,video/webm" class="hidden" @change="onFileChange" />
-          </div>
-
-          <div>
-            <label class="mb-1 block text-[12px] text-ink-2">标题（可选，默认取文件名）</label>
-            <input
-              v-model="uploadTitle"
-              type="text"
-              class="w-full rounded-xl border border-line px-3 py-2 text-[13px] outline-none focus:border-primary"
-              placeholder="例如：计算机科学 第 4 讲"
-            />
-          </div>
-
-          <div>
-            <label class="mb-1 block text-[12px] text-ink-2">学科（可选）</label>
-            <select
-              v-model="uploadSubject"
-              class="w-full rounded-xl border border-line bg-surface px-3 py-2 text-[13px] text-ink outline-none focus:border-primary"
-            >
-              <option value="">不选择</option>
-              <option v-for="s in SUBJECTS" :key="s" :value="s">{{ s }}</option>
-            </select>
-          </div>
-
-          <div>
-            <label class="mb-1 block text-[12px] text-ink-2">您希望的内容（可选）</label>
-            <textarea
-              v-model="uploadExpectations"
-              rows="3"
-              class="w-full resize-none rounded-xl border border-line px-3 py-2 text-[13px] leading-6 outline-none focus:border-primary"
-              placeholder="告诉 AI 你希望这份笔记突出什么。例如：我不太理解 HashMap 的作用，笔记里请重点展开它的原理与使用场景"
-            />
-          </div>
-
-          <div>
-            <label class="mb-1 block text-[12px] text-ink-2">笔记生成模型（可选，默认系统模型）</label>
-            <select
-              v-model="uploadModelConfigId"
-              class="w-full rounded-xl border border-line bg-white px-3 py-2 text-[13px] outline-none focus:border-primary"
-            >
-              <option :value="null">系统默认</option>
-              <option v-for="m in modelConfigs" :key="m.id" :value="m.id">{{ m.name }}（{{ m.model }}）</option>
-            </select>
-          </div>
-
-          <p v-if="uploadError" class="text-[12px] text-red-600">{{ uploadError }}</p>
-
-          <button
-            class="rounded-xl bg-primary py-2.5 text-[14px] text-white hover:opacity-90 disabled:opacity-50"
-            :disabled="uploading || !uploadFile"
-            @click="submitUpload"
-          >
-            {{ uploading ? '上传中（视频较大时请耐心等待）…' : '上传并开始处理' }}
-          </button>
-          <p class="text-center text-[12px] text-ink-2">上传后自动进入流水线：转写语音、识别画面关键帧、生成 AI 笔记</p>
-        </div>
-      </div>
-    </template>
   </div>
 </template>

@@ -8,9 +8,7 @@ import {
 } from 'lucide-vue-next'
 import { getHomeOverview, heartbeatStudyTime } from '../api/home'
 import type { HomeOverview } from '../api/home'
-import { uploadCourse } from '../api/course'
 import { useAgentStore } from '../stores/agent'
-import { useToastStore } from '../stores/toast'
 import { renderMarkdown } from '../utils/markdown'
 import bannerWaterUrl from '../assets/banner-water.webp'
 
@@ -23,7 +21,6 @@ import bannerWaterUrl from '../assets/banner-water.webp'
 defineOptions({ name: 'HomeView' })
 
 const router = useRouter()
-const toast = useToastStore()
 const overview = ref<HomeOverview | null>(null)
 const loading = ref(true)
 const error = ref('')
@@ -116,12 +113,22 @@ function coverUrl(id: number): string | null {
   return overview.value?.coverUrls?.[String(id)] ?? null
 }
 
-// ---- 上传资料（整合进 AI 助手输入框加号；视频直传网课流水线；图片引导去对话拍照解题；PDF / PPT 随 B19 后置） ----
+// ---- 右栏 AI 助手：与 /chat 共享同一会话（agent store + agentSocket，流式同步） ----
+const agent = useAgentStore()
+const draft = ref('')
+const assistantBox = ref<HTMLDivElement | null>(null)
 const uploadInputRef = ref<HTMLInputElement | null>(null)
-const uploadingCourse = ref(false)
+const ASSISTANT_CHIPS = [
+  { icon: MessageSquareText, text: '解析这段内容' },
+  { icon: NotebookPen, text: '生成本章笔记' },
+  { icon: ListChecks, text: '出 5 道相关习题' },
+  { icon: Sparkles, text: '总结知识点' },
+]
 
+// ---- 上传资料（整合进 AI 助手输入框加号，统一走对话分流：
+// ≤30min 默认语音转写 / >30min 或「做成课程」走课程流水线，进度回流对话） ----
 function openUpload() {
-  if (uploadingCourse.value) {
+  if (agent.uploading) {
     return
   }
   uploadInputRef.value?.click()
@@ -132,54 +139,18 @@ function onUploadFile(e: Event) {
   const file = input.files?.[0]
   input.value = ''
   if (file) {
-    submitUpload(file)
+    agent.uploadPendingVideo(file)
   }
 }
-
-async function submitUpload(file: File) {
-  const isVideo = file.type.startsWith('video/') || /\.(mp4|mkv|mov|avi|webm|m4v)$/i.test(file.name)
-  if (!isVideo) {
-    if (file.type.startsWith('image/')) {
-      toast.push('图片解题请在对话中发送图片，已为你打开对话')
-      router.push('/chat')
-    } else {
-      toast.push('PDF / PPT 摄取即将上线（B19），当前支持视频与图片')
-    }
-    return
-  }
-  if (uploadingCourse.value) {
-    return
-  }
-  uploadingCourse.value = true
-  try {
-    await uploadCourse(file, file.name)
-    toast.push('视频已提交转写处理，可在「课程」查看进度')
-    overview.value = await getHomeOverview()
-  } catch (e) {
-    toast.push(e instanceof Error ? e.message : '上传失败', 'error')
-  } finally {
-    uploadingCourse.value = false
-  }
-}
-
-// ---- 右栏 AI 助手：与 /chat 共享同一会话（agent store + agentSocket，流式同步） ----
-const agent = useAgentStore()
-const draft = ref('')
-const assistantBox = ref<HTMLDivElement | null>(null)
-const ASSISTANT_CHIPS = [
-  { icon: MessageSquareText, text: '解析这段内容' },
-  { icon: NotebookPen, text: '生成本章笔记' },
-  { icon: ListChecks, text: '出 5 道相关习题' },
-  { icon: Sparkles, text: '总结知识点' },
-]
 
 function sendDraft() {
   const text = draft.value.trim()
-  if (!text || agent.streaming) {
+  if ((text === '' && !agent.pendingVideo) || agent.streaming || agent.uploading) {
     return
   }
+  const content = text || '请转写这个视频'
   draft.value = ''
-  agent.send(text)
+  agent.send(content)
 }
 
 // 新消息或流式输出推进时滚到底部
@@ -444,12 +415,12 @@ watch(
               </div>
               <div class="relative mt-3">
                 <div class="flex items-center rounded-full border border-blue-200 bg-white pl-2 pr-1 transition-colors focus-within:border-blue-400">
-                  <!-- 加号：整合上传资料（视频直传转写，图片引导去对话） -->
+                  <!-- 加号：整合上传资料（统一走对话分流：≤30min 默认转写 / >30min 或「做成课程」走课程流水线） -->
                   <button
                     class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-ink-2 transition-colors hover:bg-blue-50 hover:text-blue-500"
-                    :class="uploadingCourse ? 'animate-pulse text-blue-400' : ''"
-                    :title="uploadingCourse ? '正在上传…' : '上传资料（视频自动转写）'"
-                    :disabled="uploadingCourse"
+                    :class="agent.uploading ? 'animate-pulse text-blue-400' : ''"
+                    :title="agent.uploading ? '正在上传…' : '上传资料（≤30 分钟默认仅转写语音；>30 分钟自动按网课处理）'"
+                    :disabled="agent.uploading"
                     @click="openUpload"
                   >
                     <Plus :size="17" />
@@ -471,7 +442,7 @@ watch(
                 </div>
               </div>
               <p class="mt-2 text-[11px] text-gray-300">
-                {{ uploadingCourse ? '视频上传中，提交转写后可在「课程」查看进度…' : agent.streaming ? '正在回答…' : '基于你的学习数据，提供更精准的回答' }}
+                {{ agent.uploading ? '视频上传中（大视频需耐心等待）…' : agent.pendingVideo ? '视频已就绪，发送后按意图转写或建课' : agent.streaming ? '正在回答…' : '基于你的学习数据，提供更精准的回答' }}
               </p>
               <input ref="uploadInputRef" type="file" accept="video/mp4,video/x-matroska,video/quicktime,video/webm,.mp4,.mkv,.mov,.webm" class="hidden" @change="onUploadFile" />
             </section>

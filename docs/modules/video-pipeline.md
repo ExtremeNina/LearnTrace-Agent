@@ -6,7 +6,7 @@
 ## 边界（详细）
 
 **输入**
-- REST `POST /courses`（multipart 视频 ≤500MB，title / subject / expectations 可选）→ 落库 PENDING + 投递 MQ（对象负载 CourseProcessMessage：courseId + tempPath，Jackson 转换器序列化）
+- REST `POST /courses`（multipart 视频 ≤1GB，title / subject / expectations 可选）→ 落库 PENDING + 投递 MQ（对象负载 CourseProcessMessage：courseId + tempPath，Jackson 转换器序列化）；**页面均已移除上传按钮——AI 对话是唯一上传入口**（B11 分流：`CreateCourseFromVideoTool` → `CourseService.uploadFromLocal`，对话上传 >30min 或「做成课程」意图进入本流水线，各阶段经 ChatEvent.COURSE 回流对话气泡）
 - REST `POST /courses/{id}/retry`（重新投递，同款对象负载；仅 FAILED 可重试）
 - REST `DELETE /courses/{id}`、`POST /courses/batch-delete`（List<Long>；PROCESSING 中禁删，批量中不可删的自动跳过并返回计数文案）——删除连带：软删课程与其 AI 笔记、清理知识联系、移除转写向量（RagIngestService）、OSS 按前缀 `course/{id}/` 异步删除
 - REST `PUT /courses/{id}`（标题 / 学科 / 学习笔记 studyNote，仅更新提供字段）

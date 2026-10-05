@@ -1,28 +1,18 @@
 package com.xueji.agent.service.impl;
 
-import com.xueji.agent.exception.BusinessException;
+import com.xueji.agent.service.ChatVideoService;
 import org.junit.jupiter.api.Test;
 
-import static org.assertj.core.api.Assertions.assertThatCode;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * 对话视频上传时长校验单测（B11）：30 分钟上限与引导文案（去视频管理上传）
+ * 对话视频上传常量回归（B11 分流改造）：时长不再在上传层拒绝（分流移到 TranscribeVideoTool），
+ * 大小上限统一 1GB
  */
 class ChatVideoServiceImplTest {
 
-    private final ChatVideoServiceImpl service = new ChatVideoServiceImpl();
-
     @Test
-    void durationAtLimitShouldPass() {
-        assertThatCode(() -> service.assertDurationAllowed(30 * 60)).doesNotThrowAnyException();
-    }
-
-    @Test
-    void durationOverLimitShouldRejectWithGuideMessage() {
-        assertThatThrownBy(() -> service.assertDurationAllowed(30 * 60 + 1))
-                .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("视频时长超过 30 分钟")
-                .hasMessageContaining("视频管理");
+    void sizeLimitShouldBeOneGb() {
+        assertThat(ChatVideoService.MAX_CHAT_VIDEO_SIZE).isEqualTo(1024L * 1024 * 1024);
     }
 }

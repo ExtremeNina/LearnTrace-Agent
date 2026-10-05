@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { nextTick, reactive, ref, watch } from 'vue'
 import {
-  Check, Copy, Film, LoaderCircle, RefreshCw, Share2, Sparkles, ThumbsDown, ThumbsUp, Volume2,
+  Check, Copy, Film, LoaderCircle, MonitorPlay, RefreshCw, Share2, Sparkles, ThumbsDown, ThumbsUp, Volume2,
 } from 'lucide-vue-next'
 import { useAgentStore } from '../../stores/agent'
 import { renderMarkdown } from '../../utils/markdown'
@@ -92,6 +92,22 @@ function transcriptPreview(content: string): string {
   return head.slice(0, head.lastIndexOf('\n') > 0 ? head.lastIndexOf('\n') : limit)
 }
 
+/** 课程流水线阶段 → 进度文案（事件 text 优先，历史 payload 只有 stage 时按阶段映射） */
+function courseStageText(task: { stage: string; text?: string }): string {
+  if (task.text) {
+    return task.text
+  }
+  const labels: Record<string, string> = {
+    PENDING: '排队等待处理…',
+    UPLOADING: '正在上传视频到云存储…',
+    EXTRACTING: '正在提取音频与关键帧…',
+    TRANSCRIBING: '正在转写语音…',
+    ANALYZING: '正在识别画面关键帧…',
+    NOTE_GENERATING: '正在生成 AI 笔记…',
+  }
+  return labels[task.stage] ?? '正在处理…'
+}
+
 /** Markdown 渲染；chipTimestamps 时把 [mm:ss] 包成可点击胶囊（课程问答跳视频用） */
 function renderContent(content: string): string {
   const html = renderMarkdown(content)
@@ -176,6 +192,22 @@ function onPanelClick(e: MouseEvent) {
               >
                 {{ expandedTranscripts.has(msg.id ?? -1) ? '收起全文' : '查看全文' }}
               </button>
+            </template>
+            <!-- B11 分流：课程流水线进度 / 完成链接 -->
+            <div v-else-if="msg.courseTask?.status === 'processing'" class="flex items-center gap-2 py-1 text-[14px] text-ink-2">
+              <LoaderCircle :size="15" class="animate-spin text-primary" />
+              {{ courseStageText(msg.courseTask) }}
+            </div>
+            <template v-else-if="msg.courseTask?.status === 'done'">
+              <div class="text-[14px] leading-6 text-ink">{{ msg.courseTask.text }}</div>
+              <RouterLink
+                v-if="msg.courseTask.link"
+                :to="msg.courseTask.link"
+                class="mt-2 inline-flex items-center gap-1.5 rounded-full bg-primary-soft px-3.5 py-1.5 text-[13px] text-primary transition-colors hover:opacity-90"
+              >
+                <MonitorPlay :size="14" />
+                查看课程与 AI 笔记
+              </RouterLink>
             </template>
             <div v-else class="markdown-body" v-html="renderContent(msg.content)"></div>
 

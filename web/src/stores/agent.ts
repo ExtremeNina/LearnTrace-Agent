@@ -23,6 +23,8 @@ export interface ChatMsg {
   video?: { durationSec?: number }
   /** 视频转写状态（assistant 的 video_transcript 消息） */
   transcribe?: { status: 'processing' | 'done' | 'failed'; done: number; total: number }
+  /** 课程流水线任务状态（assistant 的 course_task 消息，B11 分流） */
+  courseTask?: { status: 'processing' | 'done' | 'failed'; stage: string; text?: string; link?: string }
 }
 
 export const useAgentStore = defineStore('agent', () => {
@@ -86,6 +88,13 @@ export const useAgentStore = defineStore('agent', () => {
           status: payload.status as 'processing' | 'done' | 'failed',
           done: typeof payload.done === 'number' ? payload.done : 0,
           total: typeof payload.total === 'number' ? payload.total : 0,
+        }
+      }
+      if (m.msgType === 'course_task' && payload?.status) {
+        item.courseTask = {
+          status: payload.status as 'processing' | 'done' | 'failed',
+          stage: typeof payload.stage === 'string' ? payload.stage : 'PENDING',
+          link: typeof payload.link === 'string' ? payload.link : undefined,
         }
       }
       if (role === 'user') {
@@ -315,6 +324,36 @@ export const useAgentStore = defineStore('agent', () => {
           target.content = msg.text
         }
         if (msg.status === 'done') {
+          loadConversations()
+        }
+        break
+      }
+      case 'COURSE': {
+        // B11 分流：课程流水线阶段进度事件（占位消息按 messageId 增改）
+        if (!msg.messageId) {
+          break
+        }
+        let target = messages.value.find((m) => m.id === msg.messageId)
+        if (!target) {
+          target = { id: msg.messageId, role: 'assistant', content: '' }
+          messages.value.push(target)
+        }
+        const stage = msg.status ?? 'PENDING'
+        const done = stage === 'COMPLETED'
+        const failed = stage === 'FAILED'
+        target.courseTask = {
+          status: done ? 'done' : failed ? 'failed' : 'processing',
+          stage,
+          text: msg.text,
+          link: done ? msg.message : undefined,
+        }
+        if (done && msg.text) {
+          target.content = msg.text + (msg.message ? `。点击链接查看课程与 AI 笔记：${msg.message}` : '')
+        }
+        if (failed && msg.text) {
+          target.content = msg.text
+        }
+        if (done) {
           loadConversations()
         }
         break

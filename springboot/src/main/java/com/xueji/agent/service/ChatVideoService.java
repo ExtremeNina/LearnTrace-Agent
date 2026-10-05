@@ -4,19 +4,16 @@ import com.xueji.agent.domain.vo.ChatVideoUploadVO;
 import org.springframework.web.multipart.MultipartFile;
 
 /**
- * 对话视频上传（B11）：本地暂存 + 同步 ffprobe 时长校验（超限秒级拒绝，不进转写任务）
+ * 对话视频上传（B11）：本地暂存 + 同步 ffprobe 时长探测（不做时长拒绝——
+ * ≤30 分钟走轻量转写，>30 分钟由 LLM 分流到课程流水线，见 TranscribeVideoTool）
  */
 public interface ChatVideoService {
 
-    /** 对话视频时长上限（秒）：30 分钟，超限引导去视频管理上传完整网课 */
-    int MAX_CHAT_VIDEO_SEC = 30 * 60;
-
-    /** 对话视频大小上限：与网课上传一致（500MB） */
-    long MAX_CHAT_VIDEO_SIZE = 500L * 1024 * 1024;
+    /** 对话视频大小上限：1GB（与网课上传一致，长视频普遍较大） */
+    long MAX_CHAT_VIDEO_SIZE = 1024L * 1024 * 1024;
 
     /**
-     * 上传对话视频：校验格式 / 大小 / 时长，保存到系统临时目录并返回元信息。
-     * 超过 30 分钟抛 BusinessException（提示去视频管理上传）
+     * 上传对话视频：校验格式 / 大小，保存到系统临时目录并返回元信息（时长由转写工具与课程分支各自校验）
      */
     ChatVideoUploadVO upload(MultipartFile file);
 }

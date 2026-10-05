@@ -269,7 +269,7 @@ function onSend() {
                   class="flex w-full items-center rounded-xl px-3 py-2 text-left text-[14px] text-ink hover:bg-panel"
                   @click="onPickVideo"
                 >
-                  视频<span class="ml-1 text-[12px] text-ink-2">≤30 分钟，仅转写语音</span>
+                  视频<span class="ml-1 text-[12px] text-ink-2">≤30 分钟默认仅转写语音；&gt;30 分钟自动按网课处理</span>
                 </button>
               </div>
               <div v-if="showAttachMenu" class="fixed inset-0 z-40" @click="showAttachMenu = false"></div>

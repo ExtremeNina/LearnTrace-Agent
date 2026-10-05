@@ -6,6 +6,9 @@ package com.xueji.agent.service;
  */
 public interface TranscriptionService {
 
+    /** 轻量转写的时长上限（秒）：30 分钟，超限应走课程流水线（CreateCourseFromVideoTool） */
+    int MAX_TRANSCRIBE_SEC = 30 * 60;
+
     /**
      * 提交转写任务：创建转写占位消息（msgType=video_transcript）并异步执行。
      * 完成后占位消息原地更新为转写全文并推送；失败同样更新消息并推送。
