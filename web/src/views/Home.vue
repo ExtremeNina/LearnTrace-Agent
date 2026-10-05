@@ -253,7 +253,7 @@ watch(
                       {{ (continueCourse.title || '课').slice(0, 1) }}
                     </span>
                   </div>
-                  <div class="flex min-w-0 flex-1 flex-col py-0.5">
+                  <div class="flex min-w-0 flex-1 flex-col justify-center py-0.5">
                     <p class="truncate text-[16px] font-semibold text-gray-900">{{ continueCourse.title }}</p>
                     <p class="mt-1 text-[12px] text-gray-400">
                       {{ continueCourse.subject || '网课' }} · 课程进度 {{ continueCourse.progressPct != null ? continueCourse.progressPct + '%' : '—' }}
@@ -264,7 +264,7 @@ watch(
                         :style="{ width: (continueCourse.progressPct ?? 0) + '%' }"
                       />
                     </div>
-                    <div class="mt-auto flex items-end justify-between pt-3">
+                    <div class="mt-4 flex items-end justify-between">
                       <p class="text-[12px] tabular-nums text-gray-500">
                         {{ formatTs(continueCourse.lastPositionSec) }} / {{ formatDuration(continueCourse.duration) }}
                       </p>
@@ -363,18 +363,18 @@ watch(
                   :to="`/courses/${course.id}`"
                   class="rounded-2xl border border-gray-100 bg-white p-4 transition-all hover:border-blue-200 hover:shadow-sm"
                 >
-                  <div class="h-16 w-24 overflow-hidden rounded-lg bg-gradient-to-br from-blue-400 to-blue-600">
+                  <div class="h-28 w-full overflow-hidden rounded-xl bg-gradient-to-br from-blue-400 to-blue-600">
                     <img
                       v-if="coverUrl(course.id)"
                       :src="coverUrl(course.id)!"
                       class="h-full w-full object-cover"
                       alt=""
                     />
-                    <span v-else class="flex h-full w-full items-center justify-center text-[16px] font-bold text-white">
+                    <span v-else class="flex h-full w-full items-center justify-center text-[20px] font-bold text-white">
                       {{ (course.title || '课').slice(0, 1) }}
                     </span>
                   </div>
-                  <p class="mt-2.5 truncate text-[14px] font-semibold text-gray-900">{{ course.title }}</p>
+                  <p class="mt-3 truncate text-[14px] font-semibold text-gray-900">{{ course.title }}</p>
                   <p class="mt-1.5 text-[11px] text-gray-400">上次学到: {{ formatTs(course.lastPositionSec) }}</p>
                   <div class="mt-2 flex items-center gap-2">
                     <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-100">
@@ -454,18 +454,18 @@ watch(
                   </ul>
                 </div>
                 <template v-for="(msg, i) in agent.messages" :key="i">
-                  <div v-if="msg.role === 'user'" class="ml-8 whitespace-pre-wrap rounded-2xl bg-blue-500 px-3 py-2 text-[13px] text-white">
+                  <div v-if="msg.role === 'user'" class="ml-auto w-fit max-w-[85%] whitespace-pre-wrap rounded-2xl bg-blue-500 px-3 py-2 text-[13px] text-white">
                     {{ msg.content }}
                   </div>
                   <div
                     v-else-if="msg.streaming && !msg.content"
-                    class="mr-4 rounded-2xl bg-blue-50/60 px-3 py-2.5 text-[12px] text-blue-400"
+                    class="mr-4 text-[12px] text-blue-400"
                   >
                     正在思考<span class="animate-pulse">…</span>
                   </div>
                   <div
                     v-else
-                    class="assistant-md mr-4 rounded-2xl bg-blue-50/60 px-3 py-2 text-[13px] leading-6 text-gray-700"
+                    class="assistant-md mr-4 text-[13px] leading-6 text-gray-700"
                     v-html="renderMarkdown(msg.content)"
                   ></div>
                 </template>
