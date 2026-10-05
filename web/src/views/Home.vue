@@ -193,7 +193,7 @@ watch(
 
 <template>
   <div class="h-full overflow-y-auto bg-gray-50">
-    <div class="mx-auto max-w-6xl px-4 py-5 md:px-6">
+    <div class="px-4 py-5 md:px-6">
       <!-- 加载 / 错误 -->
       <div v-if="loading" class="flex h-64 items-center justify-center text-[13px] text-ink-2">
         加载中…
@@ -203,40 +203,40 @@ watch(
       </div>
 
       <template v-else-if="overview">
-        <!-- 问候 banner：蓝调渐变 + 手写标语（右上）+ 远山装饰 -->
-        <div class="relative overflow-hidden rounded-2xl border border-blue-100 bg-gradient-to-r from-blue-200 via-indigo-100/70 to-white px-6 py-8 md:px-9 md:py-10">
-          <svg class="pointer-events-none absolute bottom-0 right-0 h-20 w-96 text-indigo-200/80" viewBox="0 0 384 80" fill="none" preserveAspectRatio="none">
-            <path d="M0 80 L70 26 L140 80 Z" fill="currentColor" opacity="0.45" />
-            <path d="M110 80 L192 10 L274 80 Z" fill="currentColor" opacity="0.65" />
-            <path d="M250 80 L318 32 L386 80 Z" fill="currentColor" opacity="0.4" />
-          </svg>
-          <p class="pointer-events-none absolute right-8 top-5 select-none text-[14px] font-medium italic text-indigo-400/90 md:right-10 md:top-6" style="transform: rotate(-4deg)">
-            学习，让你遇见更大的自己
-          </p>
-          <h1 class="relative mt-2 text-[24px] font-bold tracking-tight text-gray-900 md:text-[28px]">
-            {{ greeting }}，{{ overview.nickname || '同学' }} 👋
-          </h1>
-          <p class="relative mt-1.5 text-[13px] text-gray-500">今天也要加油学习呀！你的知识正在一点点积累～</p>
-        </div>
-
-        <div class="mt-5 grid grid-cols-1 items-start gap-5 lg:grid-cols-[1fr_320px]">
-          <!-- 左主列 -->
+        <div class="grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
+          <!-- 左主列：banner + 学习卡片（banner 与右栏 AI 助手同排） -->
           <div class="flex min-w-0 flex-col gap-5">
+            <!-- 问候 banner：蓝调渐变 + 手写标语（右上）+ 远山装饰 -->
+            <div class="relative overflow-hidden rounded-2xl border border-blue-100 bg-gradient-to-r from-blue-200 via-blue-100/70 to-white px-6 py-8 md:px-9 md:py-10">
+              <svg class="pointer-events-none absolute bottom-0 right-0 h-20 w-96 text-blue-200/80" viewBox="0 0 384 80" fill="none" preserveAspectRatio="none">
+                <path d="M0 80 L70 26 L140 80 Z" fill="currentColor" opacity="0.45" />
+                <path d="M110 80 L192 10 L274 80 Z" fill="currentColor" opacity="0.65" />
+                <path d="M250 80 L318 32 L386 80 Z" fill="currentColor" opacity="0.4" />
+              </svg>
+              <p class="pointer-events-none absolute right-8 top-5 select-none text-[14px] font-medium italic text-blue-400/90 md:right-10 md:top-6" style="transform: rotate(-4deg)">
+                学习，让你遇见更大的自己
+              </p>
+              <h1 class="relative mt-2 text-[24px] font-bold tracking-tight text-gray-900 md:text-[28px]">
+                {{ greeting }}，{{ overview.nickname || '同学' }} 👋
+              </h1>
+              <p class="relative mt-1.5 text-[13px] text-gray-500">今天也要加油学习呀！你的知识正在一点点积累～</p>
+            </div>
+
             <!-- 继续学习 -->
             <section v-if="continueCourse" class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
               <div class="flex items-center justify-between">
                 <h2 class="flex items-center gap-2 text-[15px] font-bold text-gray-900">
-                  <MonitorPlay :size="17" class="text-indigo-500" />
+                  <MonitorPlay :size="17" class="text-blue-500" />
                   继续学习
                 </h2>
-                <RouterLink to="/courses" class="flex items-center text-[12px] text-gray-400 transition-colors hover:text-indigo-500">
+                <RouterLink to="/courses" class="flex items-center text-[12px] text-gray-400 transition-colors hover:text-blue-500">
                   查看全部
                   <ChevronRight :size="13" />
                 </RouterLink>
               </div>
               <div class="mt-4 flex flex-col gap-4 lg:flex-row">
                 <div class="flex min-w-0 flex-1 items-center gap-4">
-                  <div class="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-500 text-[20px] font-bold text-white">
+                  <div class="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 text-[20px] font-bold text-white">
                     {{ (continueCourse.title || '课').slice(0, 1) }}
                   </div>
                   <div class="min-w-0 flex-1">
@@ -248,7 +248,7 @@ watch(
                       {{ formatTs(continueCourse.lastPositionSec) }} / {{ formatDuration(continueCourse.duration) }}
                     </p>
                     <button
-                      class="mt-2.5 flex items-center gap-1.5 rounded-full bg-gradient-to-r from-indigo-500 to-violet-500 px-4 py-2 text-[13px] font-medium text-white transition-opacity hover:opacity-90"
+                      class="mt-2.5 flex items-center gap-1.5 rounded-full bg-gradient-to-r from-blue-500 to-blue-600 px-4 py-2 text-[13px] font-medium text-white transition-opacity hover:opacity-90"
                       @click="router.push(`/courses/${continueCourse.id}`)"
                     >
                       <Play :size="14" />
@@ -257,7 +257,7 @@ watch(
                   </div>
                 </div>
                 <!-- 本课重点：来自该课最新 AI 笔记的知识点小节 -->
-                <div v-if="keyPoints.length > 0" class="rounded-2xl bg-indigo-50/70 p-4 lg:w-64 lg:shrink-0">
+                <div v-if="keyPoints.length > 0" class="rounded-2xl bg-blue-50/70 p-4 lg:w-64 lg:shrink-0">
                   <p class="text-[13px] font-semibold text-gray-900">本课重点</p>
                   <ul class="mt-2 flex flex-col gap-1.5">
                     <li
@@ -265,7 +265,7 @@ watch(
                       :key="point"
                       class="flex items-start gap-1.5 text-[12px] leading-5 text-gray-600"
                     >
-                      <span class="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-indigo-400" />
+                      <span class="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-blue-400" />
                       <span class="min-w-0">{{ point }}</span>
                     </li>
                   </ul>
@@ -277,25 +277,25 @@ watch(
             <section class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
               <div class="flex items-center justify-between">
                 <h2 class="flex items-center gap-2 text-[15px] font-bold text-gray-900">
-                  <GraduationCap :size="17" class="text-indigo-500" />
+                  <GraduationCap :size="17" class="text-blue-500" />
                   今日复习
                 </h2>
-                <RouterLink to="/review" class="flex items-center text-[12px] text-gray-400 transition-colors hover:text-indigo-500">
+                <RouterLink to="/review" class="flex items-center text-[12px] text-gray-400 transition-colors hover:text-blue-500">
                   查看全部
                   <ChevronRight :size="13" />
                 </RouterLink>
               </div>
               <div
                 v-if="dueCount > 0"
-                class="mt-4 flex flex-col gap-3 rounded-2xl bg-indigo-50/70 px-4 py-4 sm:flex-row sm:items-center"
+                class="mt-4 flex flex-col gap-3 rounded-2xl bg-blue-50/70 px-4 py-4 sm:flex-row sm:items-center"
               >
                 <div class="flex min-w-0 flex-1 items-start gap-3">
-                  <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white text-indigo-500 shadow-sm">
+                  <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white text-blue-500 shadow-sm">
                     <Target :size="20" />
                   </div>
                   <div class="min-w-0">
                     <p class="text-[14px] font-medium text-gray-900">
-                      发现 <span class="text-indigo-500">{{ dueCount }}</span> 个薄弱知识点
+                      发现 <span class="text-blue-500">{{ dueCount }}</span> 个薄弱知识点
                     </p>
                     <p class="mt-0.5 text-[12px] text-gray-500">建议花 {{ suggestMinutes }} 分钟进行复习</p>
                     <div v-if="overview.todayQueue.length > 0" class="mt-2 flex flex-wrap gap-1.5">
@@ -310,14 +310,14 @@ watch(
                   </div>
                 </div>
                 <button
-                  class="flex shrink-0 items-center gap-1.5 self-start rounded-full bg-gradient-to-r from-indigo-500 to-violet-500 px-5 py-2.5 text-[13px] font-medium text-white transition-opacity hover:opacity-90 sm:self-center"
+                  class="flex shrink-0 items-center gap-1.5 self-start rounded-full bg-gradient-to-r from-blue-500 to-blue-600 px-5 py-2.5 text-[13px] font-medium text-white transition-opacity hover:opacity-90 sm:self-center"
                   @click="router.push('/review')"
                 >
                   开始复习
                   <ChevronRight :size="14" />
                 </button>
               </div>
-              <div v-else class="mt-4 rounded-2xl border border-dashed border-indigo-100 px-4 py-6 text-center text-[13px] text-gray-400">
+              <div v-else class="mt-4 rounded-2xl border border-dashed border-blue-100 px-4 py-6 text-center text-[13px] text-gray-400">
                 今日复习已清空 ✅ 到题目 / 笔记详情页「加入复习」，卡片会按记忆曲线出现在这里
               </div>
             </section>
@@ -326,10 +326,10 @@ watch(
             <section class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
               <div class="flex items-center justify-between">
                 <h2 class="flex items-center gap-2 text-[15px] font-bold text-gray-900">
-                  <Clock :size="17" class="text-indigo-500" />
+                  <Clock :size="17" class="text-blue-500" />
                   最近学习
                 </h2>
-                <RouterLink to="/courses" class="flex items-center text-[12px] text-gray-400 transition-colors hover:text-indigo-500">
+                <RouterLink to="/courses" class="flex items-center text-[12px] text-gray-400 transition-colors hover:text-blue-500">
                   查看全部
                   <ChevronRight :size="13" />
                 </RouterLink>
@@ -339,10 +339,10 @@ watch(
                   v-for="course in overview.recentCourses"
                   :key="course.id"
                   :to="`/courses/${course.id}`"
-                  class="rounded-2xl border border-gray-100 p-4 transition-all hover:border-indigo-200 hover:shadow-sm"
+                  class="rounded-2xl border border-gray-100 p-4 transition-all hover:border-blue-200 hover:shadow-sm"
                 >
                   <div class="flex items-center gap-2.5">
-                    <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-400 to-violet-400 text-[13px] font-bold text-white">
+                    <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-blue-400 to-blue-600 text-[13px] font-bold text-white">
                       {{ (course.title || '课').slice(0, 1) }}
                     </div>
                     <p class="min-w-0 flex-1 truncate text-[13px] font-medium text-gray-900">{{ course.title }}</p>
@@ -351,7 +351,7 @@ watch(
                   <div class="mt-2 flex items-center gap-2">
                     <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-100">
                       <div
-                        class="h-full rounded-full bg-gradient-to-r from-indigo-400 to-violet-400"
+                        class="h-full rounded-full bg-gradient-to-r from-blue-400 to-blue-600"
                         :style="{ width: (course.progressPct ?? 0) + '%' }"
                       />
                     </div>
@@ -360,20 +360,20 @@ watch(
                   <p class="mt-2 text-[11px] text-gray-400/80">{{ relativeTime(course.lastStudiedAt || course.updatedAt) }}</p>
                 </RouterLink>
               </div>
-              <div v-else class="mt-4 rounded-2xl border border-dashed border-indigo-100 px-4 py-6 text-center text-[13px] text-gray-400">
+              <div v-else class="mt-4 rounded-2xl border border-dashed border-blue-100 px-4 py-6 text-center text-[13px] text-gray-400">
                 暂无学习记录，上传第一门网课吧
               </div>
             </section>
 
             <!-- 上传资料：视频直传流水线；图片去对话拍照解题；PDF / PPT 随 B19 -->
             <section
-              class="flex cursor-pointer flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-indigo-200 bg-white px-4 py-6 transition-colors hover:bg-indigo-50/40 sm:flex-row sm:px-8"
+              class="flex cursor-pointer flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-blue-200 bg-white px-4 py-6 transition-colors hover:bg-blue-50/40 sm:flex-row sm:px-8"
               :class="uploadingCourse ? 'pointer-events-none opacity-60' : ''"
               @click="openUpload"
               @dragover.prevent
               @drop.prevent="onDropFile"
             >
-              <div class="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-r from-indigo-500 to-violet-500 text-white">
+              <div class="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-r from-blue-500 to-blue-600 text-white">
                 <Plus :size="18" />
               </div>
               <div class="min-w-0 flex-1 text-center sm:text-left">
@@ -406,11 +406,11 @@ watch(
             <section class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
               <div class="flex items-center justify-between">
                 <h2 class="flex items-center gap-2 text-[15px] font-bold text-gray-900">
-                  <Sparkles :size="17" class="text-indigo-500" />
+                  <Sparkles :size="17" class="text-blue-500" />
                   AI 助手
                 </h2>
                 <button
-                  class="rounded-full border border-indigo-200 px-3 py-1 text-[12px] text-indigo-500 transition-colors hover:bg-indigo-50"
+                  class="rounded-full border border-blue-200 px-3 py-1 text-[12px] text-blue-500 transition-colors hover:bg-blue-50"
                   title="开新会话（原会话保留在 /chat 历史）"
                   @click="agent.startNew()"
                 >
@@ -429,12 +429,12 @@ watch(
                   </ul>
                 </div>
                 <template v-for="(msg, i) in agent.messages" :key="i">
-                  <div v-if="msg.role === 'user'" class="ml-8 whitespace-pre-wrap rounded-2xl bg-indigo-500 px-3 py-2 text-[13px] text-white">
+                  <div v-if="msg.role === 'user'" class="ml-8 whitespace-pre-wrap rounded-2xl bg-blue-500 px-3 py-2 text-[13px] text-white">
                     {{ msg.content }}
                   </div>
                   <div
                     v-else
-                    class="assistant-md mr-4 rounded-2xl bg-indigo-50/60 px-3 py-2 text-[13px] leading-6 text-gray-700"
+                    class="assistant-md mr-4 rounded-2xl bg-blue-50/60 px-3 py-2 text-[13px] leading-6 text-gray-700"
                     v-html="renderMarkdown(msg.content)"
                   ></div>
                 </template>
@@ -443,7 +443,7 @@ watch(
                 <button
                   v-for="chip in ASSISTANT_CHIPS"
                   :key="chip.text"
-                  class="flex items-center gap-1.5 rounded-xl bg-indigo-50/70 px-2.5 py-1.5 text-[11px] text-indigo-600 transition-colors hover:bg-indigo-100"
+                  class="flex items-center gap-1.5 rounded-xl bg-blue-50/70 px-2.5 py-1.5 text-[11px] text-blue-600 transition-colors hover:bg-blue-100"
                   @click="draft = chip.text"
                 >
                   <component :is="chip.icon" :size="13" />
@@ -453,12 +453,12 @@ watch(
               <div class="relative mt-3">
                 <input
                   v-model="draft"
-                  class="w-full rounded-full border border-indigo-200 bg-white py-2.5 pl-4 pr-12 text-[13px] text-ink outline-none focus:border-indigo-400"
+                  class="w-full rounded-full border border-blue-200 bg-white py-2.5 pl-4 pr-12 text-[13px] text-ink outline-none focus:border-blue-400"
                   placeholder="有问题尽管问我…"
                   @keydown.enter="sendDraft"
                 />
                 <button
-                  class="absolute right-1 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-gradient-to-r from-indigo-500 to-violet-500 text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+                  class="absolute right-1 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-gradient-to-r from-blue-500 to-blue-600 text-white transition-opacity hover:opacity-90 disabled:opacity-40"
                   :disabled="agent.streaming || !draft.trim()"
                   title="发送"
                   @click="sendDraft"
@@ -475,10 +475,10 @@ watch(
             <section class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
               <div class="flex items-center justify-between">
                 <h2 class="flex items-center gap-2 text-[15px] font-bold text-gray-900">
-                  <BookOpen :size="17" class="text-indigo-500" />
+                  <BookOpen :size="17" class="text-blue-500" />
                   学习数据
                 </h2>
-                <RouterLink to="/review" class="flex items-center text-[12px] text-gray-400 transition-colors hover:text-indigo-500">
+                <RouterLink to="/review" class="flex items-center text-[12px] text-gray-400 transition-colors hover:text-blue-500">
                   查看详情
                   <ChevronRight :size="13" />
                 </RouterLink>
@@ -516,7 +516,7 @@ watch(
             </section>
 
             <!-- 坚持学习 -->
-            <section class="relative overflow-hidden rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-100 to-blue-50 p-5">
+            <section class="relative overflow-hidden rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-100 to-blue-50 p-5">
               <p class="text-[15px] font-bold text-gray-900">坚持学习</p>
               <p class="mt-1 max-w-[60%] text-[12px] leading-5 text-gray-500">会让你看到不一样的风景</p>
               <span class="pointer-events-none absolute -bottom-3 right-3 select-none text-[56px] leading-none">🌱</span>

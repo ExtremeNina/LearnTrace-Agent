@@ -44,7 +44,7 @@ onMounted(async () => {
   <div class="flex h-full min-h-0 flex-col">
     <!-- 品牌区：logo 块 + 名称 -->
     <div class="flex items-center gap-2.5 px-5 pb-4 pt-5">
-      <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-500 text-white">
+      <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 text-white">
         <GraduationCap :size="18" />
       </div>
       <div>
@@ -60,7 +60,7 @@ onMounted(async () => {
         :key="item.path"
         :to="item.path"
         class="mb-1 flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-[14px] transition-colors"
-        :class="isActive(item.path) ? 'bg-indigo-50 font-medium text-indigo-600' : 'text-gray-600 hover:bg-indigo-50/60 hover:text-ink'"
+        :class="isActive(item.path) ? 'bg-blue-50 font-medium text-blue-600' : 'text-gray-600 hover:bg-blue-50/60 hover:text-ink'"
         @click="$emit('navigate')"
       >
         <component :is="item.icon" :size="18" />
@@ -71,14 +71,14 @@ onMounted(async () => {
       <div class="mt-4 border-t border-line pt-3">
         <p class="px-3.5 pb-1 text-[11px] text-gray-400">我的</p>
         <button
-          class="mb-1 flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-[14px] text-gray-600 transition-colors hover:bg-indigo-50/60 hover:text-ink"
+          class="mb-1 flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-[14px] text-gray-600 transition-colors hover:bg-blue-50/60 hover:text-ink"
           @click="$emit('open-track')"
         >
           <Clock :size="18" />
           学习轨迹
         </button>
         <button
-          class="flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-[14px] text-gray-600 transition-colors hover:bg-indigo-50/60 hover:text-ink"
+          class="flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-[14px] text-gray-600 transition-colors hover:bg-blue-50/60 hover:text-ink"
           @click="$emit('open-profile')"
         >
           <Settings :size="18" />
@@ -100,7 +100,7 @@ onMounted(async () => {
         </p>
         <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-gray-100">
           <div
-            class="h-full rounded-full bg-gradient-to-r from-emerald-400 to-indigo-400 transition-all"
+            class="h-full rounded-full bg-gradient-to-r from-emerald-400 to-blue-400 transition-all"
             :style="{ width: Math.min(100, Math.round((weekReviewed / 15) * 100)) + '%' }"
           />
         </div>
