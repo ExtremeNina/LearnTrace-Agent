@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { Clock, Home, MonitorPlay, NotebookPen, Camera, Settings, Sprout } from 'lucide-vue-next'
+import { Home, MonitorPlay, NotebookPen, Camera, Settings, Sprout } from 'lucide-vue-next'
 import { getHomeOverview } from '../../api/home'
 
 /**
  * 主导航侧栏（B25 导航重构，视觉对齐设计稿）：品牌区 + 内容导航 + 我的（学习轨迹 / 设置）+ 本周学习目标卡
  */
-const emit = defineEmits<{ navigate: []; 'open-profile': []; 'open-track': [] }>()
+const emit = defineEmits<{ navigate: []; 'open-profile': [] }>()
 
 const route = useRoute()
 
@@ -64,13 +64,6 @@ onMounted(async () => {
       <!-- 我的 -->
       <div class="mt-4 border-t border-line pt-3">
         <p class="px-3.5 pb-1 text-[11px] text-gray-400">我的</p>
-        <button
-          class="mb-1 flex w-full items-center gap-3 rounded-lg px-3.5 py-2.5 text-[14px] text-gray-600 transition-colors hover:bg-blue-50/60 hover:text-ink"
-          @click="$emit('open-track')"
-        >
-          <Clock :size="18" />
-          学习轨迹
-        </button>
         <button
           class="flex w-full items-center gap-3 rounded-lg px-3.5 py-2.5 text-[14px] text-gray-600 transition-colors hover:bg-blue-50/60 hover:text-ink"
           @click="$emit('open-profile')"

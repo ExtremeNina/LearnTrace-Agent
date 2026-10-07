@@ -35,7 +35,7 @@ public class CreateCourseFromVideoTool {
             + "当用户表达「做成课程 / 系统学习 / 要 AI 笔记」，或视频时长超过 30 分钟时调用。"
             + "创建成功后告知用户课程已开始处理，预计需要几分钟，进度会实时显示在对话中，完成后可点击链接查看")
     public String createCourseFromVideo(
-            @ToolParam(description = "课程标题；用户未指定时从视频文件名或视频主题拟定", required = false)
+            @ToolParam(description = "课程标题；仅当用户明确指定了标题时才填写。用户未指定时必须留空，系统会自动取视频文件名作为标题，不要自行拟定", required = false)
             String title,
             @ToolParam(description = "用户对笔记内容的特别要求（如「重点讲原理」「适合考前复习」），用户没有提出就留空", required = false)
             String expectations,
@@ -51,7 +51,7 @@ public class CreateCourseFromVideoTool {
             if (!Files.exists(video)) {
                 return "CREATE_FAILED: 视频临时文件已丢失，请重新上传";
             }
-            String courseTitle = title == null || title.isBlank() ? titleFromFileName(video) : title.trim();
+            String courseTitle = isMeaningfulTitle(title) ? title.trim() : titleFromFileName(video);
             Course course = courseService.uploadFromLocal(userId, video, courseTitle, expectations);
 
             // 课程任务占位消息：流水线各阶段按 message.courseId 定位并更新进度（事实源先落库）
@@ -76,6 +76,14 @@ public class CreateCourseFromVideoTool {
             log.error("课程创建工具执行失败, userId={}, conversationId={}", userId, conversationId, e);
             return "CREATE_FAILED: " + e.getMessage();
         }
+    }
+
+    /** 标题有效性：空 / LLM 模板化默认名（「课程视频（45 分钟）」之类）回退文件名（B26 反馈 bug） */
+    private boolean isMeaningfulTitle(String title) {
+        if (title == null || title.isBlank()) {
+            return false;
+        }
+        return !title.trim().matches("(课程视频|视频课程).*");
     }
 
     private String titleFromFileName(Path video) {

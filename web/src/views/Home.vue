@@ -243,7 +243,7 @@ watch(
                       </p>
                       <button
                         class="flex shrink-0 items-center gap-1.5 rounded-full bg-gradient-to-r from-blue-500 to-blue-600 px-4 py-2 text-[13px] font-medium text-white transition-opacity hover:opacity-90"
-                        @click="router.push(`/courses/${continueCourse.id}`)"
+                        @click="router.push(`/courses/${continueCourse.id}?t=${formatTs(continueCourse.lastPositionSec)}`)"
                       >
                         <Play :size="14" />
                         继续学习
@@ -282,7 +282,7 @@ watch(
               </div>
               <div
                 v-if="dueCount > 0"
-                class="mt-4 flex flex-col gap-3 rounded-lg bg-blue-50/70 px-4 py-5 sm:flex-row sm:items-center"
+                class="mt-4 flex flex-col gap-3 rounded-lg border border-transparent bg-blue-50/70 px-4 py-5 transition-all hover:border-blue-200 hover:bg-white hover:shadow-sm sm:flex-row sm:items-center"
               >
                 <div class="flex min-w-0 flex-1 items-start gap-3">
                   <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white text-blue-500 shadow-sm">

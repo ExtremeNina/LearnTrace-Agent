@@ -83,8 +83,10 @@ class CoursePipelineFFmpegTest {
 
         assertThat(frames).isNotEmpty();
         assertThat(frames.size()).isEqualTo(secs.size());
-        // 多场景视频应捕获到 2 个以上切换点（含第 0 帧）
+        // 多场景视频应捕获到 2 个以上切换点（跳过片头 2 秒后）
         assertThat(secs.size()).isGreaterThanOrEqualTo(2);
+        // 全部帧都在片头 2 秒之后
+        assertThat(secs.get(0)).isGreaterThanOrEqualTo(2);
         // 时间戳严格递增
         for (int i = 1; i < secs.size(); i++) {
             assertThat(secs.get(i)).isGreaterThan(secs.get(i - 1));
@@ -101,9 +103,9 @@ class CoursePipelineFFmpegTest {
         List<Integer> secs = new ArrayList<>();
         List<Path> frames = service.extractFrames(statik, secs, durationOf(statik));
 
-        // 静态视频无场景切换：回退采样后至少保底 1 帧（第 0 帧）
+        // 静态视频无场景切换：回退采样后至少保底 1 帧（片头 2 秒之后）
         assertThat(frames).isNotEmpty();
-        assertThat(secs.get(0)).isZero();
+        assertThat(secs.get(0)).isGreaterThanOrEqualTo(2);
     }
 
     @Test

@@ -317,28 +317,35 @@ public class CoursePipelineService {
 
     // ---- FFmpeg ----
 
+    /** 封面 / 关键帧起始偏移：片头前 2 秒通常无有效内容（黑屏 / 片头动画），全部跳过（B26 反馈） */
+    static final int FRAME_START_SEC = 2;
+
     /**
-     * 抽关键帧：优先场景切换（含第 0 帧），不足时回退为按帧号采样（每 60s 一帧），
-     * 仍无帧则保底抽取第 0 帧；相邻帧间隔小于 5s 的去重；总数上限 60
+     * 抽关键帧：优先场景切换（跳过片头 2 秒），不足时回退为按帧号采样（每 60s 一帧），
+     * 仍无帧则保底抽取第 2 秒帧；相邻帧间隔小于 5s 的去重；总数上限 60
      */
     List<Path> extractFrames(Path video, List<Integer> frameSecs, int durationSec) throws IOException, InterruptedException {
         Path dir = Files.createTempDirectory("xj-frames-");
         List<Path> files = new ArrayList<>();
         boolean scene = tryExtractFrames(video, dir,
-                "select='eq(n,0)+gt(scene,0.3)',showinfo", MAX_FRAMES, files, frameSecs);
+                "select='gte(t," + FRAME_START_SEC + ")*gt(scene,0.3)',showinfo", MAX_FRAMES, files, frameSecs);
         if (!scene || files.size() < 2) {
             files.clear();
             frameSecs.clear();
-            // 每约 60s 一帧（按 25fps 折算 1500 帧）；低帧率视频至少能命中第 0 帧
-            tryExtractFrames(video, dir, "select='eq(n,0)+not(mod(n,1500))',showinfo", 30, files, frameSecs);
+            // 回退采样：步进按视频时长自适应（目标约 30 帧均匀采样），短视频也能采到帧；
+            // 跳过片头 2 秒
+            int stepFrames = Math.max(75, durationSec * 25 / 30);
+            tryExtractFrames(video, dir, "select='gte(t," + FRAME_START_SEC + ")*not(mod(n," + stepFrames
+                    + "))',showinfo", 30, files, frameSecs);
         }
         if (files.isEmpty()) {
-            // 保底：第 0 帧
+            // 保底：第 2 秒帧
             Path first = dir.resolve("frame_000.jpg");
-            MediaUtils.run("ffmpeg", "-y", "-i", video.toString(), "-frames:v", "1", first.toString());
+            MediaUtils.run("ffmpeg", "-y", "-ss", String.valueOf(FRAME_START_SEC), "-i", video.toString(),
+                    "-frames:v", "1", first.toString());
             if (Files.exists(first)) {
                 files.add(first);
-                frameSecs.add(0);
+                frameSecs.add(FRAME_START_SEC);
             }
         }
         // 去重：相邻帧间隔 < 5s 丢弃后面的
@@ -361,6 +368,12 @@ public class CoursePipelineService {
 
     private boolean tryExtractFrames(Path video, Path dir, String vf, int maxFrames,
                                      List<Path> files, List<Integer> frameSecs) throws IOException, InterruptedException {
+        // 清理目录内旧帧（回退重采时避免残留文件与 pts 数错位）
+        try (DirectoryStream<Path> stale = Files.newDirectoryStream(dir, "*.jpg")) {
+            for (Path old : stale) {
+                Files.delete(old);
+            }
+        }
         Path outPattern = dir.resolve("frame_%03d.jpg");
         // 新版 FFmpeg 已移除 -vsync，统一使用 -fps_mode vfr
         Process p = new ProcessBuilder("ffmpeg", "-y", "-i", video.toString(),

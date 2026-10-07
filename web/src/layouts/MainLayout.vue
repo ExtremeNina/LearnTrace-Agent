@@ -188,9 +188,9 @@ async function remindReview() {
       </aside>
     </Transition>
 
-    <!-- 右列：顶栏 + 主区 -->
+    <!-- 右列：顶栏（仅首页展示） + 主区 -->
     <div class="flex min-w-0 flex-1 flex-col">
-      <header class="flex h-12 shrink-0 items-center gap-2 border-b border-gray-200 bg-panel px-3 md:h-14 md:px-5">
+      <header v-if="route.path === '/'" class="flex h-12 shrink-0 items-center gap-2 border-b border-gray-200 bg-panel px-3 md:h-14 md:px-5">
         <button
           class="flex h-8 w-8 items-center justify-center rounded-lg text-ink-2 hover:bg-line/60 hover:text-ink md:hidden"
           title="菜单"
