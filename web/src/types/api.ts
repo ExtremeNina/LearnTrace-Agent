@@ -16,15 +16,6 @@ export interface TokenInfo {
 }
 
 /** 当前登录用户（对应后端 domain/entity/User） */
-/** 学习者画像（B26 阶段 3：多角色评审与笔记生成的难度适配输入） */
-export interface UserProfileInfo {
-  userId: number
-  gradeLevel?: string | null
-  level?: string | null
-  goal?: string | null
-  note?: string | null
-}
-
 export interface UserInfo {
   id: number
   username: string

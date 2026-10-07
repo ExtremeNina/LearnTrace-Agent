@@ -236,6 +236,22 @@ public final class AgentPrompts {
             """;
 
     /**
+     * 学习者画像注入块（B26 反馈：画像改对话采集）：有画像 → 个性化参考；未填写 → 问询采集指引
+     */
+    public static String profileContext(String profileText, boolean present) {
+        if (present) {
+            return "\n\n学习者画像（个性化参考）：" + profileText
+                    + "\n回答与讲解时按画像适配深度与讲法，无需复述画像。";
+        }
+        return "\n\n学习者画像采集（当前未填写）：\n"
+                + "- 用户请求转写视频 / 出题 / 讲解课程等消费学习内容的操作时，先用一两句自然询问基本情况"
+                + "（学段、学习目标、偏好的讲解方式；一次不超过两问），得到回答后调用 saveLearningProfile 工具存档，"
+                + "然后继续执行原请求\n"
+                + "- 闲聊、答疑、查看资料等场景不问询；用户表示不想填时跳过，不再追问\n"
+                + "- 存档时只填用户明确说过的信息，没问到的传空字符串";
+    }
+
+    /**
      * QuizAgent 出题（B26 阶段 4，agent-as-tool 委派）：基于内部资料（ContentDocument 知识点 + 转写样本）出练习题，
      * 每题标注依据时间戳；练习评审（阶段 3 PRACTICE 角色）不通过时带意见重出
      */

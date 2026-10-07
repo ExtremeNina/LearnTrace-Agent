@@ -2,12 +2,13 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-  ChevronRight, Clock, Film, GraduationCap,
+  ChevronRight, Clock, Film, GraduationCap, History,
   LoaderCircle, MonitorPlay, Play, Plus,
-  Send, Sparkles, Target,
+  Send, Sparkles, Target, X,
 } from 'lucide-vue-next'
 import { getHomeOverview, heartbeatStudyTime } from '../api/home'
 import type { HomeOverview } from '../api/home'
+import ModelPicker from '../components/chat/ModelPicker.vue'
 import { useAgentStore } from '../stores/agent'
 import { renderMarkdown } from '../utils/markdown'
 import bannerWaterUrl from '../assets/banner-water.webp'
@@ -118,6 +119,18 @@ const agent = useAgentStore()
 const draft = ref('')
 const assistantBox = ref<HTMLDivElement | null>(null)
 const uploadInputRef = ref<HTMLInputElement | null>(null)
+// 历史对话弹窗（B26 反馈：对话模块直接可见的历史入口）
+const showHistory = ref(false)
+
+async function openHistory() {
+  showHistory.value = true
+  await agent.loadConversations()
+}
+
+async function pickConversation(id: number) {
+  showHistory.value = false
+  await agent.openConversation(id)
+}
 
 // ---- 上传资料（整合进 AI 助手输入框加号，统一走对话分流：
 // ≤30min 默认语音转写 / >30min 或「做成课程」走课程流水线，进度回流对话） ----
@@ -360,13 +373,22 @@ watch(
                   <Sparkles :size="17" class="text-blue-500" />
                   AI 助手
                 </h2>
-                <button
-                  class="rounded-full border border-blue-200 px-3 py-1 text-[12px] text-blue-500 transition-colors hover:bg-blue-50"
-                  title="开新会话（原会话保留在 /chat 历史）"
-                  @click="agent.startNew()"
-                >
-                  新对话
-                </button>
+                <div class="flex items-center gap-2">
+                  <button
+                    class="flex h-7 w-7 items-center justify-center rounded-full border border-blue-200 text-blue-500 transition-colors hover:bg-blue-50"
+                    title="查看历史对话"
+                    @click="openHistory"
+                  >
+                    <History :size="14" />
+                  </button>
+                  <button
+                    class="rounded-full border border-blue-200 px-3 py-1 text-[12px] text-blue-500 transition-colors hover:bg-blue-50"
+                    title="开新会话（原会话保留在 /chat 历史）"
+                    @click="agent.startNew()"
+                  >
+                    新对话
+                  </button>
+                </div>
               </div>
               <div ref="assistantBox" class="mt-3 flex min-h-44 flex-1 flex-col gap-2.5 overflow-y-auto">
                 <div v-if="agent.messages.length === 0" class="text-[12px] leading-5 text-gray-500">
@@ -423,7 +445,11 @@ watch(
                   ></div>
                 </template>
               </div>
-              <div class="relative mt-3">
+              <!-- 模型切换器（与对话页一致，点击切换 / 管理模型） -->
+              <div class="mt-3 flex items-center">
+                <ModelPicker tone="blue" />
+              </div>
+              <div class="relative mt-2">
                 <div class="flex items-center rounded-full border border-blue-200 bg-white pl-2 pr-1 transition-colors focus-within:border-blue-400">
                   <!-- 加号：整合上传资料（统一走对话分流：≤30min 默认转写 / >30min 或「做成课程」走课程流水线） -->
                   <button
@@ -451,10 +477,44 @@ watch(
                   </button>
                 </div>
               </div>
-              <p class="mt-2 text-[11px] text-gray-300">
+              <p class="mt-2 text-[11px] text-gray-500">
                 {{ agent.uploading ? '视频上传中（大视频需耐心等待）…' : agent.pendingVideo ? '视频已就绪，发送后按意图转写或建课' : agent.streaming ? '正在回答…' : '基于你的学习数据，提供更精准的回答' }}
               </p>
               <input ref="uploadInputRef" type="file" accept="video/mp4,video/x-matroska,video/quicktime,video/webm,.mp4,.mkv,.mov,.webm" class="hidden" @change="onUploadFile" />
+
+              <!-- 历史对话弹窗 -->
+              <div
+                v-if="showHistory"
+                class="fixed inset-0 z-50 flex items-center justify-center bg-ink/25 px-4 backdrop-blur-sm"
+                @click.self="showHistory = false"
+              >
+                <div class="max-h-[70vh] w-full max-w-md overflow-y-auto rounded-3xl border border-line bg-surface p-5 shadow-xl">
+                  <div class="flex items-center justify-between">
+                    <h3 class="text-[15px] font-semibold text-ink">历史对话</h3>
+                    <button
+                      class="flex h-8 w-8 items-center justify-center rounded-lg text-ink-2 hover:bg-line/60 hover:text-ink"
+                      title="关闭"
+                      @click="showHistory = false"
+                    >
+                      <X :size="15" />
+                    </button>
+                  </div>
+                  <p v-if="agent.conversations.length === 0" class="py-6 text-center text-[13px] text-ink-2">
+                    暂无会话，发一条消息开始吧
+                  </p>
+                  <div class="mt-3 flex flex-col gap-1">
+                    <button
+                      v-for="c in agent.conversations"
+                      :key="c.id"
+                      class="flex w-full items-center justify-between gap-3 rounded-xl px-3.5 py-2.5 text-left text-[14px] text-ink transition-colors hover:bg-panel"
+                      @click="pickConversation(c.id)"
+                    >
+                      <span class="truncate">{{ c.title }}</span>
+                      <span class="shrink-0 text-[11px] text-ink-2">{{ relativeTime(c.updatedAt ?? c.createdAt) }}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
             </section>
         </div>
       </template>

@@ -216,11 +216,23 @@ export const useAgentStore = defineStore('agent', () => {
     try {
       const info = await uploadChatVideo(file)
       pendingVideo.value = { tempPath: info.tempPath, durationSec: info.durationSec, name: file.name }
+      pushUploadNotice(file.name, info.durationSec)
     } catch (e) {
       error.value = e instanceof Error ? e.message : '视频上传失败'
     } finally {
       uploading.value = false
     }
+  }
+
+  /** 上传成功 → 消息流插入本地提示气泡（不落库，切换会话自然清除；B26 反馈：上传反馈进气泡） */
+  function pushUploadNotice(name: string, durationSec: number) {
+    const m = Math.floor(durationSec / 60)
+    const s = durationSec % 60
+    messages.value.push({
+      role: 'assistant',
+      content: `**视频《${name}》（${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}）已上传完成**\n`
+        + `发送后将按你的意图处理：默认转写语音；>30 分钟或「做成课程」自动走网课流水线。`,
+    })
   }
 
   function clearPendingVideo() {
@@ -389,6 +401,7 @@ export const useAgentStore = defineStore('agent', () => {
     clearPendingImage,
     uploadPendingVideo,
     clearPendingVideo,
+    pushUploadNotice,
     send,
     stop,
     handleEvent,

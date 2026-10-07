@@ -6,6 +6,7 @@ import com.xueji.agent.ai.tool.CreateCourseFromVideoTool;
 import com.xueji.agent.ai.tool.ContentSearchTool;
 import com.xueji.agent.ai.tool.CreateNoteTool;
 import com.xueji.agent.ai.tool.QuizGenerateTool;
+import com.xueji.agent.ai.tool.SaveProfileTool;
 import com.xueji.agent.ai.tool.TranscribeVideoTool;
 import com.xueji.agent.ai.tool.LearningStatusTool;
 import com.xueji.agent.ai.tool.OcrTool;
@@ -161,8 +162,9 @@ public class SpringAIConfig {
      * 对话视频转写提交工具（B11）：异步提交任务，秒回不阻塞回合
      */
     @Bean
-    public TranscribeVideoTool transcribeVideoTool(com.xueji.agent.service.TranscriptionService transcriptionService) {
-        return new TranscribeVideoTool(transcriptionService);
+    public TranscribeVideoTool transcribeVideoTool(com.xueji.agent.service.TranscriptionService transcriptionService,
+                                                   com.xueji.agent.mapper.MessageMapper messageMapper) {
+        return new TranscribeVideoTool(transcriptionService, messageMapper);
     }
 
     /**
@@ -188,6 +190,14 @@ public class SpringAIConfig {
     @Bean
     public QuizGenerateTool quizGenerateTool(com.xueji.agent.ai.QuizAgentService quizAgentService) {
         return new QuizGenerateTool(quizAgentService);
+    }
+
+    /**
+     * 学习者画像存档工具（B26 反馈：画像改对话采集）：LLM 问询后由模型调用落库
+     */
+    @Bean
+    public SaveProfileTool saveProfileTool(com.xueji.agent.service.ProfileService profileService) {
+        return new SaveProfileTool(profileService);
     }
 
     /**
@@ -264,12 +274,13 @@ public class SpringAIConfig {
                                  CreateNoteTool createNoteTool,
                                  CreateCourseFromVideoTool createCourseFromVideoTool,
                                  ContentSearchTool contentSearchTool,
-                                 QuizGenerateTool quizGenerateTool) {
+                                 QuizGenerateTool quizGenerateTool,
+                                 SaveProfileTool saveProfileTool) {
         return chatClientBuilder
                 .defaultAdvisors(messageChatMemoryAdvisor, loggerAdvisor)
                 .defaultTools(questionSaveTool, ragSearchTool, learningStatusTool,
                         transcribeVideoTool, createNoteTool, createCourseFromVideoTool,
-                        contentSearchTool, quizGenerateTool)
+                        contentSearchTool, quizGenerateTool, saveProfileTool)
                 .build();
     }
 

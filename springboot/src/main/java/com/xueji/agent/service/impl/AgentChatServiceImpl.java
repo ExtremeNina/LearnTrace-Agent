@@ -53,6 +53,9 @@ public class AgentChatServiceImpl implements AgentChatService {
     @Resource
     private OcrTextFormatter ocrTextFormatter;
 
+    @Resource
+    private com.xueji.agent.service.ProfileService profileService;
+
     @Override
     public Flux<ChatEvent> chat(Long userId, Long conversationId, String content, String imageUrl,
                                 String videoTempPath, Integer videoDurationSec) {
@@ -92,9 +95,11 @@ public class AgentChatServiceImpl implements AgentChatService {
                 userMessage.setPayload(payload.toString());
             }
             if (hasVideo) {
-                // 视频元信息入 payload（前端历史渲染展示）；OSS 地址由转写任务上传后回填
+                // 视频元信息入 payload（前端历史渲染展示；videoTempPath 供后续回合转写工具回查，
+                // 画像问询等打断场景下 ToolContext 只在首个回合有效）；OSS 地址由转写任务上传后回填
                 cn.hutool.json.JSONObject payload = cn.hutool.json.JSONUtil.createObj()
-                        .set("videoDurationSec", videoDurationSec);
+                        .set("videoDurationSec", videoDurationSec)
+                        .set("videoTempPath", videoTempPath);
                 userMessage.setPayload(payload.toString());
             }
             messageMapper.insert(userMessage);
@@ -121,9 +126,13 @@ public class AgentChatServiceImpl implements AgentChatService {
             StringBuilder answer = new StringBuilder();
             long[] savedMessageId = new long[1];
 
-            // 按场景选择系统提示词：带视频走转写流程，带图走解题流程，否则用基础人设
-            String systemPrompt = hasVideo ? AgentPrompts.VIDEO_PROMPT
+            // 按场景选择系统提示词：带视频走转写流程，带图走解题流程，否则用基础人设；
+            // 末尾注入学习者画像块（有画像个性化回答，未填写附问询采集指引，B26 反馈）
+            String basePrompt = hasVideo ? AgentPrompts.VIDEO_PROMPT
                     : hasImage ? AgentPrompts.QUESTION_PROMPT : AgentPrompts.BASE_PROMPT;
+            com.xueji.agent.domain.entity.UserProfile learnerProfile = profileService.getByUser(userId);
+            String systemPrompt = basePrompt + AgentPrompts.profileContext(
+                    com.xueji.agent.ai.ContentReviewService.profileText(learnerProfile), learnerProfile != null);
 
             // 按用户模块偏好解析当前对话模型（默认回退系统 DeepSeek）
         ChatClient chatClient = aiModelService.resolve(userId, AiModelService.MODULE_CHAT, ChatClientFactory.Variant.CHAT);
