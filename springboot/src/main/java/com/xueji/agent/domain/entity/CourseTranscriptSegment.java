@@ -29,6 +29,12 @@ public class CourseTranscriptSegment {
 
     private String text;
 
+    /** 修正后文本（转写修正管线自动应用：LLM 候选 + 佐证命中；NULL = 无修正，下游读修正版） */
+    private String textCorrected;
+
+    /** 修正元数据 JSON：original/suggestion/evidence/status(APPLIED|SUGGESTED)/source */
+    private String correctionMeta;
+
     private Integer sort;
 
     private LocalDateTime createdAt;

@@ -188,7 +188,7 @@ public class CourseServiceImpl implements CourseService {
         if (!CourseStatus.FAILED.equals(course.getStatus())) {
             throw new BusinessException("仅处理失败的网课可以重试");
         }
-        course.setStatus(CourseStatus.PENDING).setErrorMsg(null).setUpdatedAt(LocalDateTime.now());
+        course.setStatus(CourseStatus.PENDING).setStage(null).setErrorMsg(null).setUpdatedAt(LocalDateTime.now());
         courseMapper.updateById(course);
         // 重试时本地临时文件可能已清理，仅重发消息由流水线校验（文件丢失会再次置为 FAILED 并提示重新上传）
         CourseProcessMessage message = new CourseProcessMessage();

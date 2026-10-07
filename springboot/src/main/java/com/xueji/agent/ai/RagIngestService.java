@@ -321,13 +321,14 @@ public class RagIngestService {
         return chunks;
     }
 
-    /** 转写分段向量化文本：课程名 + 起止时间戳 + 原文 */
+    /** 转写分段向量化文本：课程名 + 起止时间戳 + 文本（修正版优先，B26 阶段 1） */
     public static String buildTranscriptText(CourseTranscriptSegment segment, String courseTitle) {
-        if (segment.getText() == null || segment.getText().isBlank()) {
+        String text = segment.getTextCorrected() != null ? segment.getTextCorrected() : segment.getText();
+        if (text == null || text.isBlank()) {
             return "";
         }
         return "网课《" + courseTitle + "》[" + mmss(segment.getStartSec()) + "-" + mmss(segment.getEndSec()) + "]\n"
-                + segment.getText();
+                + text;
     }
 
     static String mmss(int sec) {

@@ -1,7 +1,9 @@
 package com.xueji.agent.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.xueji.agent.ai.CorrectionCandidate;
 import com.xueji.agent.ai.RagIngestService;
+import com.xueji.agent.ai.TranscriptReviewService;
 import com.xueji.agent.ai.tool.AsrSegment;
 import com.xueji.agent.ai.NoteGenerationService;
 import com.xueji.agent.ai.tool.OcrTool;
@@ -77,6 +79,12 @@ public class CoursePipelineService {
 
     @Resource
     private RagIngestService ragIngestService;
+
+    @Resource
+    private TranscriptReviewService transcriptReviewService;
+
+    @Resource
+    private com.xueji.agent.service.TranscriptCorrectionService transcriptCorrectionService;
 
     @Resource
     private MessageMapper messageMapper;
@@ -193,15 +201,18 @@ public class CoursePipelineService {
             transcriptMapper.delete(new QueryWrapper<CourseTranscriptSegment>().eq("course_id", courseId));
             frameMapper.delete(new QueryWrapper<CourseFrame>().eq("course_id", courseId));
             int transcriptChars = 0;
+            List<CourseTranscriptSegment> transcriptRows = new ArrayList<>();
             if (asrSegments != null) {
                 int sort = 0;
                 for (AsrSegment segment : asrSegments) {
-                    transcriptMapper.insert(new CourseTranscriptSegment()
+                    CourseTranscriptSegment row = new CourseTranscriptSegment()
                             .setCourseId(courseId)
                             .setStartSec(segment.getBeginMs() / 1000)
                             .setEndSec(segment.getEndMs() / 1000)
                             .setText(segment.getText())
-                            .setSort(sort++));
+                            .setSort(sort++);
+                    transcriptMapper.insert(row);
+                    transcriptRows.add(row);
                     transcriptChars += segment.getText().length();
                 }
             }
@@ -209,6 +220,16 @@ public class CoursePipelineService {
                 if (frame.getOssKey() != null) {
                     frameMapper.insert(frame);
                 }
+            }
+
+            // 5.5 转写修正管线（B26 阶段 1）：LLM 候选 + 帧 OCR 交叉确认（失败静默，保留原始转写继续）
+            try {
+                List<CorrectionCandidate> candidates = transcriptReviewService.review(transcriptRows);
+                if (!candidates.isEmpty()) {
+                    transcriptCorrectionService.apply(course, transcriptRows, candidates, frames);
+                }
+            } catch (Exception e) {
+                log.warn("转写修正管线执行失败（保留原始转写继续）, courseId={}", courseId, e);
             }
 
             // 6. 收尾状态
@@ -226,33 +247,37 @@ public class CoursePipelineService {
                 return;
             }
 
-            // 7. 流水线末端 LLM：生成 AI 笔记并入库（失败不影响课程状态，仅记录原因）
+            // 7. 流水线末端 LLM：生成 AI 笔记并入库（失败/质检未通过不影响课程状态，仅记录原因）
             pushCourseStage(course, taskMessage, "NOTE_GENERATING", "正在生成 AI 笔记…", null);
-            String noteError = null;
+            String noteIssue = null;
             try {
-                List<CourseTranscriptSegment> transcriptRows = transcriptMapper.selectList(
+                List<CourseTranscriptSegment> transcriptRowsFromDb = transcriptMapper.selectList(
                         new QueryWrapper<CourseTranscriptSegment>().eq("course_id", courseId).orderByAsc("sort"));
-                noteGenerationService.generateAndSaveNote(course, transcriptRows, frames, durationSec);
+                NoteGenerationService.NoteGenerationResult result =
+                        noteGenerationService.generateAndSaveNote(course, transcriptRowsFromDb, frames, durationSec);
+                if (!result.getQualityDefects().isEmpty()) {
+                    noteIssue = "AI 笔记质检未通过（" + String.join("；", result.getQualityDefects()) + "），已降级入库";
+                }
             } catch (Exception e) {
-                noteError = truncate(e.getMessage());
+                noteIssue = "AI 笔记生成失败：" + truncate(e.getMessage());
                 log.warn("AI 笔记生成失败（课程处理仍为成功）, courseId={}", courseId, e);
             }
 
             course.setStatus(CourseStatus.SUCCESS)
-                    .setErrorMsg(noteError == null ? null : "网课处理完成，但 AI 笔记生成失败：" + noteError)
+                    .setErrorMsg(noteIssue == null ? null : "网课处理完成，但 " + noteIssue)
                     .setUpdatedAt(LocalDateTime.now());
             courseMapper.updateById(course);
             pushCourseStage(course, taskMessage, "COMPLETED",
-                    "课程《" + course.getTitle() + "》处理完成" + (noteError == null ? "，AI 笔记已生成" : "，但 AI 笔记生成失败"),
+                    "课程《" + course.getTitle() + "》处理完成" + (noteIssue == null ? "，AI 笔记已生成" : "，但 AI 笔记待改进"),
                     "/courses/" + courseId);
             // 转写分段参与 RAG 检索（异步，失败不影响课程状态）
             ragIngestService.ingestCourseTranscriptsAsync(course, transcriptMapper.selectList(
                     new QueryWrapper<CourseTranscriptSegment>()
                             .eq("course_id", courseId)
                             .orderByAsc("sort")));
-            log.info("网课流水线完成, courseId={}, 时长={}s, 帧数={}, 转写句数={}, 转写字数={}, 笔记失败={}",
+            log.info("网课流水线完成, courseId={}, 时长={}s, 帧数={}, 转写句数={}, 转写字数={}, 笔记待改进={}",
                     courseId, durationSec, frames.size(), asrSegments == null ? 0 : asrSegments.size(),
-                    transcriptChars, noteError != null);
+                    transcriptChars, noteIssue != null);
         } catch (Exception e) {
             log.error("网课流水线异常, courseId={}", courseId, e);
             markFailed(course, "处理异常：" + truncate(e.getMessage()), taskMessage);
@@ -355,6 +380,13 @@ public class CoursePipelineService {
      * taskMessage 为空（页面路径上传）时静默跳过
      */
     private void pushCourseStage(Course course, Message taskMessage, String stage, String text, String extra) {
+        try {
+            // 阶段持久化（B26 阶段 1）：course.stage 记录细分进度，列表页展示（无占位消息也持久化）
+            course.setStage(stage);
+            courseMapper.updateById(course);
+        } catch (Exception e) {
+            log.warn("课程阶段持久化失败, courseId={}, stage={}", course.getId(), stage, e);
+        }
         if (taskMessage == null) {
             return;
         }

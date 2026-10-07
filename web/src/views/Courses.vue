@@ -89,6 +89,22 @@ function formatDuration(sec: number | null | undefined): string {
 
 const generatedCount = computed(() => courses.value.filter((c) => c.status === 'SUCCESS').length)
 
+/** 流水线细分阶段 → 展示文案（B26 阶段 1） */
+const STAGE_LABELS: Record<string, string> = {
+  UPLOADING: '正在上传视频到云存储',
+  EXTRACTING: '正在提取音频与关键帧',
+  TRANSCRIBING: '正在转写语音',
+  ANALYZING: '正在识别画面关键帧',
+  NOTE_GENERATING: '正在生成 AI 笔记',
+}
+
+function stageLabel(stage?: string | null): string {
+  if (!stage) {
+    return '流水线处理中'
+  }
+  return STAGE_LABELS[stage] ?? '流水线处理中'
+}
+
 const filtered = computed(() =>
   courses.value.filter((c) => {
     if (statusFilter.value !== 'ALL' && c.status !== statusFilter.value) {
@@ -299,7 +315,7 @@ async function batchDelete() {
             <div v-else-if="c.status === 'PROCESSING' || c.status === 'PENDING'" class="mt-2.5">
               <div class="flex items-center gap-1.5 text-[12px] text-amber-600">
                 <LoaderCircle :size="13" class="animate-spin" />
-                <span class="truncate">{{ c.status === 'PENDING' ? '排队等待处理' : '流水线处理中' }}</span>
+                <span class="truncate">{{ c.status === 'PENDING' ? '排队等待处理' : stageLabel(c.stage) }}</span>
               </div>
             </div>
 

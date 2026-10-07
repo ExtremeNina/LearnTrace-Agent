@@ -60,6 +60,9 @@ public class Course implements UserOwned {
     /** 处理状态：PENDING / PROCESSING / SUCCESS / FAILED */
     private String status;
 
+    /** 处理阶段细分（PROCESSING 期间：UPLOADING/EXTRACTING/TRANSCRIBING/ANALYZING/NOTE_GENERATING，B26 阶段 1） */
+    private String stage;
+
     private String errorMsg;
 
     /** 逻辑删除：0 否 / 1 是 */

@@ -19,6 +19,8 @@ export interface CourseInfo {
   /** 最近一次播放上报时间 */
   lastStudiedAt?: string | null
   status: 'PENDING' | 'PROCESSING' | 'SUCCESS' | 'FAILED'
+  /** 处理阶段细分（PROCESSING 期间：UPLOADING/EXTRACTING/TRANSCRIBING/ANALYZING/NOTE_GENERATING） */
+  stage?: string | null
   errorMsg?: string | null
   createdAt: string
   updatedAt: string
@@ -30,6 +32,10 @@ export interface TranscriptSegmentInfo {
   startSec: number
   endSec: number
   text: string
+  /** 修正后文本（转写修正管线自动应用；NULL = 无修正） */
+  textCorrected?: string | null
+  /** 修正元数据 JSON（original/suggestion/evidence/status: APPLIED|SUGGESTED/source） */
+  correctionMeta?: string | null
   sort: number
 }
 
