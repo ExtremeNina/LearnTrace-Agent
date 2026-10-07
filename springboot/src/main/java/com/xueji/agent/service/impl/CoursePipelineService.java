@@ -1,6 +1,8 @@
 package com.xueji.agent.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.xueji.agent.ai.ContentUnderstanding;
+import com.xueji.agent.ai.ContentUnderstandingService;
 import com.xueji.agent.ai.CorrectionCandidate;
 import com.xueji.agent.ai.RagIngestService;
 import com.xueji.agent.ai.TranscriptReviewService;
@@ -9,6 +11,9 @@ import com.xueji.agent.ai.NoteGenerationService;
 import com.xueji.agent.ai.tool.OcrTool;
 import com.xueji.agent.ai.tool.QwenAsrTool;
 import com.xueji.agent.domain.enums.CourseStatus;
+import com.xueji.agent.domain.entity.ContentDocument;
+import com.xueji.agent.domain.entity.ContentKnowledgePoint;
+import com.xueji.agent.domain.entity.ContentSection;
 import com.xueji.agent.domain.entity.Course;
 import com.xueji.agent.domain.entity.CourseFrame;
 import com.xueji.agent.domain.entity.CourseTranscriptSegment;
@@ -18,6 +23,7 @@ import com.xueji.agent.mapper.CourseFrameMapper;
 import com.xueji.agent.mapper.CourseMapper;
 import com.xueji.agent.mapper.CourseTranscriptSegmentMapper;
 import com.xueji.agent.mapper.MessageMapper;
+import com.xueji.agent.service.ContentDocumentService;
 import com.xueji.agent.utils.AliUploadUtils;
 import com.xueji.agent.utils.MediaUtils;
 import com.xueji.agent.ws.AgentEventPushService;
@@ -64,6 +70,12 @@ public class CoursePipelineService {
 
     @Resource
     private CourseFrameMapper frameMapper;
+
+    @Resource
+    private ContentDocumentService contentDocumentService;
+
+    @Resource
+    private ContentUnderstandingService contentUnderstandingService;
 
     @Resource
     private AliUploadUtils aliUploadUtils;
@@ -247,21 +259,8 @@ public class CoursePipelineService {
                 return;
             }
 
-            // 7. 流水线末端 LLM：生成 AI 笔记并入库（失败/质检未通过不影响课程状态，仅记录原因）
-            pushCourseStage(course, taskMessage, "NOTE_GENERATING", "正在生成 AI 笔记…", null);
-            String noteIssue = null;
-            try {
-                List<CourseTranscriptSegment> transcriptRowsFromDb = transcriptMapper.selectList(
-                        new QueryWrapper<CourseTranscriptSegment>().eq("course_id", courseId).orderByAsc("sort"));
-                NoteGenerationService.NoteGenerationResult result =
-                        noteGenerationService.generateAndSaveNote(course, transcriptRowsFromDb, frames, durationSec);
-                if (!result.getQualityDefects().isEmpty()) {
-                    noteIssue = "AI 笔记质检未通过（" + String.join("；", result.getQualityDefects()) + "），已降级入库";
-                }
-            } catch (Exception e) {
-                noteIssue = "AI 笔记生成失败：" + truncate(e.getMessage());
-                log.warn("AI 笔记生成失败（课程处理仍为成功）, courseId={}", courseId, e);
-            }
+            // 7. 内容理解 + 笔记渲染（B26 阶段 2：ContentDocument → Renderer，失败回退旧链路）
+            String noteIssue = understandAndRenderNote(course, taskMessage, frames, durationSec);
 
             course.setStatus(CourseStatus.SUCCESS)
                     .setErrorMsg(noteIssue == null ? null : "网课处理完成，但 " + noteIssue)
@@ -283,6 +282,52 @@ public class CoursePipelineService {
             markFailed(course, "处理异常：" + truncate(e.getMessage()), taskMessage);
         } finally {
             cleanupQuietly(video);
+        }
+    }
+
+    // ---- 内容理解 + 笔记渲染（B26 阶段 2，节点函数化：独立阶段方法） ----
+
+    /**
+     * 内容理解 → ContentDocument 落库 → Renderer 渲染笔记。
+     * 内容理解失败时回退旧链路（从转写直接生成），保证「上传完成即有笔记」不被语义层故障拖垮。
+     *
+     * @return 待写入 course.errorMsg 的问题描述（NULL = 全部通过）
+     */
+    private String understandAndRenderNote(Course course, Message taskMessage,
+                                           List<CourseFrame> frames, int durationSec) {
+        List<CourseTranscriptSegment> transcriptRows = transcriptMapper.selectList(
+                new QueryWrapper<CourseTranscriptSegment>().eq("course_id", course.getId()).orderByAsc("sort"));
+        try {
+            pushCourseStage(course, taskMessage, "UNDERSTANDING", "正在进行内容理解…", null);
+            ContentUnderstanding understanding = contentUnderstandingService.understand(transcriptRows, durationSec);
+            contentDocumentService.save(course, understanding);
+            ContentDocument document = contentDocumentService.findByCourse(course.getId());
+            List<ContentSection> sections = contentDocumentService.listSections(document.getId());
+            List<ContentKnowledgePoint> points = contentDocumentService.listKnowledgePoints(document.getId());
+
+            pushCourseStage(course, taskMessage, "NOTE_GENERATING", "正在生成 AI 笔记…", null);
+            NoteGenerationService.NoteGenerationResult result = noteGenerationService.generateAndSaveNoteFromDocument(
+                    course, document, sections, points, transcriptRows, frames, durationSec);
+            if (!result.getQualityDefects().isEmpty()) {
+                return "AI 笔记质检未通过（" + String.join("；", result.getQualityDefects()) + "），已降级入库";
+            }
+            return null;
+        } catch (Exception e) {
+            log.warn("内容理解失败，回退旧链路从转写直接生成, courseId={}", course.getId(), e);
+        }
+
+        // 回退：旧链路从转写直接生成（保底，保证「上传完成即有笔记」）
+        try {
+            pushCourseStage(course, taskMessage, "NOTE_GENERATING", "正在生成 AI 笔记…", null);
+            NoteGenerationService.NoteGenerationResult result = noteGenerationService.generateAndSaveNote(
+                    course, transcriptRows, frames, durationSec);
+            if (!result.getQualityDefects().isEmpty()) {
+                return "AI 笔记质检未通过（" + String.join("；", result.getQualityDefects()) + "），已降级入库";
+            }
+            return null;
+        } catch (Exception e) {
+            log.warn("AI 笔记生成失败（课程处理仍为成功）, courseId={}", course.getId(), e);
+            return "AI 笔记生成失败：" + truncate(e.getMessage());
         }
     }
 

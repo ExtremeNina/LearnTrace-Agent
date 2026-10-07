@@ -6,6 +6,9 @@ import com.xueji.agent.domain.enums.CourseStatus;
 import com.xueji.agent.common.MqKeys;
 import com.xueji.agent.common.OwnershipCheck;
 import com.xueji.agent.domain.dto.CourseUpdateDto;
+import com.xueji.agent.domain.entity.ContentDocument;
+import com.xueji.agent.domain.entity.ContentKnowledgePoint;
+import com.xueji.agent.domain.entity.ContentSection;
 import com.xueji.agent.domain.entity.Course;
 import com.xueji.agent.domain.entity.CourseFrame;
 import com.xueji.agent.domain.entity.CourseTranscriptSegment;
@@ -63,6 +66,15 @@ public class CourseServiceImpl implements CourseService {
 
     @Resource
     private RagIngestService ragIngestService;
+
+    @Resource
+    private com.xueji.agent.service.ContentDocumentService contentDocumentService;
+
+    @Resource
+    private com.xueji.agent.ai.ContentUnderstandingService contentUnderstandingService;
+
+    @Resource
+    private com.xueji.agent.ai.NoteGenerationService noteGenerationService;
 
     @Resource
     private ReviewService reviewService;
@@ -179,7 +191,41 @@ public class CourseServiceImpl implements CourseService {
         result.put("transcript", transcript);
         result.put("frames", frames);
         result.put("note", aiNote);
+        // ContentDocument 语义层（B26 阶段 2）：章节导航 + 知识点
+        ContentDocument document = contentDocumentService.findByCourse(courseId);
+        result.put("document", document);
+        if (document != null) {
+            result.put("sections", contentDocumentService.listSections(document.getId()));
+            result.put("knowledgePoints", contentDocumentService.listKnowledgePoints(document.getId()));
+        }
         return result;
+    }
+
+    @Override
+    public void regenerateContent(Long userId, Long courseId) {
+        Course course = checkOwnership(userId, courseId);
+        if (!CourseStatus.SUCCESS.equals(course.getStatus())) {
+            throw new BusinessException("网课处理完成后才能重新生成内容");
+        }
+        final Course courseRef = course;
+        courseExecutor.execute(() -> {
+            try {
+                List<CourseTranscriptSegment> rows = transcriptMapper.selectList(
+                        new QueryWrapper<CourseTranscriptSegment>().eq("course_id", courseId).orderByAsc("sort"));
+                int durationSec = courseRef.getDuration() == null ? 0 : courseRef.getDuration();
+                com.xueji.agent.ai.ContentUnderstanding understanding =
+                        contentUnderstandingService.understand(rows, durationSec);
+                contentDocumentService.save(courseRef, understanding);
+                ContentDocument document = contentDocumentService.findByCourse(courseId);
+                List<ContentSection> sections = contentDocumentService.listSections(document.getId());
+                List<ContentKnowledgePoint> points = contentDocumentService.listKnowledgePoints(document.getId());
+                noteGenerationService.generateAndSaveNoteFromDocument(courseRef, document, sections, points,
+                        rows, List.of(), durationSec);
+                log.info("课程内容已重新生成, courseId={}", courseId);
+            } catch (Exception e) {
+                log.warn("课程内容重生成失败, courseId={}", courseId, e);
+            }
+        });
     }
 
     @Override

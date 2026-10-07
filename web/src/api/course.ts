@@ -57,11 +57,44 @@ export interface NoteInfo {
   courseId?: number | null
 }
 
+/** ContentDocument 语义层（B26 阶段 2） */
+export interface ContentDocumentInfo {
+  id: number
+  courseId: number
+  title: string
+  summary?: string | null
+}
+
+export interface ContentSectionInfo {
+  id: number
+  documentId: number
+  title: string
+  summary?: string | null
+  startSec: number
+  endSec: number
+  sort: number
+}
+
+export interface ContentKnowledgePointInfo {
+  id: number
+  documentId: number
+  name: string
+  detail?: string | null
+  timeSec?: number | null
+  sectionSort?: number | null
+  important?: number | null
+  errorProne?: number | null
+}
+
 export interface CourseDetailData {
   course: CourseInfo
   transcript: TranscriptSegmentInfo[]
   frames: FrameInfo[]
   note: NoteInfo | null
+  /** 内容理解产物（可能为 NULL：理解失败回退旧链路或尚未生成） */
+  document?: ContentDocumentInfo | null
+  sections?: ContentSectionInfo[]
+  knowledgePoints?: ContentKnowledgePointInfo[]
 }
 
 export function listCourses(): Promise<CourseInfo[]> {
@@ -93,6 +126,11 @@ export function uploadCourse(file: File, title?: string, expectations?: string, 
 
 export function getCourseDetail(id: number): Promise<CourseDetailData> {
   return request<CourseDetailData>({ method: 'GET', url: `/courses/${id}` })
+}
+
+/** 重新生成内容理解（ContentDocument）与 AI 笔记（异步，B26 阶段 2） */
+export function regenerateCourseContent(id: number): Promise<void> {
+  return request<void>({ method: 'POST', url: `/courses/${id}/understand` })
 }
 
 export function updateCourse(id: number, data: { title?: string; subject?: string; studyNote?: string }): Promise<CourseInfo> {

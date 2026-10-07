@@ -5,6 +5,9 @@ import com.xueji.agent.ai.prompt.AgentPrompts;
 import com.xueji.agent.config.ChatClientFactory;
 import com.xueji.agent.ai.tool.AsrSegment;
 import com.xueji.agent.domain.enums.CourseStatus;
+import com.xueji.agent.domain.entity.ContentDocument;
+import com.xueji.agent.domain.entity.ContentKnowledgePoint;
+import com.xueji.agent.domain.entity.ContentSection;
 import com.xueji.agent.domain.entity.Course;
 import com.xueji.agent.domain.entity.CourseFrame;
 import com.xueji.agent.domain.entity.CourseTranscriptSegment;
@@ -78,8 +81,35 @@ public class NoteGenerationService {
                 log.warn("AI 笔记重生成后质检仍未通过，降级入库, courseId={}, defects={}", course.getId(), defects);
             }
         }
+        return saveNote(course, markdown, defects);
+    }
 
-        // 幂等：清掉旧 AI 笔记（同步移出向量库，防止孤儿向量）
+    /**
+     * 从 ContentDocument 渲染笔记（B26 阶段 2 Renderer 起步：Markdown 一个）。
+     * 输入 = 内容文档（章节/知识点）+ 转写原文（补充细节与时间戳校准），输出保持四段结构以兼容质检与前端
+     */
+    public NoteGenerationResult generateAndSaveNoteFromDocument(Course course, ContentDocument document,
+                                                                List<ContentSection> sections,
+                                                                List<ContentKnowledgePoint> knowledgePoints,
+                                                                List<CourseTranscriptSegment> transcript,
+                                                                List<CourseFrame> frames, int durationSec) {
+        String markdown = generateFromDocument(course, document, sections, knowledgePoints,
+                transcript, frames, durationSec, List.of());
+        List<String> defects = NoteQualityChecker.check(markdown, transcript, durationSec);
+        if (!defects.isEmpty()) {
+            log.warn("AI 笔记质检未通过，带缺陷重生成一次, courseId={}, defects={}", course.getId(), defects);
+            markdown = generateFromDocument(course, document, sections, knowledgePoints,
+                    transcript, frames, durationSec, defects);
+            defects = NoteQualityChecker.check(markdown, transcript, durationSec);
+            if (!defects.isEmpty()) {
+                log.warn("AI 笔记重生成后质检仍未通过，降级入库, courseId={}, defects={}", course.getId(), defects);
+            }
+        }
+        return saveNote(course, markdown, defects);
+    }
+
+    /** 幂等落库：清掉旧 AI 笔记（同步移出向量库防孤儿向量）再插入新笔记并参与 RAG 检索 */
+    private NoteGenerationResult saveNote(Course course, String markdown, List<String> defects) {
         List<Note> oldNotes = noteMapper.selectList(new QueryWrapper<Note>()
                 .eq("course_id", course.getId())
                 .eq("source_type", 1));
@@ -105,6 +135,28 @@ public class NoteGenerationService {
         log.info("AI 笔记已生成入库, courseId={}, noteId={}, 字数={}, 质检缺陷={}",
                 course.getId(), note.getId(), markdown.length(), defects.size());
         return new NoteGenerationResult(note.getId(), defects);
+    }
+
+    /**
+     * 从 ContentDocument 调 LLM 渲染笔记 Markdown（qualityDefects 非空时为带质检反馈的重生成）
+     */
+    public String generateFromDocument(Course course, ContentDocument document,
+                                       List<ContentSection> sections, List<ContentKnowledgePoint> knowledgePoints,
+                                       List<CourseTranscriptSegment> transcript,
+                                       List<CourseFrame> frames, int durationSec, List<String> qualityDefects) {
+        String userContent = buildDocumentUserContent(document, sections, knowledgePoints,
+                transcript, frames, durationSec, qualityDefects);
+        ChatClient chatClient = aiModelService.resolveGenerationForCourse(course.getUserId(), course.getModelConfigId());
+        String markdown = chatClient.prompt()
+                .system(AgentPrompts.DOCUMENT_NOTE_PROMPT)
+                .user(userContent)
+                .call()
+                .content();
+        if (markdown == null || markdown.isBlank()) {
+            throw new IllegalStateException("LLM 未返回笔记内容");
+        }
+        log.info("AI 笔记渲染完成（基于内容文档）, courseId={}, 字数={}", course.getId(), markdown.length());
+        return markdown;
     }
 
     /**
@@ -141,20 +193,87 @@ public class NoteGenerationService {
                                           List<String> qualityDefects) {
         StringBuilder sb = new StringBuilder();
         sb.append("视频时长：").append(durationSec).append(" 秒。\n\n");
+        sb.append(transcriptSection(transcript));
+        sb.append(framesSection(frames));
+        if (StringUtils.hasText(expectations)) {
+            sb.append("\n[用户的特别要求]\n").append(expectations.trim()).append("\n");
+            sb.append("生成笔记时优先满足以上要求；若要求与视频内容无关，请自然忽略，不要虚构内容。\n");
+        }
+        sb.append(qualityFeedback(qualityDefects));
+        return sb.toString();
+    }
 
-        sb.append("[语音转写文本（句级分段，含起止秒）]\n");
-        if (transcript == null || transcript.isEmpty()) {
-            sb.append("（本视频未获得语音转写结果）\n");
+    /**
+     * 组装 Renderer 用户消息：内容文档（章节 + 知识点）+ 转写原文（补充细节与时间戳校准）+ 质检反馈。
+     * 公开静态方法，便于单元测试
+     */
+    public static String buildDocumentUserContent(ContentDocument document,
+                                                  List<ContentSection> sections,
+                                                  List<ContentKnowledgePoint> knowledgePoints,
+                                                  List<CourseTranscriptSegment> transcript,
+                                                  List<CourseFrame> frames, int durationSec,
+                                                  List<String> qualityDefects) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("视频时长：").append(durationSec).append(" 秒。\n\n");
+
+        sb.append("[内容文档 · 全局摘要]\n").append(document.getSummary() == null ? "" : document.getSummary()).append("\n\n");
+
+        sb.append("[内容文档 · 章节]\n");
+        for (ContentSection section : sections) {
+            sb.append("- ").append(section.getTitle())
+                    .append(" [").append(section.getStartSec()).append("-").append(section.getEndSec()).append("s]");
+            if (section.getSummary() != null && !section.getSummary().isBlank()) {
+                sb.append("：").append(section.getSummary());
+            }
+            sb.append('\n');
+        }
+
+        sb.append("\n[内容文档 · 知识点]\n");
+        if (knowledgePoints == null || knowledgePoints.isEmpty()) {
+            sb.append("（无）\n");
         } else {
-            for (CourseTranscriptSegment segment : transcript) {
-                // 修正管线自动应用的文本优先（B26 阶段 1），原始转写仍随实体保留
-                String text = segment.getTextCorrected() != null ? segment.getTextCorrected() : segment.getText();
-                sb.append("[").append(segment.getStartSec()).append("-").append(segment.getEndSec()).append("s] ")
-                        .append(text).append("\n");
+            for (ContentKnowledgePoint point : knowledgePoints) {
+                sb.append("- ").append(point.getName());
+                if (point.getTimeSec() != null) {
+                    sb.append(" [").append(point.getTimeSec()).append("s]");
+                }
+                if (point.getDetail() != null && !point.getDetail().isBlank()) {
+                    sb.append("：").append(point.getDetail());
+                }
+                if (Integer.valueOf(1).equals(point.getImportant())) {
+                    sb.append("（重点）");
+                }
+                if (Integer.valueOf(1).equals(point.getErrorProne())) {
+                    sb.append("（易错点）");
+                }
+                sb.append('\n');
             }
         }
 
-        sb.append("\n[画面识别文本（关键帧，含时间戳）]\n");
+        sb.append('\n').append(transcriptSection(transcript));
+        sb.append(framesSection(frames));
+        sb.append(qualityFeedback(qualityDefects));
+        return sb.toString();
+    }
+
+    /** 转写分段段（修正管线自动应用的文本优先，B26 阶段 1；原始转写仍随实体保留） */
+    static String transcriptSection(List<CourseTranscriptSegment> transcript) {
+        StringBuilder sb = new StringBuilder("[语音转写文本（句级分段，含起止秒）]\n");
+        if (transcript == null || transcript.isEmpty()) {
+            sb.append("（本视频未获得语音转写结果）\n");
+            return sb.toString();
+        }
+        for (CourseTranscriptSegment segment : transcript) {
+            String text = segment.getTextCorrected() != null ? segment.getTextCorrected() : segment.getText();
+            sb.append("[").append(segment.getStartSec()).append("-").append(segment.getEndSec()).append("s] ")
+                    .append(text).append("\n");
+        }
+        return sb.toString();
+    }
+
+    /** 关键帧画面识别段 */
+    static String framesSection(List<CourseFrame> frames) {
+        StringBuilder sb = new StringBuilder("\n[画面识别文本（关键帧，含时间戳）]\n");
         boolean hasFrames = false;
         if (frames != null) {
             for (CourseFrame frame : frames) {
@@ -169,18 +288,17 @@ public class NoteGenerationService {
         if (!hasFrames) {
             sb.append("（本视频未获得有效的画面识别结果）\n");
         }
+        return sb.toString();
+    }
 
-        if (StringUtils.hasText(expectations)) {
-            sb.append("\n[用户的特别要求]\n").append(expectations.trim()).append("\n");
-            sb.append("生成笔记时优先满足以上要求；若要求与视频内容无关，请自然忽略，不要虚构内容。\n");
+    /** 质检反馈段（B26 阶段 1）：带具体缺陷清单定向重生成 */
+    static String qualityFeedback(List<String> qualityDefects) {
+        if (qualityDefects == null || qualityDefects.isEmpty()) {
+            return "";
         }
-
-        // 质检反馈（B26 阶段 1）：带具体缺陷清单定向重生成
-        if (qualityDefects != null && !qualityDefects.isEmpty()) {
-            sb.append("\n[质检反馈] 上一版笔记经校验存在以下问题，请修正后重新输出完整笔记：\n");
-            for (String defect : qualityDefects) {
-                sb.append("- ").append(defect).append('\n');
-            }
+        StringBuilder sb = new StringBuilder("\n[质检反馈] 上一版笔记经校验存在以下问题，请修正后重新输出完整笔记：\n");
+        for (String defect : qualityDefects) {
+            sb.append("- ").append(defect).append('\n');
         }
         return sb.toString();
     }

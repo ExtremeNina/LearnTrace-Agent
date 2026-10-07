@@ -5,7 +5,7 @@ import {
   Download, ArrowLeft, CircleCheck, LoaderCircle, Pencil, Save, Send, X,
   Bold, Italic, Underline, Clock,
 } from 'lucide-vue-next'
-import { getCourseDetail, updateCourse, reportCourseProgress } from '../api/course'
+import { getCourseDetail, regenerateCourseContent, updateCourse, reportCourseProgress } from '../api/course'
 import type { CourseDetailData } from '../api/course'
 import { updateNoteContent } from '../api/note'
 import { renderNoteHtml } from '../utils/markdown'
@@ -53,11 +53,35 @@ function onVideoTimeUpdate() {
   }
 }
 
+/** 拉取详情（重生成后轮询复用） */
+async function reload() {
+  data.value = await getCourseDetail(courseId)
+}
+
+// ---- 内容重生成（B26 阶段 2）：触发后轮询刷新章节与知识点 ----
+const regenerating = ref(false)
+
+async function onRegenerate() {
+  if (regenerating.value) {
+    return
+  }
+  regenerating.value = true
+  try {
+    await regenerateCourseContent(courseId)
+    // 轮询 3 次（内容理解 + 笔记渲染需数分钟），期间页面可正常使用
+    for (let i = 0; i < 3; i++) {
+      setTimeout(() => { reload().catch(() => undefined) }, 15000 * (i + 1))
+    }
+  } finally {
+    regenerating.value = false
+  }
+}
+
 onMounted(async () => {
   // AI 问答 tab 与 /chat 共用 agentSocket，进页面先建连
   agent.ensureSocketConnected()
   try {
-    data.value = await getCourseDetail(courseId)
+    await reload()
     // 支持从笔记页时间戳跳转进入：/courses/1?t=08:24 → 加载后自动 seek
     const t = route.query.t
     if (t && videoRef.value) {
@@ -485,6 +509,40 @@ const timelineTicks = computed(() => {
             <div v-else class="min-h-0 flex-1 overflow-y-auto p-3">
               <!-- AI 笔记 -->
               <template v-if="activeTab === 'note'">
+                <!-- B26 阶段 2：内容结构（章节导航 + 知识点） -->
+                <div v-if="data.sections?.length" class="mb-3 rounded-xl bg-panel px-3 py-2.5">
+                  <div class="flex items-center justify-between">
+                    <p class="text-[12px] font-semibold text-ink">内容结构</p>
+                    <button
+                      class="text-[11px] text-ink-2 transition-colors hover:text-primary disabled:opacity-50"
+                      :disabled="regenerating"
+                      @click="onRegenerate"
+                    >
+                      {{ regenerating ? '重新生成中…' : '重新生成' }}
+                    </button>
+                  </div>
+                  <button
+                    v-for="s in data.sections"
+                    :key="s.id"
+                    class="mt-1.5 flex w-full items-center gap-2 text-left text-[12px] text-ink-2 transition-colors hover:text-primary"
+                    :title="s.summary || ''"
+                    @click="seekTo(s.startSec)"
+                  >
+                    <span class="shrink-0 font-medium text-primary">{{ formatTs(s.startSec) }}</span>
+                    <span class="truncate">{{ s.title }}</span>
+                  </button>
+                </div>
+                <div v-if="data.knowledgePoints?.length" class="mb-3 flex flex-wrap gap-1.5">
+                  <button
+                    v-for="p in data.knowledgePoints"
+                    :key="p.id"
+                    class="rounded-full bg-panel px-2.5 py-1 text-[11px] text-ink-2 transition-colors hover:text-primary"
+                    :title="p.detail || ''"
+                    @click="p.timeSec != null && seekTo(p.timeSec)"
+                  >
+                    {{ p.name }}<span v-if="p.important === 1" class="text-amber-500"> · 重点</span><span v-if="p.errorProne === 1" class="text-red-400"> · 易错</span>
+                  </button>
+                </div>
                 <div v-if="noteEditing" class="px-1 pb-3">
                   <p v-if="noteError" class="mb-2 text-[12px] text-red-600">{{ noteError }}</p>
                   <MdSourceEditor v-model="noteDraft" height-class="h-[420px]" @chip="onEditorChip">

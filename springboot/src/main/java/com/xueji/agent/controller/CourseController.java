@@ -81,6 +81,14 @@ public class CourseController {
         return Result.ok("已重新提交处理");
     }
 
+    /** 重新生成内容理解（ContentDocument）与 AI 笔记（B26 阶段 2，异步） */
+    @PostMapping("/{id}/understand")
+    public Result<Void> understand(@PathVariable Long id) {
+        Long userId = UserUtils.getCurrentLoginId();
+        courseService.regenerateContent(userId, id);
+        return Result.ok("已开始重新生成内容，稍后刷新查看");
+    }
+
     /**
      * 上报播放进度（播放器定时调用，B25 首页「继续学习 / 最近学习」供数）
      */

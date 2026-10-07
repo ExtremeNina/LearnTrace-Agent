@@ -50,6 +50,11 @@ public interface CourseService {
     void retry(Long userId, Long courseId);
 
     /**
+     * 重新生成内容理解（ContentDocument）与 AI 笔记（B26 阶段 2）：异步执行，仅处理完成的课程可触发
+     */
+    void regenerateContent(Long userId, Long courseId);
+
+    /**
      * 上报播放进度（播放器定时调用）：记录上次播放位置 / 百分比 / 最近学习时间，
      * 供首页「继续学习 / 最近学习」使用（B25）。高频打点，不动 updatedAt
      */
