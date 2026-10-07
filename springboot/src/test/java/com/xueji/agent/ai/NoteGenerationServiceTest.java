@@ -73,4 +73,20 @@ class NoteGenerationServiceTest {
         assertThat(content).contains("（本视频未获得语音转写结果）");
         assertThat(content).contains("[第 0s 画面]");
     }
+
+    @Test
+    void normalizeTimestampsShouldConvertSecondsAndHmsForms() {
+        String text = "讲到了输入空间 [320s]，易错点见 [45秒]，时长跨段 [1:15:30]，正常 [05:20] 保持不变";
+        String normalized = NoteGenerationService.normalizeTimestamps(text);
+        assertThat(normalized)
+                .contains("[05:20]").contains("[00:45]").contains("[75:30]").contains("[05:20]")
+                .doesNotContain("320s").doesNotContain("45秒").doesNotContain("1:15:30");
+    }
+
+    @Test
+    void normalizeTimestampsShouldLeaveNonTimestampBracketsAlone() {
+        String text = "公式 [a+b] 不是时间戳，正常胶囊 [03:07] 保持原样";
+        String normalized = NoteGenerationService.normalizeTimestamps(text);
+        assertThat(normalized).contains("[a+b]").contains("[03:07]");
+    }
 }

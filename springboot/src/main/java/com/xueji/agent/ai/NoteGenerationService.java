@@ -81,11 +81,11 @@ public class NoteGenerationService {
      */
     public NoteGenerationResult generateAndSaveNote(Course course, List<CourseTranscriptSegment> transcript,
                                                     List<CourseFrame> frames, int durationSec) {
-        String markdown = generate(course, transcript, frames, durationSec, List.of());
+        String markdown = normalizeTimestamps(generate(course, transcript, frames, durationSec, List.of()));
         List<String> defects = NoteQualityChecker.check(markdown, transcript, durationSec);
         if (!defects.isEmpty()) {
             log.warn("AI 笔记质检未通过，带缺陷重生成一次, courseId={}, defects={}", course.getId(), defects);
-            markdown = generate(course, transcript, frames, durationSec, defects);
+            markdown = normalizeTimestamps(generate(course, transcript, frames, durationSec, defects));
             defects = NoteQualityChecker.check(markdown, transcript, durationSec);
             if (!defects.isEmpty()) {
                 log.warn("AI 笔记重生成后质检仍未通过，降级入库, courseId={}, defects={}", course.getId(), defects);
@@ -105,13 +105,13 @@ public class NoteGenerationService {
                                                                 List<CourseTranscriptSegment> transcript,
                                                                 List<CourseFrame> frames, int durationSec,
                                                                 List<String> reviewFeedback) {
-        String markdown = generateFromDocument(course, document, sections, knowledgePoints,
-                transcript, frames, durationSec, reviewFeedback);
+        String markdown = normalizeTimestamps(generateFromDocument(course, document, sections, knowledgePoints,
+                transcript, frames, durationSec, reviewFeedback));
         List<String> defects = NoteQualityChecker.check(markdown, transcript, durationSec);
         if (!defects.isEmpty()) {
             log.warn("AI 笔记质检未通过，带缺陷重生成一次, courseId={}, defects={}", course.getId(), defects);
-            markdown = generateFromDocument(course, document, sections, knowledgePoints,
-                    transcript, frames, durationSec, defects);
+            markdown = normalizeTimestamps(generateFromDocument(course, document, sections, knowledgePoints,
+                    transcript, frames, durationSec, defects));
             defects = NoteQualityChecker.check(markdown, transcript, durationSec);
             if (!defects.isEmpty()) {
                 log.warn("AI 笔记重生成后质检仍未通过，降级入库, courseId={}, defects={}", course.getId(), defects);
@@ -301,6 +301,45 @@ public class NoteGenerationService {
             sb.append("（本视频未获得有效的画面识别结果）\n");
         }
         return sb.toString();
+    }
+
+    /** 时间戳归一化：秒数形式 [320s] / [320 秒] 与时分秒形式 [1:15:30]（B26 反馈 bug 修复） */
+    private static final java.util.regex.Pattern SECONDS_TS =
+            java.util.regex.Pattern.compile("\\[(\\d{1,5})\\s*(?:s|S|秒)\\]");
+    private static final java.util.regex.Pattern HMS_TS =
+            java.util.regex.Pattern.compile("\\[(\\d{1,2}):(\\d{1,2}):(\\d{1,2})\\]");
+
+    /**
+     * 时间戳归一化（公开静态便于单测）：LLM 偶发输出 [320s] / [1:15:30]，
+     * 前端胶囊与质检器均只识别 [mm:ss]，统一归一保证时间戳可点击跳转
+     */
+    public static String normalizeTimestamps(String markdown) {
+        if (markdown == null || markdown.isBlank()) {
+            return markdown;
+        }
+        StringBuilder sb = new StringBuilder();
+        java.util.regex.Matcher matcher = SECONDS_TS.matcher(markdown);
+        while (matcher.find()) {
+            matcher.appendReplacement(sb, java.util.regex.Matcher
+                    .quoteReplacement(fmtTs(Long.parseLong(matcher.group(1)))));
+        }
+        matcher.appendTail(sb);
+        String text = sb.toString();
+
+        sb = new StringBuilder();
+        matcher = HMS_TS.matcher(text);
+        while (matcher.find()) {
+            long total = Long.parseLong(matcher.group(1)) * 3600L
+                    + Long.parseLong(matcher.group(2)) * 60L
+                    + Long.parseLong(matcher.group(3));
+            matcher.appendReplacement(sb, java.util.regex.Matcher.quoteReplacement(fmtTs(total)));
+        }
+        matcher.appendTail(sb);
+        return sb.toString();
+    }
+
+    private static String fmtTs(long sec) {
+        return String.format("[%02d:%02d]", sec / 60, sec % 60);
     }
 
     /** 质检反馈段（B26 阶段 1）：带具体缺陷清单定向重生成 */
