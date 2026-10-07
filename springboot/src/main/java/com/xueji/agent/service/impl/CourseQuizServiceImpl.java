@@ -55,10 +55,21 @@ public class CourseQuizServiceImpl implements CourseQuizService {
     private java.util.concurrent.ThreadPoolExecutor courseExecutor;
 
     @Override
-    public int regenerateForCourse(Course course, List<CourseTranscriptSegment> transcript) {
-        int count = generateAndSave(course, transcript, null, null);
-        log.info("课程课后习题已重新生成, courseId={}, 题数={}", course.getId(), count);
-        return count;
+    public void saveQuizQuestions(Course course, List<QuizQuestion> questions) {
+        quizQuestionMapper.delete(new QueryWrapper<CourseQuizQuestion>().eq("course_id", course.getId()));
+        int sort = 0;
+        for (QuizQuestion q : questions) {
+            quizQuestionMapper.insert(new CourseQuizQuestion()
+                    .setCourseId(course.getId())
+                    .setUserId(course.getUserId())
+                    .setQuestionText(q.getQuestion())
+                    .setAnswer(q.getAnswer())
+                    .setAnalysis(q.getAnalysis())
+                    .setSourceSec(q.getSourceSec())
+                    .setSort(sort++)
+                    .setCreatedAt(LocalDateTime.now()));
+        }
+        log.info("课程课后习题已落库, courseId={}, 题数={}", course.getId(), questions.size());
     }
 
     @Override
@@ -72,23 +83,11 @@ public class CourseQuizServiceImpl implements CourseQuizService {
         for (CourseQuizQuestion question : existing) {
             existingTexts.add(question.getQuestionText());
         }
-        return generateAndSave(course, transcript, count < 1 ? 5 : Math.min(count, 15), existingTexts);
-    }
-
-    /** 出题核心（QuizAgentService.produceQuestions 三明治质检）→ 落库；existingTexts 非空 = 追加模式 */
-    private int generateAndSave(Course course, List<CourseTranscriptSegment> transcript,
-                                Integer count, List<String> existingTexts) {
         var material = quizAgentService.loadMaterial(course);
         var profile = profileService.getByUser(course.getUserId());
         List<QuizQuestion> questions = quizAgentService.produceQuestions(
-                course, material, profile, count, existingTexts == null ? List.of() : existingTexts);
-
-        boolean append = existingTexts != null;
-        if (!append) {
-            quizQuestionMapper.delete(new QueryWrapper<CourseQuizQuestion>().eq("course_id", course.getId()));
-        }
-        int base = append ? existingTexts.size() : 0;
-        int sort = base;
+                course, material, profile, count < 1 ? 5 : Math.min(count, 15), existingTexts);
+        int sort = existingTexts.size();
         for (QuizQuestion q : questions) {
             quizQuestionMapper.insert(new CourseQuizQuestion()
                     .setCourseId(course.getId())

@@ -12,6 +12,8 @@ import com.alibaba.cloud.ai.graph.state.strategy.ReplaceStrategy;
 import com.xueji.agent.ai.ContentReviewService.Role;
 import com.xueji.agent.ai.ContentReviewService.Verdict;
 import com.xueji.agent.ai.NoteGenerationService.NoteGenerationResult;
+import com.xueji.agent.ai.QuizAgentService.QuizQuestion;
+import com.xueji.agent.ai.QuizPlanService.PlanItem;
 import com.xueji.agent.domain.entity.ContentDocument;
 import com.xueji.agent.domain.entity.ContentKnowledgePoint;
 import com.xueji.agent.domain.entity.ContentSection;
@@ -20,6 +22,7 @@ import com.xueji.agent.domain.entity.CourseFrame;
 import com.xueji.agent.domain.entity.CourseTranscriptSegment;
 import com.xueji.agent.domain.entity.UserProfile;
 import com.xueji.agent.service.ContentDocumentService;
+import com.xueji.agent.service.CourseQuizService;
 import com.xueji.agent.service.ProfileService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -36,15 +39,17 @@ import static com.alibaba.cloud.ai.graph.StateGraph.END;
 import static com.alibaba.cloud.ai.graph.StateGraph.START;
 
 /**
- * 理解 - 评审 - 渲染子流程 Graph 化（B26 阶段 3，SAA StateGraph 驱动）：
+ * 理解 - 评审 - 渲染 - 课后习题子流程（B26，SAA StateGraph 驱动，三 Agent 出题）：
  *
  * <pre>
- * START → understand → reviewL1 ─(PASS / 修订耗尽)→ render → reviewL2 ─(PASS / 修订耗尽)→ END
- *              ↑            └─(REVISE 首次)─┘              └─(REVISE 首次)─┘（带反馈重渲染）
+ * START → quizPlan → understand → reviewL1 ─(PASS/耗尽)→ render → reviewL2 ─(PASS/耗尽)→ writeQuiz → judgeQuiz ─(PASS/耗尽)→ END
+ *                        ↑              └─(REVISE 首次)─┘             └─(REVISE 首次)─┘        └─(REVISE 首次)─┘
  * </pre>
  *
- * 两级评审时序：L1 内容设计评审为前置门禁（不过则重生成理解，≤1 次）；
- * L2 讲解 / 练习双评审在单节点内经线程池并行（三评审角色 × 维度矩阵驱动）。
+ * 出题三 Agent（数量内生于命题规划，无代码公式兜底）：
+ * - quizPlan（出题 Agent）：转写 + 画像 → 命题规划（知识点 / 题型 / 角度 / 时间点）
+ * - writeQuiz（写题 Agent）：按规划逐题实现
+ * - judgeQuiz（判题 Agent）：代码闸（QuizQualityChecker）+ LLM 评审（结合画像）；不合格反馈回写题 ≤1 轮
  * 媒体前置链路（上传 / 抽取 / ASR / OCR）仍由 CoursePipelineService 编排，不在本图内
  */
 @Slf4j
@@ -56,7 +61,7 @@ public class NotePipelineGraphRunner {
         void onStage(String stage, String text);
     }
 
-    /** 执行结果：笔记问题（质检缺陷 + 未通过的评审意见汇总），NULL = 全部通过 */
+    /** 执行结果：笔记 / 习题问题汇总（NULL = 全部通过） */
     public static class RunResult {
         private String noteIssue;
 
@@ -78,13 +83,16 @@ public class NotePipelineGraphRunner {
     private ContentReviewService contentReviewService;
 
     @Resource
+    private QuizPlanService quizPlanService;
+
+    @Resource
+    private CourseQuizService courseQuizService;
+
+    @Resource
     private ProfileService profileService;
 
     @Resource(name = "courseExecutor")
     private ThreadPoolExecutor courseExecutor;
-
-    @Resource
-    private com.xueji.agent.service.CourseQuizService courseQuizService;
 
     public RunResult run(Course course, List<CourseTranscriptSegment> transcript, List<CourseFrame> frames,
                          int durationSec, StageListener listener) throws Exception {
@@ -101,9 +109,16 @@ public class NotePipelineGraphRunner {
                         Map.entry("l2Rounds", new ReplaceStrategy()),
                         Map.entry("noteMarkdown", new ReplaceStrategy()),
                         Map.entry("noteIssue", new ReplaceStrategy()),
-                        Map.entry("reviewSummary", new ReplaceStrategy())));
+                        Map.entry("reviewSummary", new ReplaceStrategy()),
+                        Map.entry("quizPlan", new ReplaceStrategy()),
+                        Map.entry("quizDraft", new ReplaceStrategy()),
+                        Map.entry("judgeFeedback", new ReplaceStrategy()),
+                        Map.entry("quizRounds", new ReplaceStrategy()),
+                        Map.entry("quizIssue", new ReplaceStrategy())));
 
         StateGraph graph = new StateGraph(factory)
+                .addNode("quizPlan", AsyncNodeAction.node_async((NodeAction) state ->
+                        quizPlanNode(course, transcript, profile, durationSec, listener)))
                 .addNode("understand", AsyncNodeAction.node_async((NodeAction) state ->
                         understandNode(course, transcript, durationSec, listener)))
                 .addNode("reviewL1", AsyncNodeAction.node_async((NodeAction) state ->
@@ -112,7 +127,12 @@ public class NotePipelineGraphRunner {
                         renderNode(state, course, transcript, frames, durationSec, listener)))
                 .addNode("reviewL2", AsyncNodeAction.node_async((NodeAction) state ->
                         reviewL2Node(state, course, profile, listener)))
-                .addEdge(START, "understand")
+                .addNode("writeQuiz", AsyncNodeAction.node_async((NodeAction) state ->
+                        writeQuizNode(state, course, transcript, profile, listener)))
+                .addNode("judgeQuiz", AsyncNodeAction.node_async((NodeAction) state ->
+                        judgeQuizNode(state, course, transcript, durationSec, profile, listener)))
+                .addEdge(START, "quizPlan")
+                .addEdge("quizPlan", "understand")
                 .addEdge("understand", "reviewL1")
                 .addConditionalEdges("reviewL1", AsyncEdgeAction.edge_async((EdgeAction) state -> {
                     boolean revise = "REVISE".equals(state.value("l1Verdict", ""));
@@ -120,22 +140,45 @@ public class NotePipelineGraphRunner {
                     return revise && canRevise ? "understand" : "render";
                 }), Map.of("understand", "understand", "render", "render"))
                 .addEdge("render", "reviewL2")
-                .addNode("quiz", AsyncNodeAction.node_async((NodeAction) state ->
-                        quizNode(state, course, transcript, listener)))
                 .addConditionalEdges("reviewL2", AsyncEdgeAction.edge_async((EdgeAction) state -> {
                     List<String> feedback = state.<List<String>>value("feedback").orElse(List.of());
                     boolean canRevise = Integer.valueOf(1).equals(state.<Integer>value("l2Rounds").orElse(0));
-                    return !feedback.isEmpty() && canRevise ? "render" : "quiz";
-                }), Map.of("render", "render", "quiz", "quiz"))
-                .addEdge("quiz", END);
+                    return !feedback.isEmpty() && canRevise ? "render" : "writeQuiz";
+                }), Map.of("render", "render", "writeQuiz", "writeQuiz"))
+                .addEdge("writeQuiz", "judgeQuiz")
+                .addConditionalEdges("judgeQuiz", AsyncEdgeAction.edge_async((EdgeAction) state -> {
+                    List<String> judgeFeedback = state.<List<String>>value("judgeFeedback").orElse(List.of());
+                    boolean canRevise = Integer.valueOf(1).equals(state.<Integer>value("quizRounds").orElse(0));
+                    return !judgeFeedback.isEmpty() && canRevise ? "writeQuiz" : END;
+                }), Map.of("writeQuiz", "writeQuiz", END, END));
 
         CompiledGraph compiled = graph.compile();
         OverAllState finalState = compiled.invoke(new HashMap<>())
-                .orElseThrow(() -> new IllegalStateException("理解 - 评审 - 渲染子流程未产出状态"));
+                .orElseThrow(() -> new IllegalStateException("理解 - 评审 - 渲染 - 出题子流程未产出状态"));
 
         RunResult result = new RunResult();
-        result.noteIssue = finalState.<String>value("noteIssue").orElse(null);
+        String noteIssue = finalState.<String>value("noteIssue").orElse(null);
+        String quizIssue = finalState.<String>value("quizIssue").orElse(null);
+        result.noteIssue = noteIssue == null ? quizIssue
+                : quizIssue == null ? noteIssue : noteIssue + "；" + quizIssue;
         return result;
+    }
+
+    /** 出题 Agent 节点（命题规划）：转写 + 画像 → 规划；失败不阻断（quizPlan 置空，后续节点跳过出题） */
+    private Map<String, Object> quizPlanNode(Course course, List<CourseTranscriptSegment> transcript,
+                                             UserProfile profile, int durationSec, StageListener listener) {
+        Map<String, Object> update = new HashMap<>();
+        try {
+            listener.onStage("QUIZ_PLANNING", "出题 Agent 正在规划课后习题…");
+            List<PlanItem> plan = quizPlanService.planQuiz(transcript, profile, durationSec);
+            update.put("quizPlan", plan);
+            log.info("命题规划完成, courseId={}, 条数={}", course.getId(), plan.size());
+        } catch (Exception e) {
+            log.warn("命题规划失败（跳过课后习题）, courseId={}", course.getId(), e);
+            update.put("quizPlan", List.of());
+            appendIssue(update, "课后习题生成失败：命题规划异常（" + e.getMessage() + "）");
+        }
+        return update;
     }
 
     /** 理解节点：内容理解 → ContentDocument 三表落库（重生成时 save 幂等覆盖） */
@@ -151,24 +194,6 @@ public class NotePipelineGraphRunner {
         update.put("document", document);
         update.put("sections", sections);
         update.put("points", points);
-        return update;
-    }
-
-    /** 课后习题节点（B26 习题产物化并入 Graph）：出题 Agent + 判题 Agent 三明治质检，失败不阻断（附加进 noteIssue） */
-    private Map<String, Object> quizNode(OverAllState state, Course course,
-                                         List<CourseTranscriptSegment> transcript, StageListener listener) {
-        Map<String, Object> update = new HashMap<>();
-        try {
-            listener.onStage("QUIZ_GENERATING", "正在生成课后习题…");
-            int count = courseQuizService.regenerateForCourse(course, transcript);
-            update.put("quizCount", count);
-            log.info("课后习题节点完成, courseId={}, 题数={}", course.getId(), count);
-        } catch (Exception e) {
-            log.warn("课后习题生成失败（不阻断课程完成）, courseId={}", course.getId(), e);
-            String base = state.<String>value("noteIssue").orElse(null);
-            String quizIssue = "课后习题生成失败：" + e.getMessage();
-            update.put("noteIssue", base == null ? quizIssue : base + "；" + quizIssue);
-        }
         return update;
     }
 
@@ -213,9 +238,7 @@ public class NotePipelineGraphRunner {
         return update;
     }
 
-    /**
-     * L2 双评审节点：讲解 / 练习两角色并行评审（courseExecutor），汇总意见
-     */
+    /** L2 双评审节点：讲解 / 练习两角色并行评审（courseExecutor），汇总意见 */
     private Map<String, Object> reviewL2Node(OverAllState state, Course course, UserProfile profile,
                                              StageListener listener) throws Exception {
         listener.onStage("REVIEWING", "正在多角色评审笔记（讲解 / 练习并行）…");
@@ -247,5 +270,101 @@ public class NotePipelineGraphRunner {
         log.info("L2 双评审: courseId={}, 讲解={}, 练习={}, 汇总问题={}",
                 course.getId(), explainVerdict.getVerdict(), practiceVerdict.getVerdict(), issues.size());
         return update;
+    }
+
+    /** 写题 Agent 节点：按命题规划逐题实现（判题反馈轮带不合格清单重写） */
+    private Map<String, Object> writeQuizNode(OverAllState state, Course course,
+                                              List<CourseTranscriptSegment> transcript, UserProfile profile,
+                                              StageListener listener) throws Exception {
+        listener.onStage("QUIZ_GENERATING", "写题 Agent 正在按规划编写课后习题…");
+        List<PlanItem> plan = state.<List<PlanItem>>value("quizPlan").orElse(List.of());
+        Map<String, Object> update = new HashMap<>();
+        if (plan.isEmpty()) {
+            // 规划已失败：跳过出题（noteIssue 已由规划节点附加）
+            update.put("quizDraft", List.of());
+            return update;
+        }
+        try {
+            List<String> judgeFeedback = state.<List<String>>value("judgeFeedback").orElse(List.of());
+            List<QuizQuestion> draft = quizPlanService.writeQuiz(plan, transcript, profile, judgeFeedback);
+            update.put("quizDraft", draft);
+        } catch (Exception e) {
+            log.warn("写题 Agent 失败, courseId={}", course.getId(), e);
+            update.put("quizDraft", List.of());
+            appendIssue(update, "课后习题生成失败：写题异常（" + e.getMessage() + "）");
+        }
+        return update;
+    }
+
+    /**
+     * 判题 Agent 节点：代码闸（QuizQualityChecker）→ LLM 评审（reviewQuiz 结合画像）；
+     * 不合格且还有重写轮次 → 反馈回写题；通过（或轮次耗尽且有产出）→ 落库
+     */
+    private Map<String, Object> judgeQuizNode(OverAllState state, Course course,
+                                              List<CourseTranscriptSegment> transcript, int durationSec,
+                                              UserProfile profile, StageListener listener) throws Exception {
+        listener.onStage("QUIZ_REVIEWING", "判题 Agent 正在评审课后习题…");
+        List<PlanItem> plan = state.<List<PlanItem>>value("quizPlan").orElse(List.of());
+        List<QuizQuestion> draft = state.<List<QuizQuestion>>value("quizDraft").orElse(List.of());
+        Map<String, Object> update = new HashMap<>();
+        if (draft.isEmpty()) {
+            return update;
+        }
+
+        // 代码闸
+        QuizQualityChecker.Result checked = QuizQualityChecker.check(draft, transcript, List.of(), durationSec, List.of());
+        List<QuizQuestion> kept = new ArrayList<>(checked.getKept());
+        List<String> problems = new ArrayList<>(checked.getRemovedReasons());
+
+        // 判题 LLM 评审
+        Verdict verdict = null;
+        if (!kept.isEmpty()) {
+            verdict = contentReviewService.reviewQuiz(quizPlanService.questionsText(kept), profile);
+            if (verdict.isRevise()) {
+                problems.addAll(verdict.getIssues());
+            }
+        }
+
+        int rounds = state.<Integer>value("quizRounds").orElse(0);
+        boolean bad = kept.isEmpty() || (verdict != null && verdict.isRevise());
+        if (bad && rounds < 1) {
+            update.put("quizRounds", 1);
+            update.put("judgeFeedback", judgeFeedback(plan, problems, verdict));
+            log.info("判题 Agent 未通过，反馈回写题, courseId={}, kept={}, problems={}",
+                    course.getId(), kept.size(), problems.size());
+            return update;
+        }
+
+        if (kept.isEmpty()) {
+            appendIssue(update, "课后习题生成失败：重写后仍无合格题目");
+            return update;
+        }
+        courseQuizService.saveQuizQuestions(course, kept);
+        update.put("quizRounds", rounds);
+        if (verdict != null && verdict.isRevise() && !verdict.getIssues().isEmpty()) {
+            appendIssue(update, "课后习题评审意见（已按现状入库）：" + String.join("；", verdict.getIssues()));
+        }
+        log.info("判题 Agent 通过, courseId={}, 题数={}, 评审={}",
+                course.getId(), kept.size(), verdict == null ? "（代码闸后无题可评）" : verdict.getVerdict());
+        return update;
+    }
+
+    /** 判题反馈构造：按规划条目列出未覆盖 / 不合格项（写题 Agent 按此补写） */
+    static List<String> judgeFeedback(List<PlanItem> plan, List<String> problems, Verdict verdict) {
+        List<String> feedback = new ArrayList<>();
+        if (!problems.isEmpty()) {
+            feedback.addAll(problems);
+        }
+        if (verdict != null) {
+            feedback.addAll(verdict.getIssues());
+        }
+        feedback.add("请严格按命题规划逐条实现（共 " + plan.size() + " 条），每条规划对应一道题，不得遗漏或自行增减");
+        return feedback;
+    }
+
+    private static void appendIssue(Map<String, Object> update, String issue) {
+        // noteIssue 采用「覆盖写」：节点只附加自己的问题，已有问题由调用方视角在 state 中轮转保留
+        // 这里读取不可行（节点只拿 update），因此 writeQuiz/judgeQuiz 的失败问题以独立键由最后汇总合并
+        update.put("quizIssue", issue);
     }
 }

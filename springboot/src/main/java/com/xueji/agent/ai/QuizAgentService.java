@@ -40,22 +40,8 @@ import java.util.List;
 @Service
 public class QuizAgentService {
 
-    /** 转写样本上限：自适应数量规划需看全貌，DeepSeek 上下文充足（代码闸幻觉检测始终用全量） */
+    /** 转写样本上限：数量规划需看全貌，DeepSeek 上下文充足（代码闸幻觉检测始终用全量） */
     private static final int TRANSCRIPT_EXCERPT_CHARS = 12000;
-
-    /** 自适应数量下限（代码闸：Agent 规划结果不足该数时补出） */
-    static final int MIN_ADAPTIVE_COUNT = 3;
-
-    /**
-     * 数量 baseline（公开静态便于单测）：每 4 分钟 1 题，clamp 到 [3, 15]。
-     * 注入 prompt 作为建议数量（Agent 可 ±2 浮动但不得低于 max(3, baseline-2)），并作为补出下限
-     */
-    public static int baselineCount(int durationSec) {
-        if (durationSec <= 0) {
-            return MIN_ADAPTIVE_COUNT;
-        }
-        return Math.max(3, Math.min(15, (int) Math.round(durationSec / 240.0)));
-    }
 
     /** 单题结构（LLM 输出解析后的中间模型） */
     public static class QuizQuestion {
@@ -139,26 +125,22 @@ public class QuizAgentService {
     }
 
     /**
-     * 出题核心（无落库，课程习题与对话委派共用）：
+     * 出题核心（无落库，对话委派与追加出题共用；课程课后习题走三 Agent 链路）：
      * 出题 → 代码闸（剔除 + 不足补出）→ 判题 Agent →（REVISE 重出 → 代码闸）
      *
-     * @param count    目标数量；NULL = 自适应（Agent 按时长/知识点/难度/画像规划，下限 MIN_ADAPTIVE_COUNT）
+     * @param count    目标数量（调用方指定）
      * @param existing 已有题面（追加出题防重复）
      */
     public List<QuizQuestion> produceQuestions(Course course, QuizMaterial material, UserProfile profile,
-                                               Integer count, List<String> existing) {
+                                               int count, List<String> existing) {
         int durationSec = material.durationSec();
         List<QuizQuestion> questions = askQuiz(course, material, profile, count, existing, List.of());
         QuizQualityChecker.Result checked = QuizQualityChecker.check(
                 questions, material.transcript(), material.knowledgePoints(), durationSec, existing);
         List<QuizQuestion> kept = new ArrayList<>(checked.getKept());
 
-        // 代码闸剔除后数量不足：带缺陷补出一次（只补缺口，与已保留题查重）；
-        // 自适应模式对 baseline 下限生效（LLM 规划偏软时的保底，B26 反馈：45min 视频只出 5 题）
-        boolean adaptive = count == null;
-        int baseline = baselineCount(durationSec);
-        int minCount = adaptive ? Math.max(MIN_ADAPTIVE_COUNT, baseline - 2) : count;
-        int shortfall = Math.max(0, minCount - kept.size());
+        // 代码闸剔除后数量不足：带缺陷补出一次（只补缺口，与已保留题查重）
+        int shortfall = Math.max(0, count - kept.size());
         List<String> defects = new ArrayList<>(checked.getRemovedReasons());
         if (shortfall > 0 && !defects.isEmpty()) {
             List<String> currentTexts = new ArrayList<>(existing);
@@ -183,7 +165,7 @@ public class QuizAgentService {
             for (QuizQuestion q : kept) {
                 currentTexts.add(q.getQuestion());
             }
-            List<QuizQuestion> revised = askQuiz(course, material, profile, count == null ? kept.size() : count,
+            List<QuizQuestion> revised = askQuiz(course, material, profile, count,
                     currentTexts, verdict.getIssues());
             QuizQualityChecker.Result rechecked = QuizQualityChecker.check(
                     revised, material.transcript(), material.knowledgePoints(), durationSec, existing);
@@ -293,14 +275,7 @@ public class QuizAgentService {
         }
         sb.append("\n[转写原文样本]\n").append(transcriptExcerpt(material.transcript())).append('\n');
         sb.append('\n');
-        if (count == null) {
-            int baseline = baselineCount(material.durationSec());
-            sb.append("本次建议出约 ").append(baseline).append(" 题（按视频时长估算），")
-                    .append("可按知识点密度与难度上下浮动 2 题，但最终 questions 数量不得少于 ")
-                    .append(Math.max(MIN_ADAPTIVE_COUNT, baseline - 2)).append("。\n");
-        } else {
-            sb.append("请出 ").append(count).append(" 道练习题。\n");
-        }
+        sb.append("请出 ").append(count).append(" 道练习题。\n");
         if (profile != null) {
             String profileText = ContentReviewService.profileText(profile);
             if (!profileText.contains("未提供")) {

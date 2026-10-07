@@ -36,85 +36,78 @@ design:
 todos:
   - id: quiz-table-backend
     content: 新建 course_quiz_question 表与 course.quiz_status 列（SQL 碎片+执行）、实体/Mapper、CourseQuizService（生成/追加/落库/状态机），重构 QuizAgentService 抽出无落库出题核心（防重复注入）
-    status: pending
+    status: completed
   - id: quiz-pipeline-api
     content: 流水线末端异步自动出题接入 + detail 返回 quizQuestions + 追加出题与加入题目管理/复习计划端点
-    status: pending
+    status: completed
     dependencies:
       - quiz-table-backend
   - id: quiz-tab-frontend
     content: CourseDetail.vue 新增课后习题 tab（题目/答案两区、生成中态、追加出题、沉淀按钮）
-    status: pending
+    status: completed
     dependencies:
       - quiz-pipeline-api
   - id: quiz-test-build
     content: 单测（防重复/状态机/落库）+ mvn test 全量 + npm build
-    status: pending
+    status: completed
     dependencies:
       - quiz-tab-frontend
   - id: quiz-smoke-commit
     content: 课程 24 重新生成真实冒烟（习题产出/追加/入题目管理与复习计划）+ 文档同步 + 提交
-    status: pending
+    status: completed
     dependencies:
       - quiz-test-build
 ---
 
 ## 产品概述
 
-课后习题升级为课程级产物：与 AI 笔记并列的流水线产出。由「出题 Agent」（QuizAgent，基于课程内容文档与转写出题）+「评审 Agent」（练习评审角色把关）组成双 Agent 链路，视频处理完成后自动生成；详情页新增「课后习题」tab 供练习、追加与沉淀。
+课后习题升级为课程级产物：流水线末端在笔记完成后由 QuizAgent 自动出题（判题 Agent 把关 + 双端代码闸三明治质检），题目数量由出题 Agent 按视频时长 / 知识点 / 难度 / 画像自适应规划；视频详情页新增「课后习题」tab（题目/答案两区、追加出题、加入题目管理与复习计划）；对话委派出题链路保留。
 
 ## 核心功能
 
-- 流水线末端自动出题：AI 笔记完成后由出题 Agent 生成 5 道课后习题，练习评审 Agent 评审（可解性/难度分布/依据标注），不通过带意见重出 ≤1 次
-- 追加出题：用户觉得不够练可「再出几道」，prompt 携带已有题目避免重复
-- 详情页「课后习题」tab：下分题目与答案两个部分，题目区展示题面与依据时间戳（可点击跳回视频），答案区默认收起、支持单题展开或全部显示
-- 沉淀入口：单题「加入题目管理」（入 question_record）与「加入复习计划」（入题目管理 + 复习队列）
-- 对话委派出题链路保留不变
+1. **流水线自动出题**：笔记渲染完成后自动触发 QuizAgent 出题（新 QUIZ_GENERATING 阶段，进度推送），产物存 course_quiz_question（课程级，与 AI 笔记并列）
+2. **自适应数量**：出题 Agent 按视频时长（约每 3~5 分钟 1 题）、知识点数量与重要度、总体难度、学习者画像自主规划题目数量（合理区间 3~15），并在输出中声明数量；代码闸校验声明与实际一致
+3. **三明治质检**：出题后先过 QuizQualityChecker 代码闸（幻觉词面覆盖率 / sourceSec 依据合法性 / 重复题 / 结构完整）→ 判题 Agent（reviewQuiz 结合画像整体评审，REVISE 重出 ≤1）→ 重出后天然再过代码闸；坏题剔除、数量不足带缺陷补出
+4. **详情页「课后习题」tab**：题目区（编号列表 + 时间戳胶囊跳视频）+ 答案区（逐题「查看答案」展开解析，顶部「显示全部答案」开关）+「再出几道」追加出题（prompt 带已有题防重复）
+5. **沉淀动作**：加入题目管理（复制入 question_record）；加入复习计划（自动先入题目管理，再走 /review/cards 入复习队列）
 
 ## 技术方案
 
-### 现状依据
+### 现状依据（已探查）
 
-- 出题核心：`QuizAgentService`（QUIZ_AGENT_PROMPT 出题 + ContentReviewService.reviewQuiz 评审 + 落 question_record），纯函数 parseQuestions/buildQuizUserPrompt 可复用
-- 流水线：`CoursePipelineService` understandAndRenderNote 后置 SUCCESS；courseExecutor 线程池；AgentEventPushService 推送
-- 详情页：CourseDetail.vue 三 tab（AI 笔记/转写对照/AI 问答）+ 时间戳胶囊 seekTo + 重新生成轮询模式
-- 复习队列：POST /review/cards（cardType='question' 需 question_record refId）
-
-### 架构设计
-
-```mermaid
-flowchart LR
-    A[流水线: 笔记完成] --> B[置 SUCCESS]
-    B --> C[courseExecutor 异步: 出题 Agent]
-    C --> D[评审 Agent: reviewQuiz]
-    D -->|REVISE 首次| C
-    D -->|通过| E[(course_quiz_question 表)]
-    F[详情页课后习题 tab] -->|追加出题| C
-    F -->|加入题目管理| G[(question_record)]
-    F -->|加入复习计划| G --> H[(review_card)]
-```
+- QuizAgentService（ai/）：resolveCourse → 出题（QUIZ_AGENT_PROMPT）→ ContentReviewService.reviewQuiz（REVISE 重出 ≤1）→ 落 question_record；parseQuestions/buildQuizUserPrompt/questionsText 纯函数可复用
+- ContentReviewService.reviewQuiz/buildQuizReviewPrompt（判题 Agent，PRACTICE 维度 + 依据真实性 + 自含性）
+- CoursePipelineService.understandAndRenderNote → 置 SUCCESS；pushCourseStage（stage 持久化 + COURSE 事件）；courseExecutor
+- CourseDetail.vue：AI 笔记 tab（onNoteClick 时间戳胶囊 data-ts → seekTo）、「重新生成」按钮轮询模式
+- 复习：POST /review/cards（cardType='question' → question_record refId）
+- 前端 stage 文案：Courses.vue STAGE_LABELS + ChatPanel.vue labels
+- 基线：mvn test 233 全绿；video_6 课程 id=24 可重新生成验证
 
 ### 实施要点
 
-1. **新表** `course_quiz_question`（course_id/user_id/question_text/answer/analysis/source_sec/sort）+ course 表加 `quiz_status` 列（NULL/GENERATING/DONE/FAILED，幂等碎片 SQL，改表三步）
-2. **QuizAgentService 重构**：抽出无落库的 `generateQuestions(course, document, points, transcriptExcerpt, count, profile, existingQuestions, reviewIssues)` 核心（existingQuestions 注入 prompt 防重复）；对话链路 `generate` 改为调核心 + 落 question_record
-3. **CourseQuizService**（新）：`generateForCourse(course)`（出题+评审+落新表，quiz_status 状态机）、`append(userId, courseId, count)`（追加）、`addToQuestionRecord`（复制入 question_record 返回 id）
-4. **流水线接入**：置 SUCCESS 后 courseExecutor 异步 `generateForCourse`（失败置 FAILED 不影响课程状态）
-5. **API**：detail 返回 quizQuestions；`POST /courses/{id}/quiz`（追加出题，异步轮询）；`POST /courses/{id}/quiz/{qid}/save`（body.action = QUESTION_MANAGER | REVIEW_PLAN，后者先入题目管理再 addReviewCard）
-6. **前端 CourseDetail.vue**：tab 加「课后习题」；生成中态（quiz_status=GENERATING 轮询）；题目区（序号+题面+依据胶囊 seekTo）/答案区（每题展开 + 顶部全部显示开关）；底部「再出 5 道」；每题两个沉淀按钮；stage 文案无需新增（习题生成不占流水线 stage）
-7. 单测：generateQuestions 防重复注入、CourseQuizService 落库/状态机（mock）；mvn test 全量 + npm build；真实冒烟用课程 24 重新生成验证习题产出与追加
+1. **SQL**：course_quiz_question（id/course_id/user_id/question_text/answer/analysis/source_sec/sort/created_at）+ SQL 碎片执行
+2. **实体/Mapper**：CourseQuizQuestion + CourseQuizQuestionMapper
+3. **QuizQualityChecker（新增，纯函数三明治代码闸）**：
+
+- 结构完整（题面/答案/解析非空）
+- sourceSec 合法性（非负且 ≤ 视频时长）
+- 幻觉词面覆盖率：题面内容词（去停用词，≥2 字词）在「转写原文 + 知识点名」文本中的命中率低于阈值判脱离材料（坏题剔除）
+- 重复检测：题面归一化后与已有题目相似（字符级 Jaccard ≥ 阈值）判重复
+- check(questions, transcript, knowledgePoints, durationSec, existing) → 剔除 + 缺陷清单
+
+4. **QuizAgentService 重构**：
+
+- 抽出无落库核心 `produceQuestions(course, document, sections, points, transcript, profile, count, existing)`：出题（QUIZ_AGENT_PROMPT 改自适应数量——prompt 指示按时长/知识点/难度/画像自主规划并声明 count，区间 3~15）→ QuizQualityChecker 剔除/缺陷 → 数量不足补出一次 → 判题 Agent（reviewQuiz）REVISE 重出 ≤1（重出后再过代码闸）→ 返回题目
+- 流水线路径 `generateForCourse(course, transcript, ...)`：produceQuestions → 落 course_quiz_question（重生成先删旧）
+- 对话委派路径 generate(userId, courseHint, count)：produceQuestions 复用（count 仍按用户指定）→ 落 question_record（现状保留）
+
+5. **流水线接入**：understandAndRenderNote 完成后 pushCourseStage QUIZ_GENERATING → courseExecutor 异步 generateForCourse（失败不影响课程 SUCCESS，记 errorMsg 附注）；stage 文案前端补（Courses.vue/ChatPanel.vue）
+6. **API**：detail 返回 quizQuestions + quizStatus（GENERATING/READY，course 行内存态或按题目有无推断）；POST /courses/{id}/quiz?count=5（追加出题，异步 courseExecutor，prompt 带已有题防重复）；POST /course-quiz/{qid}/to-questions（入题目管理）；POST /course-quiz/{qid}/to-review（先入题目管理再 POST review/cards 逻辑复用 ReviewService.addCard）
+7. **前端**：CourseDetail.vue 新增「课后习题」tab——题目区（编号 + 题面 + 时间戳胶囊 + 依据）+ 答案区（逐题展开 + 全部显示开关）+「再出几道」（loading + 轮询 detail）+ 每题「加入题目管理 / 加入复习计划」按钮；Stage 文案补 QUIZ_GENERATING
+8. **测试**：QuizQualityCheckerTest（幻觉剔除/重复/数量不足补出/依据越界）；parseQuestions 适配 count 声明；mvn test 全量 + npm build
 
 ### 性能与边界
 
-- 出题异步不阻塞课程 SUCCESS；单次生成 = 1 次出题 LLM + ≤2 次评审 LLM
-- 习题与用户错题本（question_record）解耦，显式操作才复制过去，向后兼容
-
-## 设计说明
-
-课程详情页新增「课后习题」tab，沿用现有卡片体系（bg-surface/shadow-card/rounded-xl 语义令牌）：
-
-- **生成中态**：spinner + 「出题 Agent 正在根据课程内容出题…」
-- **题目区**：有序列表，每题卡内展示题面（Markdown 渲染）+ 依据时间戳胶囊（primary 色，点击 seekTo 跳视频）
-- **答案区**：默认折叠，每题「查看答案」展开参考答案与解析（analysis 含依据时间戳）；顶部「显示全部答案」开关一键切换
-- **操作区**：每题底部「加入题目管理」「加入复习计划」次要按钮（已加入置灰）；tab 底部「再出 5 道」主按钮（生成中转圈）
-- 视觉与 AI 笔记 tab 一致，重点/易错标签沿用 amber/red 色系
+- LLM 账单不变：1 生成 + 1~2 判题（代码闸零成本）；自适应数量不额外调 LLM
+- 追加出题异步执行，前端轮询 detail（与重新生成同模式）
+- 坏题剔除采用逐题剔除而非整体重出，避免一次幻觉拖垮整组

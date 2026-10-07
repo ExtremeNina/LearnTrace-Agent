@@ -47,10 +47,10 @@ class QuizAgentServiceTest {
         Course course = new Course().setTitle("全球冰封");
         QuizMaterial material = new QuizMaterial(null, List.of(),
                 List.of(), List.of(), 524);
-        String prompt = QuizAgentService.buildQuizUserPrompt(course, material, null, null,
+        String prompt = QuizAgentService.buildQuizUserPrompt(course, material, 5, null,
                 List.of("已有旧题一"), List.of("第 1 题依据缺失"));
         assertThat(prompt).contains("《全球冰封》").contains("视频时长：524 秒")
-                .contains("本次建议出约").contains("不得少于")
+                .contains("请出 5 道练习题")
                 .contains("评审反馈").contains("第 1 题依据缺失")
                 .contains("已有旧题一");
         // 无画像（null 或未填写）不出现画像段
@@ -63,20 +63,6 @@ class QuizAgentServiceTest {
         QuizMaterial material = new QuizMaterial(null, List.of(), List.of(), List.of(), 524);
         String prompt = QuizAgentService.buildQuizUserPrompt(course, material, 7, null, List.of(), List.of());
         assertThat(prompt).contains("请出 7 道练习题");
-    }
-
-    @Test
-    void adaptivePromptShouldCarryBaselineWithFloor() {
-        Course course = new Course().setTitle("线性代数");
-        // 45 分钟视频 → baseline = 2700/240 ≈ 11
-        QuizMaterial material = new QuizMaterial(null, List.of(), List.of(), List.of(), 2700);
-        String prompt = QuizAgentService.buildQuizUserPrompt(course, material, null, null, List.of(), List.of());
-        assertThat(prompt).contains("本次建议出约 11 题").contains("不得少于 9");
-        assertThat(QuizAgentService.baselineCount(2700)).isEqualTo(11);
-        // 短视频 / 超长视频 clamp
-        assertThat(QuizAgentService.baselineCount(120)).isEqualTo(3);
-        assertThat(QuizAgentService.baselineCount(0)).isEqualTo(3);
-        assertThat(QuizAgentService.baselineCount(7200)).isEqualTo(15);
     }
 
     @Test

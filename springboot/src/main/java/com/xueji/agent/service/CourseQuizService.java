@@ -1,19 +1,19 @@
 package com.xueji.agent.service;
 
+import com.xueji.agent.ai.QuizAgentService.QuizQuestion;
 import com.xueji.agent.domain.entity.Course;
 import com.xueji.agent.domain.entity.CourseQuizQuestion;
-import com.xueji.agent.domain.entity.CourseTranscriptSegment;
 
 import java.util.List;
 
 /**
  * 课程课后习题编排（B26 习题产物化）：
- * 流水线末端 / 重新生成自动出题、追加出题、详情查询、沉淀（题目管理 / 复习计划）
+ * 落库（Graph 判题节点在判题通过后调用）、追加出题、详情查询、沉淀（题目管理 / 复习计划）
  */
 public interface CourseQuizService {
 
-    /** 全量重新出题（三明治质检：先删旧再落库），返回题数；LLM 失败抛异常由调用方兜底 */
-    int regenerateForCourse(Course course, List<CourseTranscriptSegment> transcript);
+    /** 落库课程课后习题（先删旧再插；由 Graph 判题节点在判题通过后调用） */
+    void saveQuizQuestions(Course course, List<QuizQuestion> questions);
 
     /** 追加出题（带已有题防重复），返回新增题数 */
     int appendForCourse(Long userId, Long courseId, int count);
