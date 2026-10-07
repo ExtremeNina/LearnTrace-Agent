@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import {
   Download, ArrowLeft, CircleCheck, History, LoaderCircle, Pencil, Save, Send, X,
   Bold, Italic, Underline, Clock,
@@ -22,6 +22,7 @@ import { useAgentStore } from '../stores/agent'
  * 右列 AI 笔记 / 转写对照 / AI 问答（与 /chat 共享会话，回答时间戳可跳视频）。
  */
 const route = useRoute()
+const router = useRouter()
 const courseId = Number(route.params.id)
 const agent = useAgentStore()
 
@@ -171,24 +172,11 @@ onMounted(async () => {
   agent.startNew()
   try {
     await reload()
-    // loading 骨架切换后 DOM 需一次异步渲染，video 元素此刻才挂载（B26 反馈：继续学习进度失效根因）
-    await nextTick()
-    // 支持从笔记页 / 首页「继续学习」带进度跳转进入：/courses/1?t=08:24 → 加载后自动 seek 续播
-    const t = route.query.t
-    if (t) {
-      const sec = parseTs(String(t))
-      if (Number.isFinite(sec) && sec >= 0) {
-        const seek = () => seekTo(sec)
-        if (videoRef.value && videoRef.value.readyState >= 1) {
-          seek()
-        } else {
-          videoRef.value?.addEventListener('loadedmetadata', seek, { once: true })
-        }
-      }
+    // 带 ?t= 进入时的初始 seek 由 video 的 @loadedmetadata 模板绑定触发（挂载即生效，不依赖挂载时序）；
+    // 元数据已就绪（缓存命中，事件可能已错过）时在此兜底立即 seek
+    if (videoRef.value && videoRef.value.readyState >= 1) {
+      applyInitialSeek()
     }
-    videoRef.value?.addEventListener('loadedmetadata', () => {
-      videoDuration.value = Math.floor(videoRef.value?.duration ?? 0)
-    })
     // 学习笔记初始内容在 DOM 挂载后灌入（不绑定响应式，避免保存后光标重置）
     nextTick(() => initStudyBox())
   } catch (e) {
@@ -219,6 +207,32 @@ function seekTo(sec: number) {
     video.currentTime = sec
     // 自动播放可能被浏览器策略拦截（如直接带进度进入页面）：静默降级，进度定位不受影响
     video.play().catch(() => undefined)
+  }
+}
+
+/** 带 ?t= 进入时的初始 seek 只执行一次（继续学习 / 笔记时间戳跳转） */
+const initialSeek = { done: false }
+
+/** video 元数据加载完成（模板 @loadedmetadata 绑定）：记录时长 + 执行初始 seek */
+function onVideoLoadedMetadata() {
+  videoDuration.value = Math.floor(videoRef.value?.duration ?? 0)
+  applyInitialSeek()
+}
+
+/** 执行 ?t= 初始 seek：成功后清掉 URL 参数（防止页面内手动拖动后刷新又被拽回旧进度） */
+function applyInitialSeek() {
+  if (initialSeek.done) {
+    return
+  }
+  const t = route.query.t
+  initialSeek.done = true
+  if (!t) {
+    return
+  }
+  const sec = parseTs(String(t))
+  if (Number.isFinite(sec) && sec >= 0) {
+    seekTo(sec)
+    router.replace({ query: {} }).catch(() => undefined)
   }
 }
 
@@ -498,6 +512,7 @@ const timelineTicks = computed(() => {
             controls
             preload="metadata"
             :src="data.course.videoOssKey"
+            @loadedmetadata="onVideoLoadedMetadata"
             @timeupdate="onVideoTimeUpdate"
             @pause="reportProgressNow"
           />
