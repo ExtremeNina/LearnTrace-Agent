@@ -71,10 +71,7 @@ public class CourseServiceImpl implements CourseService {
     private com.xueji.agent.service.ContentDocumentService contentDocumentService;
 
     @Resource
-    private com.xueji.agent.ai.ContentUnderstandingService contentUnderstandingService;
-
-    @Resource
-    private com.xueji.agent.ai.NoteGenerationService noteGenerationService;
+    private com.xueji.agent.ai.NotePipelineGraphRunner notePipelineGraphRunner;
 
     @Resource
     private com.xueji.agent.service.CourseQuizService courseQuizService;
@@ -218,16 +215,9 @@ public class CourseServiceImpl implements CourseService {
                 List<CourseTranscriptSegment> rows = transcriptMapper.selectList(
                         new QueryWrapper<CourseTranscriptSegment>().eq("course_id", courseId).orderByAsc("sort"));
                 int durationSec = courseRef.getDuration() == null ? 0 : courseRef.getDuration();
-                com.xueji.agent.ai.ContentUnderstanding understanding =
-                        contentUnderstandingService.understand(rows, durationSec);
-                contentDocumentService.save(courseRef, understanding);
-                ContentDocument document = contentDocumentService.findByCourse(courseId);
-                List<ContentSection> sections = contentDocumentService.listSections(document.getId());
-                List<ContentKnowledgePoint> points = contentDocumentService.listKnowledgePoints(document.getId());
-                noteGenerationService.generateAndSaveNoteFromDocument(courseRef, document, sections, points,
-                        rows, List.of(), durationSec, List.of());
-                // 重新生成连带课后习题（最终产物 = 笔记 + 习题）
-                courseQuizService.regenerateForCourse(courseRef, rows);
+                // 统一走 Graph 编排（理解 → 评审 → 渲染 → 课后习题），与流水线同链路
+                notePipelineGraphRunner.run(courseRef, rows, List.of(), durationSec,
+                        (stage, text) -> log.info("课程内容重新生成, courseId={}, stage={}", courseId, stage));
                 log.info("课程内容已重新生成, courseId={}", courseId);
             } catch (Exception e) {
                 log.warn("课程内容重生成失败, courseId={}", courseId, e);

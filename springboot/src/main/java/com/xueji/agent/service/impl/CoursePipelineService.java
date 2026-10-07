@@ -70,9 +70,6 @@ public class CoursePipelineService {
     private NotePipelineGraphRunner notePipelineGraphRunner;
 
     @Resource
-    private com.xueji.agent.service.CourseQuizService courseQuizService;
-
-    @Resource
     private AliUploadUtils aliUploadUtils;
 
     @Resource
@@ -254,26 +251,12 @@ public class CoursePipelineService {
                 return;
             }
 
-            // 7. 内容理解 + 笔记渲染（B26 阶段 2：ContentDocument → Renderer，失败回退旧链路）
+            // 7. 理解 - 评审 - 渲染 - 出题（B26：全链路 Graph，quiz 节点含课后习题产物化）
             String noteIssue = understandAndRenderNote(course, taskMessage, frames, durationSec);
-
-            // 8. 课后习题（B26 习题产物化：出题 Agent + 判题 Agent 三明治质检）；失败不阻断课程完成
-            String quizIssue = null;
-            try {
-                pushCourseStage(course, taskMessage, "QUIZ_GENERATING", "正在生成课后习题…", null);
-                List<CourseTranscriptSegment> transcriptForQuiz = transcriptMapper.selectList(
-                        new QueryWrapper<CourseTranscriptSegment>().eq("course_id", courseId).orderByAsc("sort"));
-                courseQuizService.regenerateForCourse(course, transcriptForQuiz);
-            } catch (Exception e) {
-                quizIssue = "课后习题生成失败：" + truncate(e.getMessage());
-                log.warn("课后习题生成失败（课程处理仍为成功）, courseId={}", courseId, e);
-            }
-            String finalIssue = noteIssue == null ? quizIssue
-                    : quizIssue == null ? noteIssue : noteIssue + "；" + quizIssue;
 
             course.setStatus(CourseStatus.SUCCESS)
                     .setDuration(durationSec)
-                    .setErrorMsg(finalIssue == null ? null : "网课处理完成，但 " + finalIssue)
+                    .setErrorMsg(noteIssue == null ? null : "网课处理完成，但 " + noteIssue)
                     .setUpdatedAt(LocalDateTime.now());
             courseMapper.updateById(course);
             pushCourseStage(course, taskMessage, "COMPLETED",

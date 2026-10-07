@@ -83,6 +83,9 @@ public class NotePipelineGraphRunner {
     @Resource(name = "courseExecutor")
     private ThreadPoolExecutor courseExecutor;
 
+    @Resource
+    private com.xueji.agent.service.CourseQuizService courseQuizService;
+
     public RunResult run(Course course, List<CourseTranscriptSegment> transcript, List<CourseFrame> frames,
                          int durationSec, StageListener listener) throws Exception {
         UserProfile profile = profileService.getByUser(course.getUserId());
@@ -117,11 +120,14 @@ public class NotePipelineGraphRunner {
                     return revise && canRevise ? "understand" : "render";
                 }), Map.of("understand", "understand", "render", "render"))
                 .addEdge("render", "reviewL2")
+                .addNode("quiz", AsyncNodeAction.node_async((NodeAction) state ->
+                        quizNode(state, course, transcript, listener)))
                 .addConditionalEdges("reviewL2", AsyncEdgeAction.edge_async((EdgeAction) state -> {
                     List<String> feedback = state.<List<String>>value("feedback").orElse(List.of());
                     boolean canRevise = Integer.valueOf(1).equals(state.<Integer>value("l2Rounds").orElse(0));
-                    return !feedback.isEmpty() && canRevise ? "render" : END;
-                }), Map.of("render", "render", END, END));
+                    return !feedback.isEmpty() && canRevise ? "render" : "quiz";
+                }), Map.of("render", "render", "quiz", "quiz"))
+                .addEdge("quiz", END);
 
         CompiledGraph compiled = graph.compile();
         OverAllState finalState = compiled.invoke(new HashMap<>())
@@ -145,6 +151,24 @@ public class NotePipelineGraphRunner {
         update.put("document", document);
         update.put("sections", sections);
         update.put("points", points);
+        return update;
+    }
+
+    /** 课后习题节点（B26 习题产物化并入 Graph）：出题 Agent + 判题 Agent 三明治质检，失败不阻断（附加进 noteIssue） */
+    private Map<String, Object> quizNode(OverAllState state, Course course,
+                                         List<CourseTranscriptSegment> transcript, StageListener listener) {
+        Map<String, Object> update = new HashMap<>();
+        try {
+            listener.onStage("QUIZ_GENERATING", "正在生成课后习题…");
+            int count = courseQuizService.regenerateForCourse(course, transcript);
+            update.put("quizCount", count);
+            log.info("课后习题节点完成, courseId={}, 题数={}", course.getId(), count);
+        } catch (Exception e) {
+            log.warn("课后习题生成失败（不阻断课程完成）, courseId={}", course.getId(), e);
+            String base = state.<String>value("noteIssue").orElse(null);
+            String quizIssue = "课后习题生成失败：" + e.getMessage();
+            update.put("noteIssue", base == null ? quizIssue : base + "；" + quizIssue);
+        }
         return update;
     }
 

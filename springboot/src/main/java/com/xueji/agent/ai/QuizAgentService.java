@@ -46,6 +46,17 @@ public class QuizAgentService {
     /** 自适应数量下限（代码闸：Agent 规划结果不足该数时补出） */
     static final int MIN_ADAPTIVE_COUNT = 3;
 
+    /**
+     * 数量 baseline（公开静态便于单测）：每 4 分钟 1 题，clamp 到 [3, 15]。
+     * 注入 prompt 作为建议数量（Agent 可 ±2 浮动但不得低于 max(3, baseline-2)），并作为补出下限
+     */
+    public static int baselineCount(int durationSec) {
+        if (durationSec <= 0) {
+            return MIN_ADAPTIVE_COUNT;
+        }
+        return Math.max(3, Math.min(15, (int) Math.round(durationSec / 240.0)));
+    }
+
     /** 单题结构（LLM 输出解析后的中间模型） */
     public static class QuizQuestion {
         private String question;
@@ -142,11 +153,12 @@ public class QuizAgentService {
                 questions, material.transcript(), material.knowledgePoints(), durationSec, existing);
         List<QuizQuestion> kept = new ArrayList<>(checked.getKept());
 
-        // 代码闸剔除后数量不足：带缺陷补出一次（只补缺口，与已保留题查重）
+        // 代码闸剔除后数量不足：带缺陷补出一次（只补缺口，与已保留题查重）；
+        // 自适应模式对 baseline 下限生效（LLM 规划偏软时的保底，B26 反馈：45min 视频只出 5 题）
         boolean adaptive = count == null;
-        int shortfall = adaptive
-                ? Math.max(0, MIN_ADAPTIVE_COUNT - kept.size())
-                : Math.max(0, count - kept.size());
+        int baseline = baselineCount(durationSec);
+        int minCount = adaptive ? Math.max(MIN_ADAPTIVE_COUNT, baseline - 2) : count;
+        int shortfall = Math.max(0, minCount - kept.size());
         List<String> defects = new ArrayList<>(checked.getRemovedReasons());
         if (shortfall > 0 && !defects.isEmpty()) {
             List<String> currentTexts = new ArrayList<>(existing);
@@ -282,7 +294,10 @@ public class QuizAgentService {
         sb.append("\n[转写原文样本]\n").append(transcriptExcerpt(material.transcript())).append('\n');
         sb.append('\n');
         if (count == null) {
-            sb.append("请按数量规划指引自主决定题目数量并输出 count。\n");
+            int baseline = baselineCount(material.durationSec());
+            sb.append("本次建议出约 ").append(baseline).append(" 题（按视频时长估算），")
+                    .append("可按知识点密度与难度上下浮动 2 题，但最终 questions 数量不得少于 ")
+                    .append(Math.max(MIN_ADAPTIVE_COUNT, baseline - 2)).append("。\n");
         } else {
             sb.append("请出 ").append(count).append(" 道练习题。\n");
         }
