@@ -2,7 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import {
-  Download, ArrowLeft, CircleCheck, LoaderCircle, Pencil, Save, Send, X,
+  Download, ArrowLeft, CircleCheck, History, LoaderCircle, Pencil, Save, Send, X,
   Bold, Italic, Underline, Clock,
 } from 'lucide-vue-next'
 import { appendCourseQuiz, getCourseDetail, quizToQuestions, quizToReview, regenerateCourseContent, updateCourse, reportCourseProgress } from '../api/course'
@@ -13,6 +13,7 @@ import { renderNoteHtml } from '../utils/markdown'
 import DOMPurify from 'dompurify'
 import MdSourceEditor from '../components/notes/MdSourceEditor.vue'
 import ChatPanel from '../components/chat/ChatPanel.vue'
+import ModelPicker from '../components/chat/ModelPicker.vue'
 import { useAgentStore } from '../stores/agent'
 
 /**
@@ -130,6 +131,19 @@ async function saveToReview(id: number) {
   }
 }
 
+// ---- AI 问答：历史对话弹窗（课程页默认新会话，可切换历史会话继续聊） ----
+const showAskHistory = ref(false)
+
+async function openAskHistory() {
+  showAskHistory.value = true
+  await agent.loadConversations()
+}
+
+async function pickAskConversation(id: number) {
+  showAskHistory.value = false
+  await agent.openConversation(id)
+}
+
 // ---- 内容重生成（B26 阶段 2）：触发后轮询刷新章节与知识点 ----
 const regenerating = ref(false)
 
@@ -152,6 +166,9 @@ async function onRegenerate() {
 onMounted(async () => {
   // AI 问答 tab 与 /chat 共用 agentSocket，进页面先建连
   agent.ensureSocketConnected()
+  // 课程页 AI 问答独立会话语义（B26 反馈）：进入默认新会话，不跟随首页的会话恢复；
+  // 需要继续旧对话时用「历史对话」弹窗切换
+  agent.startNew()
   try {
     await reload()
     // 支持从笔记页时间戳跳转进入：/courses/1?t=08:24 → 加载后自动 seek
@@ -555,8 +572,22 @@ const timelineTicks = computed(() => {
               </button>
             </div>
 
-            <!-- AI 问答：与 /chat 共享会话，回答时间戳可点击跳视频 -->
+            <!-- AI 问答：独立会话语义（默认新会话，可切历史）；回答时间戳可点击跳视频 -->
             <div v-if="activeTab === 'ask'" class="flex min-h-0 flex-1 flex-col">
+              <div class="flex shrink-0 items-center justify-between border-b border-line px-3 py-1.5">
+                <p class="text-[12px] text-ink-2">当前为新会话 · 时间戳可点击跳转</p>
+                <div class="flex items-center gap-2">
+                  <button
+                    class="flex items-center gap-1 rounded-full border border-line px-2.5 py-1 text-[12px] text-ink-2 transition-colors hover:border-ink-2/50 hover:text-ink"
+                    title="查看历史对话"
+                    @click="openAskHistory"
+                  >
+                    <History :size="13" />
+                    历史对话
+                  </button>
+                  <ModelPicker tone="ink" />
+                </div>
+              </div>
               <ChatPanel chip-timestamps empty-title="学习中有疑问？直接问我" @chip="(ts) => seekTo(parseTs(ts))" />
               <div class="shrink-0 border-t border-line p-3">
                 <div class="relative">
@@ -804,6 +835,41 @@ const timelineTicks = computed(() => {
           </div>
         </div>
       </template>
+
+      <!-- AI 问答历史对话弹窗（课程页默认新会话，可切换历史会话） -->
+      <div
+        v-if="showAskHistory"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-ink/25 px-4 backdrop-blur-sm"
+        @click.self="showAskHistory = false"
+      >
+        <div class="max-h-[70vh] w-full max-w-md overflow-y-auto rounded-3xl border border-line bg-surface p-5 shadow-xl">
+          <div class="flex items-center justify-between">
+            <h3 class="text-[15px] font-semibold text-ink">历史对话</h3>
+            <button
+              class="flex h-8 w-8 items-center justify-center rounded-lg text-ink-2 hover:bg-line/60 hover:text-ink"
+              title="关闭"
+              @click="showAskHistory = false"
+            >
+              <X :size="15" />
+            </button>
+          </div>
+          <p v-if="agent.conversations.length === 0" class="py-6 text-center text-[13px] text-ink-2">
+            暂无会话，发一条消息开始吧
+          </p>
+          <div class="mt-3 flex flex-col gap-1">
+            <button
+              v-for="c in agent.conversations"
+              :key="c.id"
+              class="flex w-full items-center justify-between gap-3 rounded-xl px-3.5 py-2.5 text-left text-[14px] text-ink transition-colors hover:bg-panel"
+              :class="agent.activeId === c.id ? 'bg-line/60' : ''"
+              @click="pickAskConversation(c.id)"
+            >
+              <span class="truncate">{{ c.title }}</span>
+              <span class="shrink-0 text-[11px] text-ink-2">{{ c.updatedAt?.slice(5, 16) ?? '' }}</span>
+            </button>
+          </div>
+        </div>
+      </div>
 
     </div>
   </div>
