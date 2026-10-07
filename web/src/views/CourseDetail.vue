@@ -171,11 +171,20 @@ onMounted(async () => {
   agent.startNew()
   try {
     await reload()
-    // 支持从笔记页时间戳跳转进入：/courses/1?t=08:24 → 加载后自动 seek
+    // loading 骨架切换后 DOM 需一次异步渲染，video 元素此刻才挂载（B26 反馈：继续学习进度失效根因）
+    await nextTick()
+    // 支持从笔记页 / 首页「继续学习」带进度跳转进入：/courses/1?t=08:24 → 加载后自动 seek 续播
     const t = route.query.t
-    if (t && videoRef.value) {
-      const seek = () => seekTo(parseTs(String(t)))
-      videoRef.value.addEventListener('loadedmetadata', seek, { once: true })
+    if (t) {
+      const sec = parseTs(String(t))
+      if (Number.isFinite(sec) && sec >= 0) {
+        const seek = () => seekTo(sec)
+        if (videoRef.value && videoRef.value.readyState >= 1) {
+          seek()
+        } else {
+          videoRef.value?.addEventListener('loadedmetadata', seek, { once: true })
+        }
+      }
     }
     videoRef.value?.addEventListener('loadedmetadata', () => {
       videoDuration.value = Math.floor(videoRef.value?.duration ?? 0)
@@ -205,9 +214,11 @@ function parseTs(ts: string): number {
 }
 
 function seekTo(sec: number) {
-  if (videoRef.value) {
-    videoRef.value.currentTime = sec
-    videoRef.value.play()
+  const video = videoRef.value
+  if (video) {
+    video.currentTime = sec
+    // 自动播放可能被浏览器策略拦截（如直接带进度进入页面）：静默降级，进度定位不受影响
+    video.play().catch(() => undefined)
   }
 }
 
