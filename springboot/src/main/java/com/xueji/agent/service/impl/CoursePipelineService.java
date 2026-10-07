@@ -255,6 +255,7 @@ public class CoursePipelineService {
             String noteIssue = understandAndRenderNote(course, taskMessage, frames, durationSec);
 
             course.setStatus(CourseStatus.SUCCESS)
+                    .setDuration(durationSec)
                     .setErrorMsg(noteIssue == null ? null : "网课处理完成，但 " + noteIssue)
                     .setUpdatedAt(LocalDateTime.now());
             courseMapper.updateById(course);
