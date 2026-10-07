@@ -77,6 +77,9 @@ public class CourseServiceImpl implements CourseService {
     private com.xueji.agent.ai.NoteGenerationService noteGenerationService;
 
     @Resource
+    private com.xueji.agent.service.CourseQuizService courseQuizService;
+
+    @Resource
     private ReviewService reviewService;
 
     @Resource
@@ -198,6 +201,8 @@ public class CourseServiceImpl implements CourseService {
             result.put("sections", contentDocumentService.listSections(document.getId()));
             result.put("knowledgePoints", contentDocumentService.listKnowledgePoints(document.getId()));
         }
+        // 课后习题（B26 习题产物化）
+        result.put("quizQuestions", courseQuizService.listByCourse(courseId));
         return result;
     }
 
@@ -221,6 +226,8 @@ public class CourseServiceImpl implements CourseService {
                 List<ContentKnowledgePoint> points = contentDocumentService.listKnowledgePoints(document.getId());
                 noteGenerationService.generateAndSaveNoteFromDocument(courseRef, document, sections, points,
                         rows, List.of(), durationSec, List.of());
+                // 重新生成连带课后习题（最终产物 = 笔记 + 习题）
+                courseQuizService.regenerateForCourse(courseRef, rows);
                 log.info("课程内容已重新生成, courseId={}", courseId);
             } catch (Exception e) {
                 log.warn("课程内容重生成失败, courseId={}", courseId, e);

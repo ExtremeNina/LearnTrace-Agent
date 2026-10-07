@@ -31,6 +31,9 @@ public class CourseController {
     @Resource
     private CourseService courseService;
 
+    @Resource
+    private com.xueji.agent.service.CourseQuizService courseQuizService;
+
     /**
      * 上传网课视频（异步处理，前端轮询或 WS 获取进度）
      */
@@ -87,6 +90,15 @@ public class CourseController {
         Long userId = UserUtils.getCurrentLoginId();
         courseService.regenerateContent(userId, id);
         return Result.ok("已开始重新生成内容，稍后刷新查看");
+    }
+
+    /** 追加课后习题（B26 习题产物化，异步，带已有题防重复） */
+    @PostMapping("/{id}/quiz")
+    public Result<Void> appendQuiz(@PathVariable Long id,
+                                   @RequestParam(value = "count", defaultValue = "5") int count) {
+        Long userId = UserUtils.getCurrentLoginId();
+        courseQuizService.appendAsync(userId, id, count);
+        return Result.ok("已开始追加出题，稍后刷新查看");
     }
 
     /**

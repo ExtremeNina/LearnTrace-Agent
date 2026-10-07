@@ -106,6 +106,7 @@ function courseStageText(task: { stage: string; text?: string }): string {
     UNDERSTANDING: '正在进行内容理解…',
     REVIEWING: '正在多角色评审…',
     NOTE_GENERATING: '正在生成 AI 笔记…',
+    QUIZ_GENERATING: '正在生成课后习题…',
   }
   return labels[task.stage] ?? '正在处理…'
 }

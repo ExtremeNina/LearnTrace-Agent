@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   Download, ArrowLeft, CircleCheck, LoaderCircle, Pencil, Save, Send, X,
   Bold, Italic, Underline, Clock,
 } from 'lucide-vue-next'
-import { getCourseDetail, regenerateCourseContent, updateCourse, reportCourseProgress } from '../api/course'
+import { appendCourseQuiz, getCourseDetail, quizToQuestions, quizToReview, regenerateCourseContent, updateCourse, reportCourseProgress } from '../api/course'
+import { useToastStore } from '../stores/toast'
 import type { CourseDetailData } from '../api/course'
 import { updateNoteContent } from '../api/note'
 import { renderNoteHtml } from '../utils/markdown'
@@ -26,7 +27,7 @@ const agent = useAgentStore()
 const data = ref<CourseDetailData | null>(null)
 const loading = ref(true)
 const error = ref('')
-const activeTab = ref<'note' | 'transcript' | 'ask'>('note')
+const activeTab = ref<'note' | 'transcript' | 'ask' | 'quiz'>('note')
 const videoRef = ref<HTMLVideoElement | null>(null)
 /** 视频元数据时长（老数据 duration 字段可能为空，用播放器时长兜底） */
 const videoDuration = ref(0)
@@ -56,6 +57,77 @@ function onVideoTimeUpdate() {
 /** 拉取详情（重生成后轮询复用） */
 async function reload() {
   data.value = await getCourseDetail(courseId)
+}
+
+// ---- 课后习题（B26 习题产物化）----
+const toast = useToastStore()
+const quizGenerating = ref(false)
+const expandedAnswers = reactive(new Set<number>())
+const showAllAnswers = ref(false)
+const savedToQuestions = reactive(new Set<number>())
+const savedToReview = reactive(new Set<number>())
+
+const quizQuestions = computed(() => data.value?.quizQuestions ?? [])
+
+function toggleAnswer(id: number) {
+  if (expandedAnswers.has(id)) {
+    expandedAnswers.delete(id)
+  } else {
+    expandedAnswers.add(id)
+  }
+}
+
+function toggleAllAnswers() {
+  showAllAnswers.value = !showAllAnswers.value
+}
+
+/** 追加出题：异步后轮询（与重新生成同模式） */
+async function appendQuiz(count = 5) {
+  if (quizGenerating.value) {
+    return
+  }
+  quizGenerating.value = true
+  try {
+    await appendCourseQuiz(courseId, count)
+    toast.push('已开始追加出题，约 1 分钟')
+    const before = quizQuestions.value.length
+    for (let i = 0; i < 12; i++) {
+      await new Promise((r) => setTimeout(r, 10000))
+      await reload()
+      if (quizQuestions.value.length > before || i === 11) {
+        break
+      }
+    }
+    if (quizQuestions.value.length > before) {
+      toast.push(`已新增 ${quizQuestions.value.length - before} 道课后习题`)
+    } else {
+      toast.push('追加出题超时，可稍后手动刷新', 'error')
+    }
+  } catch (e) {
+    toast.push(e instanceof Error ? e.message : '追加出题失败', 'error')
+  } finally {
+    quizGenerating.value = false
+  }
+}
+
+async function saveToQuestions(id: number) {
+  try {
+    await quizToQuestions(id)
+    savedToQuestions.add(id)
+    toast.push('已加入题目管理')
+  } catch (e) {
+    toast.push(e instanceof Error ? e.message : '加入失败', 'error')
+  }
+}
+
+async function saveToReview(id: number) {
+  try {
+    await quizToReview(id)
+    savedToReview.add(id)
+    toast.push('已加入复习计划（含题目管理）')
+  } catch (e) {
+    toast.push(e instanceof Error ? e.message : '加入失败', 'error')
+  }
 }
 
 // ---- 内容重生成（B26 阶段 2）：触发后轮询刷新章节与知识点 ----
@@ -156,7 +228,7 @@ function onNoteClick(e: MouseEvent) {
   }
 }
 
-function onTabChange(tab: 'note' | 'transcript' | 'ask') {
+function onTabChange(tab: 'note' | 'transcript' | 'ask' | 'quiz') {
   activeTab.value = tab
 }
 
@@ -470,6 +542,7 @@ const timelineTicks = computed(() => {
               <button
                 v-for="tab in [
                   { key: 'note', label: 'AI 笔记' },
+                  { key: 'quiz', label: '课后习题' },
                   { key: 'transcript', label: '转写对照' },
                   { key: 'ask', label: 'AI 问答' },
                 ]"
@@ -503,6 +576,89 @@ const timelineTicks = computed(() => {
                   </button>
                 </div>
                 <p class="mt-1.5 text-[11px] text-ink-2">回答中的 [mm:ss] 时间戳可点击跳转视频对应位置</p>
+              </div>
+            </div>
+
+            <!-- 课后习题（B26 习题产物化）：出题 Agent + 判题 Agent 产物 -->
+            <div v-else-if="activeTab === 'quiz'" class="flex min-h-0 flex-1 flex-col" @click="onNoteClick">
+              <div class="flex shrink-0 items-center justify-between border-b border-line px-3 py-2">
+                <p class="text-[13px] text-ink-2">
+                  共 {{ quizQuestions.length }} 题<span v-if="quizQuestions.length"> · 时间戳可点击跳转</span>
+                </p>
+                <div class="flex items-center gap-2">
+                  <button
+                    v-if="quizQuestions.length"
+                    class="text-[12px] text-ink-2 transition-colors hover:text-primary"
+                    @click="toggleAllAnswers"
+                  >
+                    {{ showAllAnswers ? '隐藏全部答案' : '显示全部答案' }}
+                  </button>
+                  <button
+                    class="rounded-full bg-primary px-3 py-1 text-[12px] text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                    :disabled="quizGenerating"
+                    @click="appendQuiz(5)"
+                  >
+                    {{ quizGenerating ? '出题中…' : quizQuestions.length ? '再出几道' : '生成课后习题' }}
+                  </button>
+                </div>
+              </div>
+              <div class="min-h-0 flex-1 overflow-y-auto p-3">
+                <div
+                  v-if="quizQuestions.length === 0"
+                  class="flex h-40 flex-col items-center justify-center gap-2 text-[13px] text-ink-2"
+                >
+                  <p>{{ quizGenerating ? '出题 Agent 正在出题，判题 Agent 把关中…' : '这门课还没有课后习题' }}</p>
+                  <p v-if="!quizGenerating" class="text-[12px] text-ink-2/70">点击右上角「生成课后习题」，题目数量由 AI 按时长与知识点规划</p>
+                </div>
+                <div class="flex flex-col gap-2.5">
+                  <div
+                    v-for="(q, qi) in quizQuestions"
+                    :key="q.id"
+                    class="rounded-xl bg-panel px-3 py-2.5"
+                  >
+                    <p class="text-[14px] font-medium leading-6 text-ink">
+                      {{ qi + 1 }}. {{ q.questionText }}
+                      <button
+                        v-if="q.sourceSec != null"
+                        class="ts-chip ml-1"
+                        :data-ts="formatTs(q.sourceSec)"
+                      >{{ formatTs(q.sourceSec) }}</button>
+                    </p>
+                    <div
+                      v-if="showAllAnswers || expandedAnswers.has(q.id)"
+                      class="mt-2 rounded-lg bg-surface px-3 py-2 text-[13px] leading-6"
+                    >
+                      <p class="font-medium text-ink">答案</p>
+                      <p class="mt-0.5 text-ink">{{ q.answer }}</p>
+                      <template v-if="q.analysis">
+                        <p class="mt-1.5 font-medium text-ink">解析</p>
+                        <p class="mt-0.5 text-ink-2">{{ q.analysis }}</p>
+                      </template>
+                    </div>
+                    <div class="mt-2 flex items-center gap-3 text-[12px]">
+                      <button
+                        class="text-primary hover:underline"
+                        @click="toggleAnswer(q.id)"
+                      >
+                        {{ showAllAnswers || expandedAnswers.has(q.id) ? '收起答案' : '查看答案' }}
+                      </button>
+                      <button
+                        class="text-ink-2 transition-colors hover:text-primary disabled:opacity-50"
+                        :disabled="savedToQuestions.has(q.id)"
+                        @click="saveToQuestions(q.id)"
+                      >
+                        {{ savedToQuestions.has(q.id) ? '已入题目管理' : '加入题目管理' }}
+                      </button>
+                      <button
+                        class="text-ink-2 transition-colors hover:text-primary disabled:opacity-50"
+                        :disabled="savedToReview.has(q.id)"
+                        @click="saveToReview(q.id)"
+                      >
+                        {{ savedToReview.has(q.id) ? '已入复习计划' : '加入复习计划' }}
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 

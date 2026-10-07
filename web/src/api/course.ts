@@ -86,6 +86,17 @@ export interface ContentKnowledgePointInfo {
   errorProne?: number | null
 }
 
+/** 课程课后习题（B26 习题产物化，对应后端 CourseQuizQuestion） */
+export interface CourseQuizQuestionInfo {
+  id: number
+  courseId: number
+  questionText: string
+  answer?: string | null
+  analysis?: string | null
+  sourceSec?: number | null
+  sort: number
+}
+
 export interface CourseDetailData {
   course: CourseInfo
   transcript: TranscriptSegmentInfo[]
@@ -95,6 +106,8 @@ export interface CourseDetailData {
   document?: ContentDocumentInfo | null
   sections?: ContentSectionInfo[]
   knowledgePoints?: ContentKnowledgePointInfo[]
+  /** 课后习题（出题 Agent 产物；可能为空数组：生成中或失败） */
+  quizQuestions?: CourseQuizQuestionInfo[]
 }
 
 export function listCourses(): Promise<CourseInfo[]> {
@@ -131,6 +144,21 @@ export function getCourseDetail(id: number): Promise<CourseDetailData> {
 /** 重新生成内容理解（ContentDocument）与 AI 笔记（异步，B26 阶段 2） */
 export function regenerateCourseContent(id: number): Promise<void> {
   return request<void>({ method: 'POST', url: `/courses/${id}/understand` })
+}
+
+/** 追加课后习题（异步，B26 习题产物化） */
+export function appendCourseQuiz(id: number, count = 5): Promise<void> {
+  return request<void>({ method: 'POST', url: `/courses/${id}/quiz?count=${count}` })
+}
+
+/** 课后习题加入题目管理 */
+export function quizToQuestions(quizQuestionId: number): Promise<number> {
+  return request<number>({ method: 'POST', url: `/course-quiz/${quizQuestionId}/to-questions` })
+}
+
+/** 课后习题加入复习计划（自动先入题目管理） */
+export function quizToReview(quizQuestionId: number): Promise<number> {
+  return request<number>({ method: 'POST', url: `/course-quiz/${quizQuestionId}/to-review` })
 }
 
 export function updateCourse(id: number, data: { title?: string; subject?: string; studyNote?: string }): Promise<CourseInfo> {
