@@ -103,6 +103,8 @@ function courseStageText(task: { stage: string; text?: string }): string {
     EXTRACTING: '正在提取音频与关键帧…',
     TRANSCRIBING: '正在转写语音…',
     ANALYZING: '正在识别画面关键帧…',
+    UNDERSTANDING: '正在进行内容理解…',
+    REVIEWING: '正在多角色评审…',
     NOTE_GENERATING: '正在生成 AI 笔记…',
   }
   return labels[task.stage] ?? '正在处理…'

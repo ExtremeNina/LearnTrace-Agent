@@ -1,9 +1,8 @@
 package com.xueji.agent.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-import com.xueji.agent.ai.ContentUnderstanding;
-import com.xueji.agent.ai.ContentUnderstandingService;
 import com.xueji.agent.ai.CorrectionCandidate;
+import com.xueji.agent.ai.NotePipelineGraphRunner;
 import com.xueji.agent.ai.RagIngestService;
 import com.xueji.agent.ai.TranscriptReviewService;
 import com.xueji.agent.ai.tool.AsrSegment;
@@ -11,9 +10,6 @@ import com.xueji.agent.ai.NoteGenerationService;
 import com.xueji.agent.ai.tool.OcrTool;
 import com.xueji.agent.ai.tool.QwenAsrTool;
 import com.xueji.agent.domain.enums.CourseStatus;
-import com.xueji.agent.domain.entity.ContentDocument;
-import com.xueji.agent.domain.entity.ContentKnowledgePoint;
-import com.xueji.agent.domain.entity.ContentSection;
 import com.xueji.agent.domain.entity.Course;
 import com.xueji.agent.domain.entity.CourseFrame;
 import com.xueji.agent.domain.entity.CourseTranscriptSegment;
@@ -23,7 +19,6 @@ import com.xueji.agent.mapper.CourseFrameMapper;
 import com.xueji.agent.mapper.CourseMapper;
 import com.xueji.agent.mapper.CourseTranscriptSegmentMapper;
 import com.xueji.agent.mapper.MessageMapper;
-import com.xueji.agent.service.ContentDocumentService;
 import com.xueji.agent.utils.AliUploadUtils;
 import com.xueji.agent.utils.MediaUtils;
 import com.xueji.agent.ws.AgentEventPushService;
@@ -72,10 +67,7 @@ public class CoursePipelineService {
     private CourseFrameMapper frameMapper;
 
     @Resource
-    private ContentDocumentService contentDocumentService;
-
-    @Resource
-    private ContentUnderstandingService contentUnderstandingService;
+    private NotePipelineGraphRunner notePipelineGraphRunner;
 
     @Resource
     private AliUploadUtils aliUploadUtils;
@@ -285,11 +277,12 @@ public class CoursePipelineService {
         }
     }
 
-    // ---- 内容理解 + 笔记渲染（B26 阶段 2，节点函数化：独立阶段方法） ----
+    // ---- 内容理解 + 评审 + 笔记渲染（B26 阶段 3：SAA Graph 子流程，节点函数化） ----
 
     /**
-     * 内容理解 → ContentDocument 落库 → Renderer 渲染笔记。
-     * 内容理解失败时回退旧链路（从转写直接生成），保证「上传完成即有笔记」不被语义层故障拖垮。
+     * 理解 - 评审 - 渲染子流程（NotePipelineGraphRunner，SAA StateGraph 驱动）：
+     * L1 内容设计评审前置门禁 → L2 讲解 / 练习双评审并行。
+     * Graph 整体失败时回退旧链路（从转写直接生成），保证「上传完成即有笔记」不被语义层故障拖垮。
      *
      * @return 待写入 course.errorMsg 的问题描述（NULL = 全部通过）
      */
@@ -298,22 +291,12 @@ public class CoursePipelineService {
         List<CourseTranscriptSegment> transcriptRows = transcriptMapper.selectList(
                 new QueryWrapper<CourseTranscriptSegment>().eq("course_id", course.getId()).orderByAsc("sort"));
         try {
-            pushCourseStage(course, taskMessage, "UNDERSTANDING", "正在进行内容理解…", null);
-            ContentUnderstanding understanding = contentUnderstandingService.understand(transcriptRows, durationSec);
-            contentDocumentService.save(course, understanding);
-            ContentDocument document = contentDocumentService.findByCourse(course.getId());
-            List<ContentSection> sections = contentDocumentService.listSections(document.getId());
-            List<ContentKnowledgePoint> points = contentDocumentService.listKnowledgePoints(document.getId());
-
-            pushCourseStage(course, taskMessage, "NOTE_GENERATING", "正在生成 AI 笔记…", null);
-            NoteGenerationService.NoteGenerationResult result = noteGenerationService.generateAndSaveNoteFromDocument(
-                    course, document, sections, points, transcriptRows, frames, durationSec);
-            if (!result.getQualityDefects().isEmpty()) {
-                return "AI 笔记质检未通过（" + String.join("；", result.getQualityDefects()) + "），已降级入库";
-            }
-            return null;
+            NotePipelineGraphRunner.RunResult result = notePipelineGraphRunner.run(course, transcriptRows, frames,
+                    durationSec,
+                    (stage, text) -> pushCourseStage(course, taskMessage, stage, text, null));
+            return result.getNoteIssue();
         } catch (Exception e) {
-            log.warn("内容理解失败，回退旧链路从转写直接生成, courseId={}", course.getId(), e);
+            log.warn("Graph 子流程失败，回退旧链路从转写直接生成, courseId={}", course.getId(), e);
         }
 
         // 回退：旧链路从转写直接生成（保底，保证「上传完成即有笔记」）

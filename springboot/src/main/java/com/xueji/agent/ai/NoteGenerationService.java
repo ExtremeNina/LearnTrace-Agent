@@ -45,18 +45,28 @@ public class NoteGenerationService {
     @Resource
     private RagIngestService ragIngestService;
 
-    /** 生成结果：笔记 ID + 质检缺陷（空 = 质检通过） */
+    /** 生成结果：笔记 ID + 笔记全文 + 质检缺陷（空 = 质检通过） */
     public static class NoteGenerationResult {
         private final Long noteId;
+        private final String content;
         private final List<String> qualityDefects;
 
         public NoteGenerationResult(Long noteId, List<String> qualityDefects) {
+            this(noteId, null, qualityDefects);
+        }
+
+        public NoteGenerationResult(Long noteId, String content, List<String> qualityDefects) {
             this.noteId = noteId;
+            this.content = content;
             this.qualityDefects = qualityDefects;
         }
 
         public Long getNoteId() {
             return noteId;
+        }
+
+        public String getContent() {
+            return content;
         }
 
         public List<String> getQualityDefects() {
@@ -86,15 +96,17 @@ public class NoteGenerationService {
 
     /**
      * 从 ContentDocument 渲染笔记（B26 阶段 2 Renderer 起步：Markdown 一个）。
-     * 输入 = 内容文档（章节/知识点）+ 转写原文（补充细节与时间戳校准），输出保持四段结构以兼容质检与前端
+     * 输入 = 内容文档（章节/知识点）+ 转写原文（补充细节与时间戳校准）+ 评审反馈（阶段 3 L2 定向重生成），
+     * 输出保持四段结构以兼容质检与前端
      */
     public NoteGenerationResult generateAndSaveNoteFromDocument(Course course, ContentDocument document,
                                                                 List<ContentSection> sections,
                                                                 List<ContentKnowledgePoint> knowledgePoints,
                                                                 List<CourseTranscriptSegment> transcript,
-                                                                List<CourseFrame> frames, int durationSec) {
+                                                                List<CourseFrame> frames, int durationSec,
+                                                                List<String> reviewFeedback) {
         String markdown = generateFromDocument(course, document, sections, knowledgePoints,
-                transcript, frames, durationSec, List.of());
+                transcript, frames, durationSec, reviewFeedback);
         List<String> defects = NoteQualityChecker.check(markdown, transcript, durationSec);
         if (!defects.isEmpty()) {
             log.warn("AI 笔记质检未通过，带缺陷重生成一次, courseId={}, defects={}", course.getId(), defects);
@@ -134,7 +146,7 @@ public class NoteGenerationService {
         ragIngestService.ingestNoteAsync(note);
         log.info("AI 笔记已生成入库, courseId={}, noteId={}, 字数={}, 质检缺陷={}",
                 course.getId(), note.getId(), markdown.length(), defects.size());
-        return new NoteGenerationResult(note.getId(), defects);
+        return new NoteGenerationResult(note.getId(), markdown, defects);
     }
 
     /**

@@ -220,7 +220,7 @@ public class CourseServiceImpl implements CourseService {
                 List<ContentSection> sections = contentDocumentService.listSections(document.getId());
                 List<ContentKnowledgePoint> points = contentDocumentService.listKnowledgePoints(document.getId());
                 noteGenerationService.generateAndSaveNoteFromDocument(courseRef, document, sections, points,
-                        rows, List.of(), durationSec);
+                        rows, List.of(), durationSec, List.of());
                 log.info("课程内容已重新生成, courseId={}", courseId);
             } catch (Exception e) {
                 log.warn("课程内容重生成失败, courseId={}", courseId, e);

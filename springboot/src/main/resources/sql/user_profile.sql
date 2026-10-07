@@ -1,12 +1,10 @@
--- 个人页面（用户资料 / 偏好 / 注销）：user 表补充字段
-ALTER TABLE user
-    ADD COLUMN bio varchar(500) NULL COMMENT '个人简介（选填）' AFTER avatar_url;
+-- B26 阶段 3：学习者画像（评审与笔记生成的难度适配输入）
 
-ALTER TABLE user
-    ADD COLUMN theme varchar(16) NOT NULL DEFAULT 'LIGHT' COMMENT '界面主题：LIGHT / DARK' AFTER bio;
-
-ALTER TABLE user
-    ADD COLUMN notify_task_enabled tinyint NOT NULL DEFAULT 1 COMMENT '任务完成/失败通知开关：0 关 / 1 开' AFTER theme;
-
-ALTER TABLE user
-    ADD COLUMN deleted tinyint NOT NULL DEFAULT 0 COMMENT '0 正常 / 1 已注销' AFTER status;
+CREATE TABLE IF NOT EXISTS user_profile (
+    user_id BIGINT PRIMARY KEY,
+    grade_level VARCHAR(50) NULL COMMENT '学段（如初中 / 高中 / 大学）',
+    level VARCHAR(50) NULL COMMENT '自评水平（入门 / 进阶）',
+    goal VARCHAR(255) NULL COMMENT '学习目标',
+    note VARCHAR(500) NULL COMMENT '补充说明（偏好、薄弱点等）',
+    updated_at DATETIME NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '学习者画像（B26 阶段 3）';

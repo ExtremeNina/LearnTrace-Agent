@@ -3,6 +3,7 @@ import { computed, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { Camera, ChevronDown, ChevronUp, LoaderCircle, LogOut, Moon, Sun, Trash2, X } from 'lucide-vue-next'
 import * as userApi from '../api/user'
+import * as profileApi from '../api/profile'
 import { uploadImage } from '../api/upload'
 import { logout as logoutApi } from '../api/auth'
 import { useAuthStore } from '../stores/auth'
@@ -26,6 +27,10 @@ const profileError = ref('')
 const avatarUploading = ref(false)
 const avatarInput = ref<HTMLInputElement | null>(null)
 const form = reactive({ nickname: '', email: '', bio: '', avatarUrl: '' })
+
+// 学习者画像（B26 阶段 3）：多角色评审与笔记生成的难度适配输入
+const learnForm = reactive({ gradeLevel: '', level: '', goal: '', note: '' })
+const learnSaving = ref(false)
 
 // 偏好开关由 store 直接持久化，弹窗内即时生效
 const darkMode = computed(() => userStore.theme === 'DARK')
@@ -58,6 +63,16 @@ watch(
     form.email = profile?.email ?? ''
     form.bio = profile?.bio ?? ''
     form.avatarUrl = profile?.avatarUrl ?? ''
+    // 学习者画像（加载失败静默，不影响资料展示）
+    try {
+      const learn = await profileApi.getProfile()
+      learnForm.gradeLevel = learn?.gradeLevel ?? ''
+      learnForm.level = learn?.level ?? ''
+      learnForm.goal = learn?.goal ?? ''
+      learnForm.note = learn?.note ?? ''
+    } catch {
+      // ignore
+    }
   }
 )
 
@@ -109,6 +124,23 @@ async function saveProfile() {
     profileError.value = err instanceof Error ? err.message : '保存失败，请稍后重试'
   } finally {
     savingProfile.value = false
+  }
+}
+
+async function saveLearnProfile() {
+  learnSaving.value = true
+  try {
+    await profileApi.saveProfile({
+      gradeLevel: learnForm.gradeLevel || null,
+      level: learnForm.level || null,
+      goal: learnForm.goal || null,
+      note: learnForm.note || null,
+    })
+    toast.push('学习者画像已保存')
+  } catch (err) {
+    toast.push(err instanceof Error ? err.message : '保存失败，请稍后重试', 'error')
+  } finally {
+    learnSaving.value = false
   }
 }
 
@@ -323,6 +355,55 @@ const initial = computed(() => (form.nickname || auth.user?.username || '?').sli
         </div>
         <p class="px-4 pb-3 pt-1 text-[12px] text-ink-2">开启后，网课转写与笔记生成任务完成或失败时会在右上角提醒你</p>
       </div>
+
+      <!-- 学习者画像（B26 阶段 3）：评审与笔记按此适配难度 -->
+      <h3 class="mt-7 text-[13px] font-semibold text-ink-2">学习者画像</h3>
+      <p class="mt-1 text-[12px] text-ink-2">填写后，AI 笔记与质量评审会按你的学段和水平适配难度（选填）</p>
+      <div class="mt-3 grid grid-cols-2 gap-3">
+        <label class="block">
+          <span class="mb-1 block text-[12px] text-ink-2">学段</span>
+          <input
+            v-model="learnForm.gradeLevel"
+            type="text"
+            class="w-full rounded-xl border border-line px-3 py-2 text-[14px] outline-none focus:border-primary"
+            placeholder="如：高中 / 大学"
+          />
+        </label>
+        <label class="block">
+          <span class="mb-1 block text-[12px] text-ink-2">自评水平</span>
+          <input
+            v-model="learnForm.level"
+            type="text"
+            class="w-full rounded-xl border border-line px-3 py-2 text-[14px] outline-none focus:border-primary"
+            placeholder="如：入门 / 进阶"
+          />
+        </label>
+      </div>
+      <label class="mt-3 block">
+        <span class="mb-1 block text-[12px] text-ink-2">学习目标（选填）</span>
+        <input
+          v-model="learnForm.goal"
+          type="text"
+          class="w-full rounded-xl border border-line px-3 py-2 text-[14px] outline-none focus:border-primary"
+          placeholder="如：期末备考 / 兴趣了解"
+        />
+      </label>
+      <label class="mt-3 block">
+        <span class="mb-1 block text-[12px] text-ink-2">补充说明（选填）</span>
+        <textarea
+          v-model="learnForm.note"
+          rows="2"
+          class="w-full resize-none rounded-xl border border-line px-3 py-2 text-[14px] outline-none focus:border-primary"
+          placeholder="偏好、薄弱点等"
+        ></textarea>
+      </label>
+      <button
+        class="mt-3 rounded-xl border border-line px-4 py-2 text-[14px] text-ink hover:bg-panel disabled:opacity-50"
+        :disabled="learnSaving"
+        @click="saveLearnProfile"
+      >
+        {{ learnSaving ? '保存中…' : '保存画像' }}
+      </button>
 
       <!-- 账号 -->
       <h3 class="mt-7 text-[13px] font-semibold text-ink-2">账号</h3>

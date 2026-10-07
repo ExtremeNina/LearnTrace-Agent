@@ -64,6 +64,13 @@
             <version>3.0.4</version>
         </dependency>
 
+        <!-- Spring AI Alibaba Graph：B26 阶段 3 流水线 Graph 化（状态图 / 条件边 / 并行边） -->
+        <dependency>
+            <groupId>com.alibaba.cloud.ai</groupId>
+            <artifactId>spring-ai-alibaba-graph-core</artifactId>
+            <version>1.0.0.2</version>
+        </dependency>
+
         <!-- MyBatis Plus 启动器，简化 MyBatis 的使用 -->
         <dependency>
             <groupId>com.baomidou</groupId>
