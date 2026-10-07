@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { Clock, Home, MonitorPlay, NotebookPen, Camera, ListChecks, Settings, Sprout } from 'lucide-vue-next'
+import { Clock, Home, MonitorPlay, NotebookPen, Camera, Settings, Sprout } from 'lucide-vue-next'
 import { getHomeOverview } from '../../api/home'
 
 /**
@@ -16,7 +16,6 @@ const items = [
   { path: '/courses', label: '课程', icon: MonitorPlay },
   { path: '/notes', label: '笔记', icon: NotebookPen },
   { path: '/questions', label: '题目', icon: Camera },
-  { path: '/quiz', label: '练习测验', icon: ListChecks },
 ]
 
 const activePath = computed(() => route.path)

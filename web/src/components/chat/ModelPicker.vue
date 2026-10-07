@@ -9,10 +9,12 @@ import { useAgentStore } from '../../stores/agent'
 /**
  * 当前模型指示器（公共组件，B26 反馈抽取）：
  * 显示当前对话模型（Cpu + 名称），点击下拉切换 / 进入管理模型弹窗。
- * tone = ink（对话页语义令牌）/ blue（首页 AI 面板设计稿蓝系）。
+ * tone = ink（对话页语义令牌）/ blue（首页 AI 面板设计稿蓝系）；
+ * direction = up（输入框下方场景，菜单向上弹）/ down（页面工具条场景，菜单向下弹）。
  */
-const props = withDefaults(defineProps<{ tone?: 'ink' | 'blue' }>(), {
+const props = withDefaults(defineProps<{ tone?: 'ink' | 'blue'; direction?: 'up' | 'down' }>(), {
   tone: 'ink',
+  direction: 'up',
 })
 
 const agent = useAgentStore()
@@ -32,6 +34,12 @@ const triggerClass = computed(() =>
   props.tone === 'blue'
     ? 'border-blue-200 text-gray-500 hover:border-blue-300 hover:text-blue-500'
     : 'border-line text-ink-2 hover:border-ink-2/50 hover:text-ink',
+)
+
+const menuClass = computed(() =>
+  props.direction === 'down'
+    ? 'top-[calc(100%+8px)]'
+    : 'bottom-[calc(100%+8px)]',
 )
 
 async function loadModels() {
@@ -75,7 +83,8 @@ onMounted(loadModels)
     </button>
     <div
       v-if="showModelMenu"
-      class="absolute bottom-[calc(100%+8px)] left-0 z-50 w-60 rounded-2xl border border-line bg-surface p-2 shadow-lg"
+      class="absolute left-0 z-50 w-60 rounded-2xl border border-line bg-surface p-2 shadow-lg"
+      :class="menuClass"
     >
       <button
         class="flex w-full items-center justify-between rounded-xl px-3 py-2 text-[14px] text-ink hover:bg-panel"

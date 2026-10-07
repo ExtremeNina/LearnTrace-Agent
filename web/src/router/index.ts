@@ -24,7 +24,6 @@ const router = createRouter({
         { path: '', name: 'home', component: () => import('../views/Home.vue') },
         { path: 'chat', name: 'agent', component: () => import('../views/Agent.vue') },
         { path: 'review', name: 'review', component: () => import('../views/Review.vue') },
-        { path: 'quiz', name: 'quiz', component: () => import('../views/Quiz.vue') },
         { path: 'courses', name: 'courses', component: () => import('../views/Courses.vue') },
         { path: 'courses/:id', name: 'courseDetail', component: () => import('../views/CourseDetail.vue') },
         { path: 'questions', name: 'questions', component: () => import('../views/Questions.vue') },

@@ -3,7 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   ChevronsLeft, SquarePen, MonitorPlay, Camera, NotebookPen, Trash2,
-  GraduationCap, ListChecks, BookOpen, ChevronDown, LoaderCircle, X,
+  GraduationCap, BookOpen, ChevronDown, LoaderCircle, X,
 } from 'lucide-vue-next'
 import { useAgentStore } from '../../stores/agent'
 import * as reviewApi from '../../api/review'
@@ -206,15 +206,6 @@ const assetsOpen = ref(ASSET_ROUTES.includes(activeRoute.value))
         >
           <GraduationCap :size="18" :class="activeRoute === '/review' ? 'text-ink' : 'text-ink-2'" />
           今日待复习
-        </RouterLink>
-        <RouterLink
-          to="/quiz"
-          class="mt-1 flex items-center gap-3 rounded-2xl px-3.5 py-2.5 text-[15px] transition-colors"
-          :class="activeRoute === '/quiz' ? 'bg-line/50 font-medium text-ink' : 'text-ink hover:bg-line/50'"
-          @click="$emit('navigate')"
-        >
-          <ListChecks :size="18" :class="activeRoute === '/quiz' ? 'text-ink' : 'text-ink-2'" />
-          练习测验
         </RouterLink>
 
         <!-- 今日队列 -->

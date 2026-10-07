@@ -146,18 +146,6 @@ export interface PageInfo<T> {
   pages: number
 }
 
-/** 练习抽题项（对应后端 /quiz/pick 的 QuizPickVO） */
-export interface QuizPickInfo {
-  cardType: 'question' | 'similar'
-  refId: number
-  questionText: string | null
-  imageUrl: string | null
-  correctAnswer: string | null
-  analysis: string | null
-  subject: string | null
-  createdAt: string
-}
-
 /** 批量加入复习结果（对应后端 ReviewBatchAddVO） */
 export interface ReviewBatchAddResult {
   addedCount: number

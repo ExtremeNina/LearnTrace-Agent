@@ -585,7 +585,7 @@ const timelineTicks = computed(() => {
                     <History :size="13" />
                     历史对话
                   </button>
-                  <ModelPicker tone="ink" />
+                  <ModelPicker tone="ink" direction="down" />
                 </div>
               </div>
               <ChatPanel chip-timestamps empty-title="学习中有疑问？直接问我" @chip="(ts) => seekTo(parseTs(ts))" />

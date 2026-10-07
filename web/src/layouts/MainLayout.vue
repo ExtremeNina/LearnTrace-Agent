@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { LoaderCircle, Bell, Menu, Search } from 'lucide-vue-next'
 import { useUiStore } from '../stores/ui'
 import { useUserStore } from '../stores/user'
@@ -22,6 +22,7 @@ const userStore = useUserStore()
 const auth = useAuthStore()
 const toast = useToastStore()
 const router = useRouter()
+const route = useRoute()
 const showProfile = ref(false)
 /** 顶栏通知红点：有到期复习卡时亮起（与主动提醒同一份数据） */
 const bellDue = ref(0)
@@ -199,8 +200,8 @@ async function remindReview() {
         </button>
         <span class="text-[15px] font-medium md:hidden">学迹</span>
 
-        <!-- 全局搜索（B15）：语义检索本人题目 / 笔记 / 网课转写 -->
-        <div class="relative hidden w-full max-w-md md:block">
+        <!-- 全局搜索（B15）：仅在首页展示（其他页面信息密度让位给页面主功能） -->
+        <div v-if="route.path === '/'" class="relative hidden w-full max-w-md md:block">
           <Search :size="15" class="absolute left-3 top-1/2 -translate-y-1/2 text-ink-2" />
           <input
             ref="searchInputRef"
