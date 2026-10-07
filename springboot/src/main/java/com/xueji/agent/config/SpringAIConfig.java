@@ -3,7 +3,9 @@ package com.xueji.agent.config;
 import com.xueji.agent.ai.memory.RedisChatMemoryRepository;
 import com.xueji.agent.ai.tool.AliyunOcrTool;
 import com.xueji.agent.ai.tool.CreateCourseFromVideoTool;
+import com.xueji.agent.ai.tool.ContentSearchTool;
 import com.xueji.agent.ai.tool.CreateNoteTool;
+import com.xueji.agent.ai.tool.QuizGenerateTool;
 import com.xueji.agent.ai.tool.TranscribeVideoTool;
 import com.xueji.agent.ai.tool.LearningStatusTool;
 import com.xueji.agent.ai.tool.OcrTool;
@@ -173,6 +175,22 @@ public class SpringAIConfig {
     }
 
     /**
+     * 内容检索工具（B26 阶段 4 Content Tools）：网课章节 / 知识点 / 转写检索
+     */
+    @Bean
+    public ContentSearchTool contentSearchTool(com.xueji.agent.ai.ContentSearchService contentSearchService) {
+        return new ContentSearchTool(contentSearchService);
+    }
+
+    /**
+     * QuizAgent 委派工具（B26 阶段 4 agent-as-tool）：基于内部资料出练习题
+     */
+    @Bean
+    public QuizGenerateTool quizGenerateTool(com.xueji.agent.ai.QuizAgentService quizAgentService) {
+        return new QuizGenerateTool(quizAgentService);
+    }
+
+    /**
      * 对话视频创建课程工具（B11 分流）：「做成课程」意图或 >30 分钟时由模型调用，异步走完整流水线。
      * CourseService 标记 @Lazy 断开循环依赖（chatClient → 本工具 → CourseService → AiModelService → chatClient）
      */
@@ -244,11 +262,14 @@ public class SpringAIConfig {
                                  LearningStatusTool learningStatusTool,
                                  TranscribeVideoTool transcribeVideoTool,
                                  CreateNoteTool createNoteTool,
-                                 CreateCourseFromVideoTool createCourseFromVideoTool) {
+                                 CreateCourseFromVideoTool createCourseFromVideoTool,
+                                 ContentSearchTool contentSearchTool,
+                                 QuizGenerateTool quizGenerateTool) {
         return chatClientBuilder
                 .defaultAdvisors(messageChatMemoryAdvisor, loggerAdvisor)
                 .defaultTools(questionSaveTool, ragSearchTool, learningStatusTool,
-                        transcribeVideoTool, createNoteTool, createCourseFromVideoTool)
+                        transcribeVideoTool, createNoteTool, createCourseFromVideoTool,
+                        contentSearchTool, quizGenerateTool)
                 .build();
     }
 

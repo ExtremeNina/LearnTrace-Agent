@@ -170,6 +170,25 @@ public class ContentReviewService {
         return review(buildNoteReviewPrompt(role, noteMarkdown, profile));
     }
 
+    /** QuizAgent 产物评审（B26 阶段 4）：可解性 / 难度分布 / 依据标注，复用 PRACTICE 维度 + 出题专用维度 */
+    public Verdict reviewQuiz(String quizText, UserProfile profile) {
+        return review(buildQuizReviewPrompt(quizText, profile));
+    }
+
+    /**
+     * QuizAgent 产物评审用户消息：题目集文本 + 画像 + 维度（PRACTICE 矩阵 + 出题专用补充）
+     */
+    public static String buildQuizReviewPrompt(String quizText, UserProfile profile) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("[评审对象] QuizAgent 基于内部资料生成的练习题集\n");
+        sb.append(quizText).append("\n\n");
+        sb.append("[学习者画像]\n").append(profileText(profile));
+        sb.append("\n\n[你的评审维度]\n").append(dimensionsText(Role.PRACTICE));
+        sb.append("- 依据标注真实性（sourceSec 时间戳必须是材料中真实讲到的位置）\n");
+        sb.append("- 题目自含性（题面不依赖材料上下文即可作答）\n");
+        return sb.toString();
+    }
+
     private Verdict review(String userPrompt) {
         String text = generationChatClient.prompt()
                 .system(AgentPrompts.CONTENT_REVIEW_PROMPT)
