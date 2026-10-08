@@ -23,7 +23,7 @@ const router = createRouter({
         // 首页仪表盘（B25）；对话迁至 /chat
         { path: '', name: 'home', component: () => import('../views/Home.vue') },
         { path: 'chat', name: 'agent', component: () => import('../views/Agent.vue') },
-        { path: 'review', name: 'review', component: () => import('../views/Review.vue') },
+        // 今日复习已由独立 /review 页改为全局弹窗（MainLayout 挂载 ReviewModal）
         { path: 'courses', name: 'courses', component: () => import('../views/Courses.vue') },
         { path: 'courses/:id', name: 'courseDetail', component: () => import('../views/CourseDetail.vue') },
         { path: 'questions', name: 'questions', component: () => import('../views/Questions.vue') },

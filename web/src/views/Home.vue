@@ -10,6 +10,7 @@ import { getHomeOverview, heartbeatStudyTime } from '../api/home'
 import type { HomeOverview } from '../api/home'
 import ModelPicker from '../components/chat/ModelPicker.vue'
 import { useAgentStore } from '../stores/agent'
+import { useReviewModalStore } from '../stores/reviewModal'
 import { renderMarkdown } from '../utils/markdown'
 import bannerWaterUrl from '../assets/banner-water.webp'
 
@@ -25,6 +26,19 @@ const router = useRouter()
 const overview = ref<HomeOverview | null>(null)
 const loading = ref(true)
 const error = ref('')
+const reviewModal = useReviewModalStore()
+
+// 复习弹窗关闭后刷新首页统计（待复习数 / 今日队列 chips 同步）
+watch(
+  () => reviewModal.isOpen,
+  (open, old) => {
+    if (!open && old) {
+      getHomeOverview()
+        .then((v) => (overview.value = v))
+        .catch(() => undefined)
+    }
+  },
+)
 
 onMounted(async () => {
   // 先确保 agentSocket 已连接（/chat 页挂载时才连，首页直连否则流式消息堵在 outbox）
@@ -41,9 +55,29 @@ onMounted(async () => {
   if (agent.messages.length === 0) {
     agent.restoreLastConversation()
   }
+  // 每日首次打开：AI 对话模块自动加载今日简报（B26 反馈：简报移入对话）
+  loadDailyBriefing()
   // 学习时长心跳：每 60 秒上报一次在站时长（仅页面可见时）
   heartbeatTimer = setInterval(() => flushStudyTime(60), 60_000)
 })
+
+// ---- 今日简报（每日首次打开加载，对话气泡形态） ----
+const BRIEF_DATE_KEY = 'xj_brief_date'
+
+function loadDailyBriefing() {
+  const today = new Date().toISOString().slice(0, 10)
+  if (localStorage.getItem(BRIEF_DATE_KEY) === today) {
+    return
+  }
+  localStorage.setItem(BRIEF_DATE_KEY, today)
+  agent.showBriefingPlaceholder()
+  agent
+    .loadBriefing()
+    .catch(() => {
+      // 简报生成失败静默：移除占位气泡，不干扰对话（次日会重试）
+      agent.removeBriefingPlaceholder()
+    })
+}
 
 // ---- 学习时长心跳（今日学习时长供数） ----
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null
@@ -275,10 +309,10 @@ watch(
                   <GraduationCap :size="17" class="text-blue-500" />
                   今日复习
                 </h2>
-                <RouterLink to="/review" class="flex items-center text-[12px] text-gray-400 transition-colors hover:text-blue-500">
+                <button class="flex items-center text-[12px] text-gray-400 transition-colors hover:text-blue-500" @click="reviewModal.open()">
                   查看全部
                   <ChevronRight :size="13" />
-                </RouterLink>
+                </button>
               </div>
               <div
                 v-if="dueCount > 0"
@@ -306,7 +340,7 @@ watch(
                 </div>
                 <button
                   class="flex shrink-0 items-center gap-1.5 self-start rounded-full bg-gradient-to-r from-blue-500 to-blue-600 px-5 py-2.5 text-[13px] font-medium text-white transition-opacity hover:opacity-90 sm:self-center"
-                  @click="router.push('/review')"
+                  @click="reviewModal.open()"
                 >
                   开始复习
                   <ChevronRight :size="14" />

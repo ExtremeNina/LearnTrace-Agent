@@ -6,6 +6,7 @@ import {
   GraduationCap, BookOpen, ChevronDown, LoaderCircle, X,
 } from 'lucide-vue-next'
 import { useAgentStore } from '../../stores/agent'
+import { useReviewModalStore } from '../../stores/reviewModal'
 import * as reviewApi from '../../api/review'
 import type { ReviewCardInfo } from '../../types/api'
 
@@ -22,6 +23,7 @@ const props = withDefaults(defineProps<{ mode?: 'chat' | 'study'; collapsible?: 
 const emit = defineEmits<{ navigate: []; collapse: [] }>()
 
 const agent = useAgentStore()
+const reviewModal = useReviewModalStore()
 const router = useRouter()
 
 onMounted(() => {
@@ -198,15 +200,13 @@ const assetsOpen = ref(ASSET_ROUTES.includes(activeRoute.value))
     <!-- 学习台模式：复习 / 练习入口 + 今日队列 + 学习资产（可展开） -->
     <template v-else-if="mode === 'study'">
       <div class="min-h-0 flex-1 overflow-y-auto px-3 pt-1">
-        <RouterLink
-          to="/review"
-          class="flex items-center gap-3 rounded-2xl px-3.5 py-2.5 text-[15px] transition-colors"
-          :class="activeRoute === '/review' ? 'bg-line/50 font-medium text-ink' : 'text-ink hover:bg-line/50'"
-          @click="$emit('navigate')"
+        <button
+          class="flex items-center gap-3 rounded-2xl px-3.5 py-2.5 text-[15px] text-ink transition-colors hover:bg-line/50"
+          @click="reviewModal.open(); $emit('navigate')"
         >
-          <GraduationCap :size="18" :class="activeRoute === '/review' ? 'text-ink' : 'text-ink-2'" />
+          <GraduationCap :size="18" class="text-ink-2" />
           今日待复习
-        </RouterLink>
+        </button>
 
         <!-- 今日队列 -->
         <p class="px-3.5 pb-2 pt-5 text-[13px] text-ink-2">今日队列</p>

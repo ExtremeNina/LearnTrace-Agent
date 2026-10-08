@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import * as conversationApi from '../api/conversation'
 import { uploadChatVideo, uploadImage } from '../api/upload'
+import { getTodayBriefing } from '../api/briefing'
 import type { ConversationInfo } from '../types/api'
 import type { ServerMessage } from '../types/ws'
 import * as agentSocket from '../ws/agentSocket'
@@ -25,6 +26,8 @@ export interface ChatMsg {
   transcribe?: { status: 'processing' | 'done' | 'failed'; done: number; total: number }
   /** 课程流水线任务状态（assistant 的 course_task 消息，B11 分流） */
   courseTask?: { status: 'processing' | 'done' | 'failed'; stage: string; text?: string; link?: string }
+  /** 今日简报气泡（本地消息，不落库；每日首次打开首页时加载） */
+  briefing?: boolean
 }
 
 export const useAgentStore = defineStore('agent', () => {
@@ -235,6 +238,33 @@ export const useAgentStore = defineStore('agent', () => {
     })
   }
 
+  /**
+   * 今日简报（B26 反馈：简报移入对话）——本地气泡三步：
+   * showBriefingPlaceholder 插占位 → loadBriefing 完成后替换为 markdown 内容 → 失败由调用方 removeBriefingPlaceholder 静默移除
+   */
+  function showBriefingPlaceholder() {
+    if (messages.value.some((m) => m.briefing)) {
+      return
+    }
+    messages.value.push({
+      role: 'assistant',
+      content: '正在生成今日简报…',
+      briefing: true,
+    })
+  }
+
+  async function loadBriefing() {
+    const briefing = await getTodayBriefing()
+    const target = messages.value.find((m) => m.briefing)
+    if (target) {
+      target.content = `**☀ 今日简报 · ${briefing.briefDate}**\n\n` + (briefing.content ?? '')
+    }
+  }
+
+  function removeBriefingPlaceholder() {
+    messages.value = messages.value.filter((m) => !m.briefing)
+  }
+
   function clearPendingVideo() {
     pendingVideo.value = null
   }
@@ -402,6 +432,9 @@ export const useAgentStore = defineStore('agent', () => {
     uploadPendingVideo,
     clearPendingVideo,
     pushUploadNotice,
+    showBriefingPlaceholder,
+    loadBriefing,
+    removeBriefingPlaceholder,
     send,
     stop,
     handleEvent,

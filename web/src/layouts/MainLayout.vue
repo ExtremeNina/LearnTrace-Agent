@@ -6,11 +6,13 @@ import { useUiStore } from '../stores/ui'
 import { useUserStore } from '../stores/user'
 import { useAuthStore } from '../stores/auth'
 import { useToastStore } from '../stores/toast'
+import { useReviewModalStore } from '../stores/reviewModal'
 import { globalSearch } from '../api/search'
 import type { SearchResultItem } from '../api/search'
 import * as reviewApi from '../api/review'
 import SideNav from '../components/layout/SideNav.vue'
 import ProfileModal from '../components/ProfileModal.vue'
+import ReviewModal from '../components/ReviewModal.vue'
 import ToastHost from '../components/ToastHost.vue'
 
 /**
@@ -21,6 +23,7 @@ const ui = useUiStore()
 const userStore = useUserStore()
 const auth = useAuthStore()
 const toast = useToastStore()
+const reviewModal = useReviewModalStore()
 const router = useRouter()
 const route = useRoute()
 const showProfile = ref(false)
@@ -249,7 +252,7 @@ async function remindReview() {
         <button
           class="relative ml-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-ink-2 hover:bg-line/60 hover:text-ink"
           title="今日待复习"
-          @click="router.push('/review')"
+          @click="reviewModal.open()"
         >
           <Bell :size="18" />
           <span v-if="bellDue > 0" class="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-red-500" />
@@ -291,6 +294,8 @@ async function remindReview() {
 
     <!-- 个人页面弹窗：资料 / 偏好 / 账号 -->
     <ProfileModal v-model:open="showProfile" />
+    <!-- 今日复习弹窗（复习由独立页改为全局弹窗，入口：首页复习区块） -->
+    <ReviewModal />
     <!-- 全局轻提示：任务完成 / 失败通知 -->
     <ToastHost />
   </div>
