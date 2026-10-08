@@ -39,10 +39,22 @@ export interface ChatMsg {
 export const useAgentStore = defineStore('agent', () => {
   /** 本地记住当前会话：刷新页面后恢复到同一会话 */
   const ACTIVE_KEY = 'xj_active_conversation'
-  /** 旧版本简报缓存：{date, content, conversationId}——归属曾写在前端，仅用于一次性迁移到后端 */
-  const BRIEF_CACHE_KEY = 'xj_brief_cache'
-  /** 当日已生成标记：每日一份简报，开新对话后不再重新生成/注入 */
-  const BRIEF_GENERATED_KEY = 'xj_brief_generated'
+  /** 旧版本简报缓存键（无用户后缀）：{date, content, conversationId}——仅迁移时作为旧数据来源读取一次 */
+  const LEGACY_BRIEF_CACHE_KEY = 'xj_brief_cache'
+
+  /**
+   * 简报标记键按用户 ID 隔离（多账号共用浏览器时互不污染，B27）：
+   * uid 未知时退化为原键名，保证未登录态不崩溃
+   */
+  function briefGeneratedKey() {
+    const uid = useAuthStore().user?.id
+    return uid != null ? `xj_brief_generated:${uid}` : 'xj_brief_generated'
+  }
+
+  function briefCacheKey() {
+    const uid = useAuthStore().user?.id
+    return uid != null ? `xj_brief_cache:${uid}` : 'xj_brief_cache'
+  }
 
   const conversations = ref<ConversationInfo[]>([])
   const activeId = ref<number | null>(null)
@@ -356,7 +368,7 @@ export const useAgentStore = defineStore('agent', () => {
       return
     }
     const briefing = await getTodayBriefing(activeId.value)
-    localStorage.setItem(BRIEF_GENERATED_KEY, briefToday())
+    localStorage.setItem(briefGeneratedKey(), briefToday())
     const content = `**☀ 今日简报 · ${briefing.briefDate}**\n\n` + (briefing.content ?? '')
     const pending = messages.value.find((m) => m.briefing && m.content === '正在生成今日简报…')
     if (pending) {
@@ -373,25 +385,35 @@ export const useAgentStore = defineStore('agent', () => {
 
   /**
    * 旧版本一次性迁移：归属曾写在 localStorage（xj_brief_cache），按其记录的会话幂等调后端
-   * 补绑定（后端把 conversation_id 为 NULL 的当日简报绑到该会话），随后弃用该缓存键
+   * 补绑定（后端把 conversation_id 为 NULL 的当日简报绑到该会话），成功后弃用缓存键。
+   * 加固：缓存键在绑定未成功前不丢弃（失败下次进入重试）；只迁移属于当前用户的会话，
+   * 防止多账号共用浏览器时把别的账号的归属绑到当前用户
    */
   async function migrateLegacyBriefing() {
     try {
-      const raw = localStorage.getItem(BRIEF_CACHE_KEY)
+      const raw = localStorage.getItem(briefCacheKey()) ?? localStorage.getItem(LEGACY_BRIEF_CACHE_KEY)
       if (!raw) {
         return
       }
       const obj = JSON.parse(raw)
-      localStorage.removeItem(BRIEF_CACHE_KEY)
-      if (obj?.date === briefToday() && typeof obj.conversationId === 'number') {
-        const b = await getTodayBriefing(obj.conversationId)
-        localStorage.setItem(BRIEF_GENERATED_KEY, briefToday())
-        if (obj.conversationId === activeId.value && !hasBriefingOn(briefToday())) {
-          insertBriefingIntoMessages(b)
-        }
+      const stale = obj?.date !== briefToday()
+        || typeof obj.conversationId !== 'number'
+        || !conversations.value.some((c) => c.id === obj.conversationId)
+      if (stale) {
+        localStorage.removeItem(briefCacheKey())
+        localStorage.removeItem(LEGACY_BRIEF_CACHE_KEY)
+        return
       }
+      const b = await getTodayBriefing(obj.conversationId)
+      localStorage.setItem(briefGeneratedKey(), briefToday())
+      if (obj.conversationId === activeId.value && !hasBriefingOn(briefToday())) {
+        insertBriefingIntoMessages(b)
+      }
+      // 绑定成功才清除，失败保留缓存键下次重试
+      localStorage.removeItem(briefCacheKey())
+      localStorage.removeItem(LEGACY_BRIEF_CACHE_KEY)
     } catch {
-      // 迁移失败静默：展示以后端标记为准
+      // 迁移失败静默：保留缓存键，下次进入重试
     }
   }
 
@@ -405,7 +427,7 @@ export const useAgentStore = defineStore('agent', () => {
     if (activeId.value === null || hasBriefingOn(briefToday())) {
       return
     }
-    if (localStorage.getItem(BRIEF_GENERATED_KEY) !== briefToday()) {
+    if (localStorage.getItem(briefGeneratedKey()) !== briefToday()) {
       showBriefingPlaceholder()
       try {
         await loadBriefing()
