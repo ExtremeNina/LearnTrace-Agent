@@ -9,7 +9,8 @@ import { appendCourseQuiz, getCourseDetail, quizToQuestions, quizToReview, regen
 import { useToastStore } from '../stores/toast'
 import type { CourseDetailData } from '../api/course'
 import { updateNoteContent } from '../api/note'
-import { renderNoteHtml } from '../utils/markdown'
+import { renderMarkdown, renderNoteHtml } from '../utils/markdown'
+import { buildNoteMarkdown, buildQuizMarkdown, downloadMarkdown, exportNoteDocx, exportQuizDocx, printContent, sanitizeFileName } from '../utils/export'
 import DOMPurify from 'dompurify'
 import MdSourceEditor from '../components/notes/MdSourceEditor.vue'
 import ChatPanel from '../components/chat/ChatPanel.vue'
@@ -70,6 +71,103 @@ const savedToQuestions = reactive(new Set<number>())
 const savedToReview = reactive(new Set<number>())
 
 const quizQuestions = computed(() => data.value?.quizQuestions ?? [])
+
+// ---- 导出（AI 笔记 / 课后习题：Markdown 与 Word；打印 / 存为 PDF 走浏览器兜底）----
+const showExportMenu = ref(false)
+const exporting = ref(false)
+
+interface ExportMenuItem {
+  key: string
+  label: string
+  disabled: boolean
+  run: () => Promise<void> | void
+}
+
+const exportMenuGroups = computed<{ title: string; items: ExportMenuItem[] }[]>(() => {
+  const detail = data.value
+  const hasNote = !!detail?.note
+  const hasQuiz = quizQuestions.value.length > 0
+  const title = detail?.course.title ?? ''
+  return [
+    {
+      title: 'AI 笔记',
+      items: [
+        {
+          key: 'note-md',
+          label: 'Markdown（.md）',
+          disabled: !hasNote,
+          run: () => downloadMarkdown(buildNoteMarkdown(detail!), `${sanitizeFileName(title)}-AI笔记.md`),
+        },
+        {
+          key: 'note-docx',
+          label: 'Word（.docx）',
+          disabled: !hasNote,
+          run: () => exportNoteDocx(detail!),
+        },
+      ],
+    },
+    {
+      title: '课后习题',
+      items: [
+        {
+          key: 'quiz-md-answers',
+          label: 'Markdown · 含答案解析',
+          disabled: !hasQuiz,
+          run: () => downloadMarkdown(buildQuizMarkdown(detail!, true), `${sanitizeFileName(title)}-课后习题(含答案).md`),
+        },
+        {
+          key: 'quiz-md-plain',
+          label: 'Markdown · 仅题面',
+          disabled: !hasQuiz,
+          run: () => downloadMarkdown(buildQuizMarkdown(detail!, false), `${sanitizeFileName(title)}-课后习题(仅题面).md`),
+        },
+        {
+          key: 'quiz-docx-answers',
+          label: 'Word · 含答案解析',
+          disabled: !hasQuiz,
+          run: () => exportQuizDocx(detail!, true),
+        },
+        {
+          key: 'quiz-docx-plain',
+          label: 'Word · 仅题面',
+          disabled: !hasQuiz,
+          run: () => exportQuizDocx(detail!, false),
+        },
+      ],
+    },
+    {
+      title: '其他',
+      items: [
+        {
+          key: 'print',
+          label: '打印 / 存为 PDF（AI 笔记）',
+          disabled: !hasNote,
+          run: () => printContent(`${title}-AI笔记`, renderMarkdown(buildNoteMarkdown(detail!))),
+        },
+      ],
+    },
+  ]
+})
+
+async function runExportItem(item: ExportMenuItem) {
+  if (item.disabled || exporting.value || !data.value) {
+    return
+  }
+  exporting.value = true
+  showExportMenu.value = false
+  try {
+    await item.run()
+    toast.push('导出成功')
+  } catch (e) {
+    toast.push(e instanceof Error ? e.message : '导出失败，请重试')
+  } finally {
+    exporting.value = false
+  }
+}
+
+function closeExportMenu() {
+  showExportMenu.value = false
+}
 
 function toggleAnswer(id: number) {
   if (expandedAnswers.has(id)) {
@@ -188,9 +286,12 @@ onMounted(async () => {
 
 // 离开页面（含浏览器关闭 / 刷新）补报一次进度，最长丢失不超过一个节流窗口
 window.addEventListener('pagehide', reportProgressNow)
+// 导出菜单点击外部关闭
+document.addEventListener('click', closeExportMenu)
 
 onUnmounted(() => {
   window.removeEventListener('pagehide', reportProgressNow)
+  document.removeEventListener('click', closeExportMenu)
   reportProgressNow()
 })
 
@@ -501,10 +602,36 @@ const timelineTicks = computed(() => {
               <CircleCheck :size="15" />
               AI 润色
             </button>
-            <button class="flex items-center gap-1.5 rounded-xl border border-line px-3 py-1.5 text-[13px] text-ink hover:bg-panel">
-              <Download :size="15" />
-              导出
-            </button>
+            <div class="relative">
+              <button
+                class="flex items-center gap-1.5 rounded-xl border border-line px-3 py-1.5 text-[13px] text-ink hover:bg-panel disabled:cursor-not-allowed disabled:opacity-50"
+                :disabled="exporting"
+                title="导出 AI 笔记与课后习题"
+                @click.stop="showExportMenu = !showExportMenu"
+              >
+                <Download :size="15" />
+                {{ exporting ? '导出中…' : '导出' }}
+              </button>
+              <div
+                v-if="showExportMenu"
+                class="absolute right-0 z-30 mt-1.5 w-60 rounded-xl border border-line bg-surface py-1.5 shadow-lg"
+                @click.stop
+              >
+                <div v-for="group in exportMenuGroups" :key="group.title">
+                  <p class="px-3.5 pb-1 pt-2 text-[11px] font-medium text-ink-2">{{ group.title }}</p>
+                  <button
+                    v-for="item in group.items"
+                    :key="item.key"
+                    class="block w-full px-3.5 py-1.5 text-left text-[13px] text-ink transition-colors hover:bg-panel disabled:cursor-not-allowed disabled:opacity-40"
+                    :disabled="item.disabled"
+                    :title="item.disabled ? '对应内容尚未生成' : undefined"
+                    @click="runExportItem(item)"
+                  >
+                    {{ item.label }}
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
           </div>
 
