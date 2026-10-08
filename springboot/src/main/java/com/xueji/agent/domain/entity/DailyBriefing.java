@@ -22,6 +22,9 @@ public class DailyBriefing {
 
     private Long userId;
 
+    /** 归属会话（NULL=旧数据未绑定，首次访问时补绑定） */
+    private Long conversationId;
+
     private LocalDate briefDate;
 
     /** 生成时的学习统计快照（JSON） */

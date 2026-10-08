@@ -13,6 +13,9 @@ import java.util.Map;
 @Accessors(chain = true)
 public class BriefingVO {
 
+    /** 归属会话（NULL=未绑定） */
+    private Long conversationId;
+
     /** 简报日期（yyyy-MM-dd） */
     private String briefDate;
 

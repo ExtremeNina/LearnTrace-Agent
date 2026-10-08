@@ -64,6 +64,8 @@ export type ModelModulePrefsInfo = Record<string, number | null>
 
 /** 每日学习简报（对应后端 BriefingVO） */
 export interface BriefingInfo {
+  /** 归属会话（null=旧数据未绑定） */
+  conversationId: number | null
   briefDate: string
   content: string
   stats: Record<string, number | string | unknown[]>

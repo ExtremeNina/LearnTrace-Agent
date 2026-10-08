@@ -21,10 +21,9 @@ const showAttachMenu = ref(false)
 
 onMounted(async () => {
   agent.ensureSocketConnected()
-  // 刷新后恢复到上次的会话（本地无记录或会话已删除则保持新对话）
+  // 刷新后恢复到上次的会话（本地无记录或会话已删除则保持新对话）；
+  // 简报由 openConversation 内部按后端「会话×日期」标记恢复，无需在此注入
   await agent.restoreLastConversation()
-  // 当日简报气泡注入（幂等；restore 内部已注入时跳过，新对话状态在此补注入）
-  agent.injectCachedBriefing()
   // 跨页种子消息（题目详情页「生成相似题」）：切换目标会话后自动发出
   await agent.applySeed()
 })

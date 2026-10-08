@@ -63,25 +63,13 @@ onMounted(async () => {
   heartbeatTimer = setInterval(() => flushStudyTime(60), 60_000)
 })
 
-// ---- 今日简报（对话气泡形态；成功后缓存，刷新注入，开新对话才消失） ----
+// ---- 今日简报（后端按「会话×日期」标记归属；气泡按生成时间落在该会话最后一次对话之后） ----
 
 function loadDailyBriefing() {
-  // 当日已生成过简报 → 只做归属注入，不再重新生成（开新对话后简报不追加，B27）
-  if (localStorage.getItem('xj_brief_generated') === new Date().toISOString().slice(0, 10)) {
-    agent.injectCachedBriefing()
-    return
-  }
-  // 当日简报已生成过 → 直接注入缓存气泡（生成失败无缓存时会走到下方重新生成，天然实现次日/下次进入重试）
-  if (agent.injectCachedBriefing()) {
-    return
-  }
-  agent.showBriefingPlaceholder()
-  agent
-    .loadBriefing()
-    .catch(() => {
-      // 简报生成失败静默：移除占位气泡，不干扰对话（下次进入重试）
-      agent.removeBriefingPlaceholder()
-    })
+  // 旧版本把归属写在前端 localStorage：一次性迁移到后端（补绑定），随后弃用
+  agent.migrateLegacyBriefing()
+  // 当日未生成 → 在当前会话生成；已生成 → 仅当归属当前会话时展示（openConversation 已按标记恢复）
+  agent.ensureTodayBriefing()
 }
 
 // ---- 学习时长心跳（今日学习时长供数） ----
@@ -421,11 +409,11 @@ watch(
               </div>
             </section>
 
-            <!-- AI 助手：与 /chat 共享会话。wrapper 占右列 grid 位（高度完全由左列四行决定），
-                 面板 lg 下绝对定位填满 wrapper——不参与行高计算，对话再长也不撑高左列三卡片；
-                 消息区 min-h-0 flex-1 内部滚动（对话内滚动条），下边界精确对齐最近学习卡 -->
-            <div class="min-h-44 lg:col-start-2 lg:row-start-1 lg:row-span-4 lg:relative">
-              <section class="flex flex-col overflow-hidden rounded-lg border border-gray-100 bg-white p-6 shadow-sm lg:absolute lg:inset-0">
+            <!-- AI 助手：与 /chat 共享会话。wrapper 全断点锁定高度（小屏定高，lg 下由左列四行决定），
+                 面板绝对定位填满 wrapper——不参与行高计算，对话再长也不撑高左列三卡片、不把输入框推出视口；
+                 消息区 min-h-0 flex-1 内部滚动（对话内滚动条），输入框始终固定可见 -->
+            <div class="relative h-[480px] sm:h-[560px] lg:col-start-2 lg:row-start-1 lg:row-span-4 lg:h-auto">
+              <section class="absolute inset-0 flex flex-col overflow-hidden rounded-lg border border-gray-100 bg-white p-6 shadow-sm">
               <div class="flex items-center justify-between">
                 <h2 class="flex items-center gap-2 text-[15px] font-bold text-gray-900">
                   <Sparkles :size="17" class="text-blue-500" />

@@ -2,8 +2,8 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import * as conversationApi from '../api/conversation'
 import { uploadChatVideo, uploadImage } from '../api/upload'
-import { getTodayBriefing } from '../api/briefing'
-import type { ConversationInfo } from '../types/api'
+import { getTodayBriefing, listConversationBriefings } from '../api/briefing'
+import type { BriefingInfo, ConversationInfo } from '../types/api'
 import type { ServerMessage } from '../types/ws'
 import * as agentSocket from '../ws/agentSocket'
 import { useAuthStore } from './auth'
@@ -28,14 +28,18 @@ export interface ChatMsg {
   courseTask?: { status: 'processing' | 'done' | 'failed'; stage: string; text?: string; link?: string }
   /** 意图确认大卡片（B27：视频回合意图 Agent 的结构化提问，payload 随消息透出） */
   intentCard?: { message: string; questions: { title: string; options: string[] }[] }
-  /** 今日简报气泡（本地消息，不落库；每日首次打开首页时加载） */
+  /** 今日简报气泡（本地消息，不落库；按后端「会话×日期」标记恢复与落位） */
   briefing?: boolean
+  /** 消息创建时间（服务端时间），用于把简报按生成时间插到最后一条更早的消息之后 */
+  createdAt?: string
+  /** 简报生成时间（仅 briefing 气泡携带） */
+  generatedAt?: string
 }
 
 export const useAgentStore = defineStore('agent', () => {
   /** 本地记住当前会话：刷新页面后恢复到同一会话 */
   const ACTIVE_KEY = 'xj_active_conversation'
-  /** 今日简报缓存：{date, content, conversationId}——简报归属生成它的会话，仅该会话注入（B27：开新对话不追加） */
+  /** 旧版本简报缓存：{date, content, conversationId}——归属曾写在前端，仅用于一次性迁移到后端 */
   const BRIEF_CACHE_KEY = 'xj_brief_cache'
   /** 当日已生成标记：每日一份简报，开新对话后不再重新生成/注入 */
   const BRIEF_GENERATED_KEY = 'xj_brief_generated'
@@ -86,6 +90,7 @@ export const useAgentStore = defineStore('agent', () => {
         role,
         content: m.content,
         imageUrl: parsePayloadImageUrl(m.payload),
+        createdAt: m.createdAt,
       }
       const payload = parsePayload(m.payload)
       if (m.msgType === 'video') {
@@ -127,8 +132,8 @@ export const useAgentStore = defineStore('agent', () => {
       }
       return item
     })
-    // 当日简报统一注入（幂等）：任何打开会话的路径（历史点击 / 刷新恢复）简报都在对话顶部，无需刷新
-    injectCachedBriefing()
+    // 简报按后端「会话×日期」标记恢复：拉取该会话全部简报，按生成时间插入消息流（跨天多条各自落位）
+    await syncConversationBriefings(id)
   }
 
   function parsePayloadImageUrl(payload: string | null): string | undefined {
@@ -191,43 +196,69 @@ export const useAgentStore = defineStore('agent', () => {
     }
   }
 
+  /** 本地日期（yyyy-MM-dd）：与后端 LocalDate.now()（服务器本地时区）对齐，避免 UTC 凌晨差一天 */
   function briefToday() {
-    return new Date().toISOString().slice(0, 10)
+    const d = new Date()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${d.getFullYear()}-${m}-${day}`
   }
 
-  function readBriefCache(): { date: string; content: string; conversationId: number | null } | null {
-    try {
-      const raw = localStorage.getItem(BRIEF_CACHE_KEY)
-      if (!raw) {
-        return null
-      }
-      const obj = JSON.parse(raw)
-      return obj?.date && obj?.content ? obj : null
-    } catch {
+  /** 时间字符串 → 时间戳（兼容 "yyyy-MM-dd HH:mm:ss" 与 ISO），失败返回 null */
+  function parseTime(value?: string): number | null {
+    if (!value) {
       return null
     }
+    const t = new Date(value.includes('T') ? value : value.replace(' ', 'T')).getTime()
+    return Number.isNaN(t) ? null : t
+  }
+
+  /** 消息流中是否已有指定日期（按简报生成时间）的简报气泡 */
+  function hasBriefingOn(date: string) {
+    return messages.value.some((m) => m.briefing && (m.generatedAt?.slice(0, 10) === date || m.content.includes(date)))
   }
 
   /**
-   * 当日简报缓存存在且气泡未在列时注入对话顶部。
-   * 会话归属校验（B27 反馈恢复）：简报只注入生成它的会话（conversationId 匹配）——
-   * 开新对话 / 切到其他会话不追加；「恢复失败只剩简报」已由 restoreLastConversation 回退机制根治，
-   * 归属校验恢复后不会再触发该问题。供恢复会话 / 首页每日加载调用；返回是否已注入
+   * 把简报气泡插入消息流：落在最后一条 createdAt ≤ 简报生成时间的消息之后
+   * （即追加在简报生成时刻该会话最后一次对话之后；无更早消息则置顶）。
+   * 同一会话跨天多条简报时，各自按生成时间落位。幂等：同日期简报已在列则跳过
    */
-  function injectCachedBriefing() {
-    const brief = readBriefCache()
-    if (!brief || brief.date !== briefToday()) {
-      return false
+  function insertBriefingIntoMessages(b: BriefingInfo, contentOverride?: string) {
+    const content = contentOverride ?? `**☀ 今日简报 · ${b.briefDate}**\n\n` + (b.content ?? '')
+    if (hasBriefingOn(b.briefDate)) {
+      return
     }
-    const briefConversationId = typeof brief.conversationId === 'number' ? brief.conversationId : null
-    if (briefConversationId !== activeId.value) {
-      return false
+    const generated = parseTime(b.generatedAt)
+    let index = 0
+    for (let i = 0; i < messages.value.length; i++) {
+      const t = parseTime(messages.value[i].createdAt)
+      if (t !== null && generated !== null && t <= generated) {
+        index = i + 1
+      }
     }
-    if (messages.value.some((m) => m.briefing)) {
-      return true
+    messages.value.splice(index, 0, {
+      id: -1,
+      role: 'assistant',
+      content,
+      briefing: true,
+      generatedAt: b.generatedAt,
+    })
+  }
+
+  /**
+   * 拉取会话的全部简报标记并按生成时间插入消息流（幂等）。
+   * 简报归属完全由后端（用户 × 会话 × 日期）记录决定：切换会话时只加载归属当前会话的简报，
+   * 未绑定旧数据（conversation_id 为 NULL）不注入，由一次性迁移补绑定
+   */
+  async function syncConversationBriefings(conversationId: number) {
+    try {
+      const briefs = await listConversationBriefings(conversationId)
+      for (const b of briefs) {
+        insertBriefingIntoMessages(b)
+      }
+    } catch {
+      // 简报恢复失败静默：不影响会话消息展示
     }
-    messages.value.unshift({ id: -1, role: 'assistant', content: brief.content, briefing: true })
-    return true
   }
 
   /**
@@ -304,38 +335,85 @@ export const useAgentStore = defineStore('agent', () => {
   }
 
   /**
-   * 今日简报（B26 反馈：简报移入对话）——本地气泡三步：
-   * showBriefingPlaceholder 插占位 → loadBriefing 完成后替换为 markdown 内容 → 失败由调用方 removeBriefingPlaceholder 静默移除
+   * 今日简报（对话气泡形态）：占位插到流式占位之前（不干扰 DELTA 追加），完成后原地替换为 markdown 内容
    */
   function showBriefingPlaceholder() {
-    if (messages.value.some((m) => m.briefing)) {
+    if (hasBriefingOn(briefToday())) {
       return
     }
-    messages.value.push({
-      role: 'assistant',
-      content: '正在生成今日简报…',
-      briefing: true,
-    })
+    const placeholder: ChatMsg = { role: 'assistant', content: '正在生成今日简报…', briefing: true }
+    const last = messages.value[messages.value.length - 1]
+    if (last?.streaming) {
+      messages.value.splice(messages.value.length - 1, 0, placeholder)
+    } else {
+      messages.value.push(placeholder)
+    }
   }
 
+  /** 生成/读取今日简报并归属当前会话（后端按 会话×日期 幂等：已有则读缓存，未绑定旧数据则补绑定） */
   async function loadBriefing() {
-    const briefing = await getTodayBriefing()
-    const content = `**☀ 今日简报 · ${briefing.briefDate}**\n\n` + (briefing.content ?? '')
-    const target = messages.value.find((m) => m.briefing)
-    if (target) {
-      target.content = content
+    if (activeId.value === null) {
+      return
     }
-    // 成功后写当日缓存（附归属会话）+ 当日已生成标记：仅归属会话注入，开新对话不再生成/追加
-    localStorage.setItem(BRIEF_CACHE_KEY, JSON.stringify({
-      date: briefToday(),
-      content,
-      conversationId: activeId.value,
-    }))
+    const briefing = await getTodayBriefing(activeId.value)
     localStorage.setItem(BRIEF_GENERATED_KEY, briefToday())
+    const content = `**☀ 今日简报 · ${briefing.briefDate}**\n\n` + (briefing.content ?? '')
+    const pending = messages.value.find((m) => m.briefing && m.content === '正在生成今日简报…')
+    if (pending) {
+      pending.content = content
+      pending.generatedAt = briefing.generatedAt
+    } else {
+      insertBriefingIntoMessages(briefing, content)
+    }
   }
 
   function removeBriefingPlaceholder() {
-    messages.value = messages.value.filter((m) => !m.briefing)
+    messages.value = messages.value.filter((m) => !(m.briefing && m.content === '正在生成今日简报…'))
+  }
+
+  /**
+   * 旧版本一次性迁移：归属曾写在 localStorage（xj_brief_cache），按其记录的会话幂等调后端
+   * 补绑定（后端把 conversation_id 为 NULL 的当日简报绑到该会话），随后弃用该缓存键
+   */
+  async function migrateLegacyBriefing() {
+    try {
+      const raw = localStorage.getItem(BRIEF_CACHE_KEY)
+      if (!raw) {
+        return
+      }
+      const obj = JSON.parse(raw)
+      localStorage.removeItem(BRIEF_CACHE_KEY)
+      if (obj?.date === briefToday() && typeof obj.conversationId === 'number') {
+        const b = await getTodayBriefing(obj.conversationId)
+        localStorage.setItem(BRIEF_GENERATED_KEY, briefToday())
+        if (obj.conversationId === activeId.value && !hasBriefingOn(briefToday())) {
+          insertBriefingIntoMessages(b)
+        }
+      }
+    } catch {
+      // 迁移失败静默：展示以后端标记为准
+    }
+  }
+
+  /**
+   * 确保当前会话有今日简报（幂等）：
+   * - 无活动会话（新对话）或当日简报已在列 → 不做任何事
+   * - 当日未生成 → 占位 + 生成，归属随生成落定到当前会话（send 创建会话后 / 首页进入时触发）
+   * - 当日已生成但归属其他会话 → 本会话不注入（简报只出现在生成它的会话）
+   */
+  async function ensureTodayBriefing() {
+    if (activeId.value === null || hasBriefingOn(briefToday())) {
+      return
+    }
+    if (localStorage.getItem(BRIEF_GENERATED_KEY) !== briefToday()) {
+      showBriefingPlaceholder()
+      try {
+        await loadBriefing()
+      } catch {
+        // 简报生成失败静默：移除占位气泡，不干扰对话（下次进入重试）
+        removeBriefingPlaceholder()
+      }
+    }
   }
 
   function clearPendingVideo() {
@@ -352,15 +430,8 @@ export const useAgentStore = defineStore('agent', () => {
     error.value = ''
     if (activeId.value === null) {
       await createConversation()
-      // 简报若生成于「新对话」状态（归属为 null），此刻会话已创建——迁移归属，刷新后简报仍跟随本会话
-      try {
-        const brief = readBriefCache()
-        if (brief && brief.date === briefToday() && brief.conversationId === null && activeId.value !== null) {
-          localStorage.setItem(BRIEF_CACHE_KEY, JSON.stringify({ ...brief, conversationId: activeId.value }))
-        }
-      } catch {
-        // 归属迁移失败不影响发送
-      }
+      // 会话已创建：当日简报若尚未生成则在此生成并归属本会话（追加在最后一次对话之后，B27）
+      await ensureTodayBriefing()
     }
     const imageUrl = pendingImage.value || undefined
     const video = pendingVideo.value
@@ -396,7 +467,8 @@ export const useAgentStore = defineStore('agent', () => {
    * WS 事件分发：DELTA 追加到流式占位气泡，COMPLETE 落定，ERROR 提示
    */
   function handleEvent(msg: ServerMessage) {
-    const placeholder = messages.value[messages.value.length - 1]
+    // 定位流式占位气泡（取最后一条 streaming 消息，避免被简报占位等插入干扰）
+    const placeholder = [...messages.value].reverse().find((m) => m.streaming)
     switch (msg.type) {
       case 'DELTA': {
         if (placeholder && placeholder.streaming) {
@@ -532,10 +604,8 @@ export const useAgentStore = defineStore('agent', () => {
     uploadPendingVideo,
     clearPendingVideo,
     pushUploadNotice,
-    showBriefingPlaceholder,
-    loadBriefing,
-    removeBriefingPlaceholder,
-    injectCachedBriefing,
+    ensureTodayBriefing,
+    migrateLegacyBriefing,
     send,
     stop,
     handleEvent,
