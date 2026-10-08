@@ -56,6 +56,9 @@ public class AgentChatServiceImpl implements AgentChatService {
     @Resource
     private com.xueji.agent.service.ProfileService profileService;
 
+    @Resource
+    private com.xueji.agent.ai.IntentAgentService intentAgentService;
+
     @Override
     public Flux<ChatEvent> chat(Long userId, Long conversationId, String content, String imageUrl,
                                 String videoTempPath, Integer videoDurationSec) {
@@ -106,6 +109,20 @@ public class AgentChatServiceImpl implements AgentChatService {
 
             // 会话仍是默认标题时，用首条用户消息生成可区分的标题（重名自动加序号）
             conversationService.applyTitleFromFirstMessage(userId, conversationId, content);
+
+            // 意图 Agent 分流（B27，独立于主 LLM）：
+            // ① 带视频回合 → askIntent 按用户输入定制提问 + 意图选项卡片，不走主 LLM 工具链
+            // ② 文本回合且有 pending 意图 → resolveAndExecute 解析回答、画像落档并直接触发转写/建课
+            if (hasVideo) {
+                return staticReply(turnId, conversationId,
+                        intentAgentService.askIntent(userId, conversationId, content, videoTempPath, videoDurationSec));
+            }
+            if (!hasImage && StringUtils.hasText(content) && intentAgentService.hasPending(conversationId)) {
+                String reply = intentAgentService.resolveAndExecute(userId, conversationId, content);
+                if (reply != null) {
+                    return staticReply(turnId, conversationId, reply);
+                }
+            }
 
             // DeepSeek 平台 API 初期为纯文本（PRD §11 不引入多模态）：题目文本以文字形式拼入 prompt
             String promptContent = content;
@@ -188,6 +205,24 @@ public class AgentChatServiceImpl implements AgentChatService {
                 return Flux.fromIterable(tail);
             }));
         }).subscribeOn(Schedulers.boundedElastic());
+    }
+
+    /** 意图 Agent 等非流式回复：整段一次性 DELTA + 落库 + COMPLETE/STOP（复用主链路的前端事件协议） */
+    private Flux<ChatEvent> staticReply(String turnId, Long conversationId, String text) {
+        return Flux.defer(() -> {
+            Message assistantMessage = new Message()
+                    .setConversationId(conversationId)
+                    .setRole("assistant")
+                    .setMsgType("text")
+                    .setContent(text)
+                    .setCreatedAt(LocalDateTime.now());
+            messageMapper.insert(assistantMessage);
+            touchConversation(conversationId);
+            return Flux.just(
+                    ChatEvent.delta(turnId, text),
+                    ChatEvent.complete(turnId, assistantMessage.getId()),
+                    ChatEvent.stop(turnId));
+        });
     }
 
     private void touchConversation(Long conversationId) {

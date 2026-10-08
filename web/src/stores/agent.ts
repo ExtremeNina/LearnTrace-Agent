@@ -455,6 +455,13 @@ export const useAgentStore = defineStore('agent', () => {
   function ensureSocketConnected() {
     const auth = useAuthStore()
     if (auth.isLoggedIn) {
+      agentSocket.onReconnected(() => {
+        // 断线期间 COMPLETE/STOP 可能丢失：复位回合状态并重新拉取当前会话消息（服务端照常落库）
+        streaming.value = false
+        if (activeId.value !== null) {
+          openConversation(activeId.value).catch(() => undefined)
+        }
+      })
       agentSocket.connect(auth.token, handleEvent)
     }
   }

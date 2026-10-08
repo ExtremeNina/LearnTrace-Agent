@@ -8,8 +8,10 @@ type EventListener = (msg: ServerMessage) => void
 
 let socket: WebSocket | null = null
 let listener: EventListener | null = null
+let reconnectListener: (() => void) | null = null
 let lastToken = ''
 let attempts = 0
+let everConnected = false
 let reconnectTimer: number | null = null
 /** 连接建立中 / 重连中暂存的上行消息，OPEN 后按序冲刷（跨页发起的种子消息依赖此保证） */
 let outbox: ClientMessage[] = []
@@ -27,6 +29,11 @@ function open() {
   socket = new WebSocket(`ws://localhost:9090/ws/agent?token=${encodeURIComponent(lastToken)}`)
   socket.onopen = () => {
     attempts = 0
+    // 重连成功（非首连）通知调用方：断线期间的事件可能丢失，需复位回合状态并补齐消息
+    if (everConnected) {
+      reconnectListener?.()
+    }
+    everConnected = true
     if (outbox.length > 0) {
       const pending = outbox
       outbox = []
@@ -58,6 +65,11 @@ function scheduleReconnect() {
     reconnectTimer = null
     open()
   }, delay)
+}
+
+/** 注册重连成功回调（agent store 用：复位 streaming + 拉取断线期间落库的消息） */
+export function onReconnected(cb: () => void) {
+  reconnectListener = cb
 }
 
 export function sendMessage(msg: ClientMessage) {
