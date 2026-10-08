@@ -258,7 +258,7 @@ const pageLabel = computed(() => `第 ${page.value} / ${pages.value} 页 · 共 
 
 <template>
   <div class="h-full overflow-y-auto">
-    <div class="flex min-h-full max-w-5xl flex-col px-6 py-8">
+    <div class="flex min-h-full flex-col px-6 py-8">
       <!-- 标题行：标题 + 统计 + 批量管理按钮紧跟其右 -->
       <div class="flex items-center gap-4">
         <h1 class="flex items-center gap-2 text-[18px] font-semibold text-ink">

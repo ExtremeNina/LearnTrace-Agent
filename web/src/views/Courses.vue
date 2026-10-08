@@ -194,7 +194,7 @@ async function batchDelete() {
 
 <template>
   <div class="h-full overflow-y-auto">
-    <div class="max-w-5xl px-6 py-8">
+    <div class="px-6 py-8">
       <!-- 标题行：标题 + 统计 + 批量管理按钮紧跟其右 -->
       <div class="flex items-center gap-4">
         <h1 class="text-[18px] font-semibold text-ink">
