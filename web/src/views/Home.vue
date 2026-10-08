@@ -406,9 +406,9 @@ watch(
               </div>
             </section>
 
-            <!-- AI 助手：与 /chat 共享会话（与左列 banner~最近学习同排，下边界对齐最近学习）；
-                 面板限高 + 消息区内部滚动（min-h-0 收缩），对话加长不再反向撑高左列卡片 -->
-            <section class="flex flex-col overflow-hidden rounded-lg border border-gray-100 bg-white p-6 shadow-sm lg:col-start-2 lg:row-start-1 lg:row-span-4 lg:max-h-[calc(100vh-6rem)]">
+            <!-- AI 助手：与 /chat 共享会话（row-span-4 拉伸使下边界精确对齐最近学习卡）；
+                 overflow-hidden + 消息区 min-h-0 内部滚动——对话加长不反向撑高左列，也不破坏下滚 -->
+            <section class="flex flex-col overflow-hidden rounded-lg border border-gray-100 bg-white p-6 shadow-sm lg:col-start-2 lg:row-start-1 lg:row-span-4">
               <div class="flex items-center justify-between">
                 <h2 class="flex items-center gap-2 text-[15px] font-bold text-gray-900">
                   <Sparkles :size="17" class="text-blue-500" />
@@ -433,7 +433,7 @@ watch(
               </div>
               <div
                 ref="assistantBox"
-                class="mt-3 flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto"
+                class="mt-3 flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto pr-3"
                 @click="onAssistantClick"
               >
                 <div v-if="agent.messages.length === 0" class="text-[12px] leading-5 text-gray-500">
