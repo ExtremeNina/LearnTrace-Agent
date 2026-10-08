@@ -258,7 +258,7 @@ const pageLabel = computed(() => `第 ${page.value} / ${pages.value} 页 · 共 
 
 <template>
   <div class="h-full overflow-y-auto">
-    <div class="max-w-5xl px-6 py-8">
+    <div class="flex min-h-full max-w-5xl flex-col px-6 py-8">
       <!-- 标题行：标题 + 统计 + 批量管理按钮紧跟其右 -->
       <div class="flex items-center gap-4">
         <h1 class="flex items-center gap-2 text-[18px] font-semibold text-ink">
@@ -329,8 +329,8 @@ const pageLabel = computed(() => `第 ${page.value} / ${pages.value} 页 · 共 
         <p class="mt-1 text-[12px] text-ink-2">在对话里拍照发一道题，解答后回复「保存」即可收进这里</p>
       </div>
 
-      <!-- 卡片网格：auto-fill 自适应列数每行放满才换行；批量模式下点击即勾选 -->
-      <div v-else class="mt-6 grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3">
+      <!-- 卡片网格：统一一行四个；批量模式下点击即勾选 -->
+      <div v-else class="mt-6 grid grid-cols-2 gap-3 md:grid-cols-4">
         <div
           v-for="r in records"
           :key="recKey(r)"
@@ -380,8 +380,8 @@ const pageLabel = computed(() => `第 ${page.value} / ${pages.value} 页 · 共 
         </div>
       </div>
 
-      <!-- 分页：靠左，上下页按钮紧跟页数右侧 -->
-      <div v-if="!loading && !error && total > 0" class="mt-6 flex items-center gap-4 text-[13px] text-ink-2">
+      <!-- 分页：固定在页面左下角，上下页按钮紧跟页数右侧 -->
+      <div v-if="!loading && !error && total > 0" class="mt-auto flex items-center gap-4 pt-6 text-[13px] text-ink-2">
         <span>{{ pageLabel }}</span>
         <div class="flex items-center gap-2">
           <button

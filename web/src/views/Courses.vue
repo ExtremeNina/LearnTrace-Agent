@@ -262,8 +262,8 @@ async function batchDelete() {
         </button>
       </div>
 
-      <!-- 卡片网格：auto-fill 自适应列数，每行放满才换行 -->
-      <div class="mt-6 grid grid-cols-[repeat(auto-fill,minmax(230px,1fr))] gap-5">
+      <!-- 卡片网格：统一一行四个 -->
+      <div class="mt-6 grid grid-cols-2 gap-5 md:grid-cols-4">
         <div
           v-for="c in filtered"
           :key="c.id"
