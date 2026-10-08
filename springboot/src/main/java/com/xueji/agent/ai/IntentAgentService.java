@@ -1,5 +1,6 @@
 package com.xueji.agent.ai;
 
+import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import com.xueji.agent.ai.prompt.AgentPrompts;
@@ -22,6 +23,7 @@ import org.springframework.util.StringUtils;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * 意图 Agent（B27，独立于主对话 LLM）：接管视频回合的两步流程——
@@ -83,12 +85,19 @@ public class IntentAgentService {
         return Boolean.TRUE.equals(redisUtils.doesItExist(PENDING_KEY_PREFIX + conversationId));
     }
 
+    /** 回合1 产出：text = 确认话术；intentCardJson = 大卡片结构（前端消息 payload 渲染，历史可见） */
+    public record AskResult(String text, String intentCardJson) {
+    }
+
+    /** 大卡片问题项 */
+    public record CardQuestion(String title, java.util.List<String> options) {
+    }
+
     /**
-     * 回合1：按用户输入定制提问 + 意图选项卡片；成功/降级都写入 pending。
-     * 返回 assistant 回复文本
+     * 回合1：按用户输入定制提问 + 意图确认大卡片；成功/降级都写入 pending。
      */
-    public String askIntent(Long userId, Long conversationId, String userText, String videoTempPath, Integer durationSec) {
-        String reply;
+    public AskResult askIntent(Long userId, Long conversationId, String userText, String videoTempPath, Integer durationSec) {
+        AskResult result;
         try {
             UserProfile profile = profileService.getByUser(userId);
             String text = generationChatClient.prompt()
@@ -96,16 +105,16 @@ public class IntentAgentService {
                     .user(buildAskPrompt(userText, durationSec, profile))
                     .call()
                     .content();
-            if (text == null || text.isBlank()) {
-                throw new IllegalStateException("意图 Agent 空回复");
+            result = parseAskCard(text);
+            if (result == null) {
+                throw new IllegalStateException("意图确认卡片输出异常");
             }
-            reply = text.trim();
         } catch (Exception e) {
-            log.warn("意图 Agent 提问失败，降级模板确认, conversationId={}", conversationId, e);
-            reply = fallbackAsk(durationSec);
+            log.warn("意图 Agent 提问失败，降级模板确认卡, conversationId={}", conversationId, e);
+            result = fallbackAsk(durationSec);
         }
         rememberPending(conversationId, videoTempPath, durationSec);
-        return reply;
+        return result;
     }
 
     /**
@@ -331,18 +340,74 @@ public class IntentAgentService {
         }
     }
 
-    private String fallbackAsk(int durationSec) {
-        String chips = durationSec > MAX_TRANSCRIBE_SEC
-                ? "[chip:做成课程]"
-                : "[chip:转写语音] [chip:做成课程] [chip:提问内容]";
-        return "视频已收到（时长 " + formatDuration(durationSec) + "）。点选下面的卡片选择处理方式：\n\n"
-                + chips + "\n\n"
-                + (durationSec > MAX_TRANSCRIBE_SEC
-                ? "视频超过 30 分钟，将按完整网课处理：画面识别 + AI 笔记 + 课后习题。也可以顺带告诉我你的学段和学习目标，笔记与习题会更贴合你。"
-                : "≤30 分钟默认推荐「转写语音」；想要画面识别、AI 笔记和学习进度选「做成课程」。也可以顺带告诉我你的学段和学习目标，处理结果会更贴合你。");
+    /** 解析提问卡片 JSON（容错：剥围栏、找首尾大括号、questions 逐项校验；公开静态便于单测） */
+    public static AskResult parseAskCard(String text) {
+        if (text == null || text.isBlank()) {
+            return null;
+        }
+        try {
+            String cleaned = text.replace("```json", "").replace("```", "").trim();
+            int start = cleaned.indexOf('{');
+            int end = cleaned.lastIndexOf('}');
+            if (start < 0 || end <= start) {
+                return null;
+            }
+            JSONObject obj = JSONUtil.parseObj(cleaned.substring(start, end + 1));
+            String message = obj.getStr("message", null);
+            if (message == null || message.isBlank()) {
+                return null;
+            }
+            JSONArray array = obj.getJSONArray("questions");
+            java.util.List<CardQuestion> questions = new java.util.ArrayList<>();
+            if (array != null) {
+                for (Object item : array) {
+                    try {
+                        JSONObject o = (JSONObject) item;
+                        String title = o.getStr("title", null);
+                        JSONArray opts = o.getJSONArray("options");
+                        if (title == null || title.isBlank() || opts == null || opts.isEmpty()) {
+                            continue;
+                        }
+                        questions.add(new CardQuestion(title.trim(),
+                                opts.stream().map(String::valueOf).map(String::trim).toList()));
+                    } catch (Exception ignored) {
+                        // 单项解析失败跳过
+                    }
+                }
+            }
+            // hutool 不识别 record 访问器（非 bean 形式），questions 手动构建 JSONArray
+            JSONArray questionArr = new JSONArray();
+            for (CardQuestion q : questions) {
+                JSONArray opts = new JSONArray();
+                q.options().forEach(opts::add);
+                questionArr.add(new JSONObject().set("title", q.title()).set("options", opts));
+            }
+            String cardJson = new JSONObject()
+                    .set("message", message.trim())
+                    .set("questions", questionArr)
+                    .toString();
+            return new AskResult(message.trim(), cardJson);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
-    private String formatDuration(Integer durationSec) {
+    /** 降级模板确认卡（意图不明 → 处理方式问题；公开静态便于单测） */
+    public static AskResult fallbackAsk(int durationSec) {
+        boolean tooLong = durationSec > MAX_TRANSCRIBE_SEC;
+        String message = "视频已收到（时长 " + formatDuration(durationSec) + "）。"
+                + (tooLong
+                ? "视频超过 30 分钟，将按完整网课处理：画面识别 + AI 笔记 + 课后习题。"
+                : "请选择处理方式：≤30 分钟默认推荐「转写语音」；想要画面识别、AI 笔记和学习进度选「做成课程」。");
+        JSONArray opts = new JSONArray();
+        (tooLong ? List.of("做成课程") : List.of("转写语音", "做成课程", "提问内容")).forEach(opts::add);
+        String cardJson = new JSONObject().set("message", message)
+                .set("questions", new JSONArray().add(new JSONObject().set("title", "处理方式").set("options", opts)))
+                .toString();
+        return new AskResult(message, cardJson);
+    }
+
+    private static String formatDuration(Integer durationSec) {
         if (durationSec == null || durationSec < 0) {
             return "未知";
         }

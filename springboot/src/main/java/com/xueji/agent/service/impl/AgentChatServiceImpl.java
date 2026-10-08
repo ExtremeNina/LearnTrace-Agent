@@ -114,8 +114,9 @@ public class AgentChatServiceImpl implements AgentChatService {
             // ① 带视频回合 → askIntent 按用户输入定制提问 + 意图选项卡片，不走主 LLM 工具链
             // ② 文本回合且有 pending 意图 → resolveAndExecute 解析回答、画像落档并直接触发转写/建课
             if (hasVideo) {
-                return staticReply(turnId, conversationId,
-                        intentAgentService.askIntent(userId, conversationId, content, videoTempPath, videoDurationSec));
+                com.xueji.agent.ai.IntentAgentService.AskResult ask =
+                        intentAgentService.askIntent(userId, conversationId, content, videoTempPath, videoDurationSec);
+                return staticReply(turnId, conversationId, ask.text(), ask.intentCardJson());
             }
             if (!hasImage && StringUtils.hasText(content) && intentAgentService.hasPending(conversationId)) {
                 String reply = intentAgentService.resolveAndExecute(userId, conversationId, content);
@@ -207,8 +208,8 @@ public class AgentChatServiceImpl implements AgentChatService {
         }).subscribeOn(Schedulers.boundedElastic());
     }
 
-    /** 意图 Agent 等非流式回复：整段一次性 DELTA + 落库 + COMPLETE/STOP（复用主链路的前端事件协议） */
-    private Flux<ChatEvent> staticReply(String turnId, Long conversationId, String text) {
+    /** 意图 Agent 等非流式回复：整段一次性 DELTA + 落库 + COMPLETE/STOP（复用主链路的前端事件协议）；payloadJson 非空时随消息落库（前端大卡片渲染） */
+    private Flux<ChatEvent> staticReply(String turnId, Long conversationId, String text, String payloadJson) {
         return Flux.defer(() -> {
             Message assistantMessage = new Message()
                     .setConversationId(conversationId)
@@ -216,13 +217,20 @@ public class AgentChatServiceImpl implements AgentChatService {
                     .setMsgType("text")
                     .setContent(text)
                     .setCreatedAt(LocalDateTime.now());
+            if (payloadJson != null && !payloadJson.isBlank()) {
+                assistantMessage.setPayload(payloadJson);
+            }
             messageMapper.insert(assistantMessage);
             touchConversation(conversationId);
             return Flux.just(
                     ChatEvent.delta(turnId, text),
-                    ChatEvent.complete(turnId, assistantMessage.getId()),
+                    ChatEvent.complete(turnId, assistantMessage.getId(), payloadJson),
                     ChatEvent.stop(turnId));
         });
+    }
+
+    private Flux<ChatEvent> staticReply(String turnId, Long conversationId, String text) {
+        return staticReply(turnId, conversationId, text, null);
     }
 
     private void touchConversation(Long conversationId) {

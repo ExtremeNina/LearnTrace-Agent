@@ -22,9 +22,16 @@ public class ChatEvent {
     private final Integer done;
     /** 仅 TRANSCRIBE：总分片数 */
     private final Integer total;
+    /** 仅 COMPLETE：消息 payload JSON（意图确认大卡片等结构化扩展随消息透传） */
+    private final String payload;
 
     private ChatEvent(String type, String turnId, String text, Long messageId, String code, String message,
                       String status, Integer done, Integer total) {
+        this(type, turnId, text, messageId, code, message, status, done, total, null);
+    }
+
+    private ChatEvent(String type, String turnId, String text, Long messageId, String code, String message,
+                      String status, Integer done, Integer total, String payload) {
         this.type = type;
         this.turnId = turnId;
         this.text = text;
@@ -34,10 +41,11 @@ public class ChatEvent {
         this.status = status;
         this.done = done;
         this.total = total;
+        this.payload = payload;
     }
 
     private ChatEvent(String type, String turnId, String text, Long messageId, String code, String message) {
-        this(type, turnId, text, messageId, code, message, null, null, null);
+        this(type, turnId, text, messageId, code, message, null, null, null, null);
     }
 
     public static ChatEvent delta(String turnId, String text) {
@@ -46,6 +54,11 @@ public class ChatEvent {
 
     public static ChatEvent complete(String turnId, Long messageId) {
         return new ChatEvent("COMPLETE", turnId, null, messageId, null, null);
+    }
+
+    /** COMPLETE 变体：随消息透出 payload（意图确认大卡片） */
+    public static ChatEvent complete(String turnId, Long messageId, String payload) {
+        return new ChatEvent("COMPLETE", turnId, null, messageId, null, null, null, null, null, payload);
     }
 
     public static ChatEvent error(String turnId, String code, String message) {

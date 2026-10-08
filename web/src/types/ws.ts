@@ -26,4 +26,6 @@ export interface ServerMessage {
   done?: number
   /** 仅 TRANSCRIBE：总分片数 */
   total?: number
+  /** 仅 COMPLETE：消息 payload JSON（意图确认大卡片等结构化扩展） */
+  payload?: string
 }

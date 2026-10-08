@@ -5,6 +5,7 @@ import {
 } from 'lucide-vue-next'
 import { useAgentStore } from '../../stores/agent'
 import { renderIntentChips, renderMarkdown } from '../../utils/markdown'
+import IntentCard from './IntentCard.vue'
 
 /**
  * 会话消息流面板（/chat 与网课详情「AI 问答」共用）：
@@ -217,6 +218,11 @@ function onPanelClick(e: MouseEvent) {
                 <MonitorPlay :size="14" />
                 查看课程与 AI 笔记
               </RouterLink>
+            </template>
+            <!-- B27 意图确认大卡片：结构化提问 + 选项组 + 确认按钮（点击回发拼接文本） -->
+            <template v-else-if="msg.intentCard">
+              <div class="text-[14px] leading-6 text-ink">{{ msg.intentCard.message }}</div>
+              <IntentCard :card="msg.intentCard" @confirm="emit('intent', $event)" />
             </template>
             <div v-else class="markdown-body" v-html="renderContent(msg.content)"></div>
 

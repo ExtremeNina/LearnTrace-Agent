@@ -26,6 +26,8 @@ export interface ChatMsg {
   transcribe?: { status: 'processing' | 'done' | 'failed'; done: number; total: number }
   /** 课程流水线任务状态（assistant 的 course_task 消息，B11 分流） */
   courseTask?: { status: 'processing' | 'done' | 'failed'; stage: string; text?: string; link?: string }
+  /** 意图确认大卡片（B27：视频回合意图 Agent 的结构化提问，payload 随消息透出） */
+  intentCard?: { message: string; questions: { title: string; options: string[] }[] }
   /** 今日简报气泡（本地消息，不落库；每日首次打开首页时加载） */
   briefing?: boolean
 }
@@ -33,8 +35,10 @@ export interface ChatMsg {
 export const useAgentStore = defineStore('agent', () => {
   /** 本地记住当前会话：刷新页面后恢复到同一会话 */
   const ACTIVE_KEY = 'xj_active_conversation'
-  /** 今日简报缓存：{date, content}——刷新后恢复会话时重新注入气泡，当日始终显示 */
+  /** 今日简报缓存：{date, content, conversationId}——简报归属生成它的会话，仅该会话注入（B27：开新对话不追加） */
   const BRIEF_CACHE_KEY = 'xj_brief_cache'
+  /** 当日已生成标记：每日一份简报，开新对话后不再重新生成/注入 */
+  const BRIEF_GENERATED_KEY = 'xj_brief_generated'
 
   const conversations = ref<ConversationInfo[]>([])
   const activeId = ref<number | null>(null)
@@ -100,6 +104,18 @@ export const useAgentStore = defineStore('agent', () => {
           status: payload.status as 'processing' | 'done' | 'failed',
           stage: typeof payload.stage === 'string' ? payload.stage : 'PENDING',
           link: typeof payload.link === 'string' ? payload.link : undefined,
+        }
+      }
+      // 意图确认大卡片（B27）：历史渲染（实时经 COMPLETE.payload 透出，同构）
+      if (payload?.intentCard && typeof payload.intentCard === 'object') {
+        const card = payload.intentCard as { message?: string; questions?: unknown }
+        if (Array.isArray(card.questions)) {
+          item.intentCard = {
+            message: typeof card.message === 'string' ? card.message : '',
+            questions: (card.questions as { title?: string; options?: string[] }[])
+              .filter((q) => q && typeof q.title === 'string' && Array.isArray(q.options))
+              .map((q) => ({ title: q.title!, options: q.options! })),
+          }
         }
       }
       if (role === 'user') {
@@ -179,7 +195,7 @@ export const useAgentStore = defineStore('agent', () => {
     return new Date().toISOString().slice(0, 10)
   }
 
-  function readBriefCache(): { date: string; content: string } | null {
+  function readBriefCache(): { date: string; content: string; conversationId: number | null } | null {
     try {
       const raw = localStorage.getItem(BRIEF_CACHE_KEY)
       if (!raw) {
@@ -193,12 +209,18 @@ export const useAgentStore = defineStore('agent', () => {
   }
 
   /**
-   * 当日简报缓存存在且气泡未在列时注入对话顶部（当日始终显示，次日由新缓存替换）。
-   * 供恢复会话 / 首页每日加载调用；返回是否已注入
+   * 当日简报缓存存在且气泡未在列时注入对话顶部。
+   * 会话归属校验（B27 反馈恢复）：简报只注入生成它的会话（conversationId 匹配）——
+   * 开新对话 / 切到其他会话不追加；「恢复失败只剩简报」已由 restoreLastConversation 回退机制根治，
+   * 归属校验恢复后不会再触发该问题。供恢复会话 / 首页每日加载调用；返回是否已注入
    */
   function injectCachedBriefing() {
     const brief = readBriefCache()
     if (!brief || brief.date !== briefToday()) {
+      return false
+    }
+    const briefConversationId = typeof brief.conversationId === 'number' ? brief.conversationId : null
+    if (briefConversationId !== activeId.value) {
       return false
     }
     if (messages.value.some((m) => m.briefing)) {
@@ -303,11 +325,13 @@ export const useAgentStore = defineStore('agent', () => {
     if (target) {
       target.content = content
     }
-    // 成功后写当日缓存：刷新恢复会话时由 injectCachedBriefing 重新注入
+    // 成功后写当日缓存（附归属会话）+ 当日已生成标记：仅归属会话注入，开新对话不再生成/追加
     localStorage.setItem(BRIEF_CACHE_KEY, JSON.stringify({
       date: briefToday(),
       content,
+      conversationId: activeId.value,
     }))
+    localStorage.setItem(BRIEF_GENERATED_KEY, briefToday())
   }
 
   function removeBriefingPlaceholder() {
@@ -328,6 +352,15 @@ export const useAgentStore = defineStore('agent', () => {
     error.value = ''
     if (activeId.value === null) {
       await createConversation()
+      // 简报若生成于「新对话」状态（归属为 null），此刻会话已创建——迁移归属，刷新后简报仍跟随本会话
+      try {
+        const brief = readBriefCache()
+        if (brief && brief.date === briefToday() && brief.conversationId === null && activeId.value !== null) {
+          localStorage.setItem(BRIEF_CACHE_KEY, JSON.stringify({ ...brief, conversationId: activeId.value }))
+        }
+      } catch {
+        // 归属迁移失败不影响发送
+      }
     }
     const imageUrl = pendingImage.value || undefined
     const video = pendingVideo.value
@@ -375,6 +408,17 @@ export const useAgentStore = defineStore('agent', () => {
         if (placeholder && placeholder.streaming) {
           placeholder.id = msg.messageId
           placeholder.streaming = false
+          // 意图确认大卡片随 COMPLETE 透出（落库 payload 同构）
+          if (msg.payload) {
+            try {
+              const card = JSON.parse(msg.payload)
+              if (Array.isArray(card.questions)) {
+                placeholder.intentCard = card
+              }
+            } catch {
+              // payload 解析失败按纯文本处理
+            }
+          }
         }
         streaming.value = false
         loadConversations()

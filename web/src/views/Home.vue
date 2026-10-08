@@ -12,6 +12,7 @@ import ModelPicker from '../components/chat/ModelPicker.vue'
 import { useAgentStore } from '../stores/agent'
 import { useReviewModalStore } from '../stores/reviewModal'
 import { renderIntentChips, renderMarkdown } from '../utils/markdown'
+import IntentCard from '../components/chat/IntentCard.vue'
 import bannerWaterUrl from '../assets/banner-water.webp'
 
 /**
@@ -50,10 +51,11 @@ onMounted(async () => {
   } finally {
     loading.value = false
   }
-  // 助手面板续接上次会话（与 /chat 同一份状态）
-  agent.loadConversations()
+  // 助手面板续接上次会话（与 /chat 同一份状态）——必须 await：先定会话归属再做简报注入/生成，
+  // 否则 loadDailyBriefing 在 activeId 未定时执行，简报归属/注入判断全部错位（B27 竞态）
+  await agent.loadConversations()
   if (agent.messages.length === 0) {
-    agent.restoreLastConversation()
+    await agent.restoreLastConversation()
   }
   // 每日首次打开：AI 对话模块自动加载今日简报（B26 反馈：简报移入对话）
   loadDailyBriefing()
@@ -64,6 +66,11 @@ onMounted(async () => {
 // ---- 今日简报（对话气泡形态；成功后缓存，刷新注入，开新对话才消失） ----
 
 function loadDailyBriefing() {
+  // 当日已生成过简报 → 只做归属注入，不再重新生成（开新对话后简报不追加，B27）
+  if (localStorage.getItem('xj_brief_generated') === new Date().toISOString().slice(0, 10)) {
+    agent.injectCachedBriefing()
+    return
+  }
   // 当日简报已生成过 → 直接注入缓存气泡（生成失败无缓存时会走到下方重新生成，天然实现次日/下次进入重试）
   if (agent.injectCachedBriefing()) {
     return
@@ -484,6 +491,15 @@ watch(
                       <MonitorPlay :size="13" />
                       查看课程与 AI 笔记
                     </RouterLink>
+                  </template>
+                  <!-- B27 意图确认大卡片 -->
+                  <template v-else-if="msg.intentCard">
+                    <div class="mr-4 text-[13px] leading-6 text-gray-700">{{ msg.intentCard.message }}</div>
+                    <IntentCard
+                      class="mr-4 mt-1"
+                      :card="msg.intentCard"
+                      @confirm="agent.send($event)"
+                    />
                   </template>
                   <div
                     v-else
