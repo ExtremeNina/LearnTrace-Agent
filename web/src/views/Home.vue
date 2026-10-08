@@ -61,20 +61,22 @@ onMounted(async () => {
   heartbeatTimer = setInterval(() => flushStudyTime(60), 60_000)
 })
 
-// ---- 今日简报（每日首次打开加载，对话气泡形态） ----
-const BRIEF_DATE_KEY = 'xj_brief_date'
+// ---- 今日简报（对话气泡形态；成功后缓存，刷新注入，开新对话才消失） ----
 
 function loadDailyBriefing() {
-  const today = new Date().toISOString().slice(0, 10)
-  if (localStorage.getItem(BRIEF_DATE_KEY) === today) {
+  // 当日已开过新对话（dismiss）→ 简报不再重新生成，也不注入
+  if (localStorage.getItem('xj_brief_dismissed') === new Date().toISOString().slice(0, 10)) {
     return
   }
-  localStorage.setItem(BRIEF_DATE_KEY, today)
+  // 当日简报已生成过 → 直接注入缓存气泡（生成失败无缓存时会走到下方重新生成，天然实现次日/下次进入重试）
+  if (agent.injectCachedBriefing()) {
+    return
+  }
   agent.showBriefingPlaceholder()
   agent
     .loadBriefing()
     .catch(() => {
-      // 简报生成失败静默：移除占位气泡，不干扰对话（次日会重试）
+      // 简报生成失败静默：移除占位气泡，不干扰对话（下次进入重试）
       agent.removeBriefingPlaceholder()
     })
 }

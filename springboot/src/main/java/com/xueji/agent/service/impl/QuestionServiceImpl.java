@@ -117,11 +117,11 @@ public class QuestionServiceImpl implements QuestionService {
     }
 
     @Override
-    public PageVO<QuestionItemVO> listByUser(Long userId, String date, String subject, int page, int size) {
-        long total = questionRecordMapper.countMerged(userId, date, subject);
+    public PageVO<QuestionItemVO> listByUser(Long userId, String date, String subject, String keyword, int page, int size) {
+        long total = questionRecordMapper.countMerged(userId, date, subject, keyword);
         int safePage = Math.max(page, 1);
         int safeSize = Math.max(size, 1);
-        List<QuestionItemVO> list = questionRecordMapper.listMerged(userId, date, subject,
+        List<QuestionItemVO> list = questionRecordMapper.listMerged(userId, date, subject, keyword,
                 safeSize, (long) (safePage - 1) * safeSize);
         return new PageVO<>(list, total, safePage, safeSize);
     }

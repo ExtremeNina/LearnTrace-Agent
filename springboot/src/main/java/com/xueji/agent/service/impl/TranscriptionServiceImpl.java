@@ -2,6 +2,7 @@ package com.xueji.agent.service.impl;
 
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
+import com.xueji.agent.ai.prompt.AgentPrompts;
 import com.xueji.agent.ai.tool.AsrSegment;
 import com.xueji.agent.ai.tool.QwenAsrTool;
 import com.xueji.agent.domain.entity.Message;
@@ -14,6 +15,7 @@ import com.xueji.agent.utils.MediaUtils;
 import com.xueji.agent.ws.AgentEventPushService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.memory.ChatMemoryRepository;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -57,6 +59,10 @@ public class TranscriptionServiceImpl implements TranscriptionService {
     @Resource
     private ChatMemoryRepository chatMemoryRepository;
 
+    /** 生成形态客户端（无工具无记忆）：转写完成后整理语音笔记草稿用 */
+    @Resource
+    private ChatClient generationChatClient;
+
     @Resource(name = "courseExecutor")
     private ThreadPoolExecutor courseExecutor;
 
@@ -91,16 +97,38 @@ public class TranscriptionServiceImpl implements TranscriptionService {
     void runTask(Long userId, Long conversationId, Long messageId, Path video, int durationSec) {
         try {
             String transcript = doTranscribe(userId, conversationId, messageId, video, durationSec);
-            finishMessage(userId, messageId, "done", transcript, null);
+            // 语音笔记草稿（B27）：LLM 整理转写全文，失败静默降级（气泡只显示全文，保存回退全文）
+            String noteDraft = draftVoiceNoteQuietly(transcript);
+            String content = noteDraft == null
+                    ? transcript + "\n\n想把它收进笔记管理就回复「保存」，分组与标题由我来起。"
+                    : transcript + "\n\n---\n\n## 📝 语音笔记（草稿）\n\n" + noteDraft.trim()
+                    + "\n\n想把它收进笔记管理就回复「保存」，分组与标题由我来起。";
+            finishMessage(userId, messageId, "done", content, noteDraft, null);
 
-            // 转写全文追加进 Redis 会话记忆：后续回合 LLM 可直接基于内容回答（滑窗裁剪与记忆 Advisor 一致）
+            // 仅转写全文追加进 Redis 会话记忆（笔记草稿属展示层，不进记忆）：后续回合 LLM 可直接基于内容回答
             appendToMemory(conversationId, transcript);
-            log.info("视频转写完成, userId={}, messageId={}, durationSec={}", userId, messageId, durationSec);
+            log.info("视频转写完成, userId={}, messageId={}, durationSec={}, noteDraft={}",
+                    userId, messageId, durationSec, noteDraft != null);
         } catch (Exception e) {
             log.error("视频转写失败, userId={}, messageId={}", userId, messageId, e);
-            finishMessage(userId, messageId, "failed", null, e.getMessage());
+            finishMessage(userId, messageId, "failed", null, null, e.getMessage());
         } finally {
             cleanupQuietly(video);
+        }
+    }
+
+    /** 转写全文整理为 Markdown 语音笔记草稿；LLM 失败返回 null（不阻塞转写结果回流） */
+    private String draftVoiceNoteQuietly(String transcript) {
+        try {
+            String draft = generationChatClient.prompt()
+                    .system(AgentPrompts.VOICE_NOTE_PROMPT)
+                    .user(transcript)
+                    .call()
+                    .content();
+            return draft == null || draft.isBlank() ? null : draft;
+        } catch (Exception e) {
+            log.warn("语音笔记草稿整理失败（降级为仅转写全文）, {}", e.getMessage());
+            return null;
         }
     }
 
@@ -165,13 +193,12 @@ public class TranscriptionServiceImpl implements TranscriptionService {
             chars += segment.getText().length();
         }
         String head = "**视频转写完成**（时长 " + formatTs(durationSec) + "，共 " + segments.size()
-                + " 段，约 " + chars + " 字）\n\n"
-                + "你可以让我总结要点，或回复「保存」把它收进笔记管理（分组与标题由我来起）。\n\n";
+                + " 段，约 " + chars + " 字）\n\n";
         return head + text.toString().trim();
     }
 
-    /** 占位消息原地更新（内容 / payload 状态）并推送事件 */
-    private void finishMessage(Long userId, Long messageId, String status, String content, String errorMessage) {
+    /** 占位消息原地更新（内容 / payload 状态）并推送事件；noteDraft 非空时写入 payload 供保存工具优先取用 */
+    private void finishMessage(Long userId, Long messageId, String status, String content, String noteDraft, String errorMessage) {
         Message message = messageMapper.selectById(messageId);
         if (message == null) {
             return;
@@ -183,6 +210,9 @@ public class TranscriptionServiceImpl implements TranscriptionService {
             payload = new JSONObject();
         }
         payload.set("status", status);
+        if (noteDraft != null) {
+            payload.set("noteDraft", noteDraft);
+        }
         if ("failed".equals(status)) {
             payload.set("error", errorMessage == null ? "" : errorMessage);
             message.setContent("视频转写失败（" + (errorMessage == null ? "服务异常" : errorMessage)

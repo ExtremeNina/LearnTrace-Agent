@@ -46,7 +46,18 @@ public class CreateNoteTool {
             if (transcript == null || transcript.getContent() == null || transcript.getContent().isBlank()) {
                 return "SAVE_NOT_FOUND";
             }
-            Long noteId = noteService.saveTranscriptNote(userId, groupName, title, transcript.getContent());
+            // 保存内容优先取语音笔记草稿（B27：payload.noteDraft 由转写完成时 LLM 整理），无草稿回退转写全文
+            String content = transcript.getContent();
+            try {
+                Object draft = cn.hutool.json.JSONUtil.parseObj(
+                        transcript.getPayload() == null ? "{}" : transcript.getPayload()).get("noteDraft");
+                if (draft instanceof String s && !s.isBlank()) {
+                    content = s;
+                }
+            } catch (Exception ignored) {
+                // payload 解析失败按全文保存
+            }
+            Long noteId = noteService.saveTranscriptNote(userId, groupName, title, content);
             log.info("保存转写笔记工具执行完成, userId={}, conversationId={}, noteId={}", userId, conversationId, noteId);
             return "SAVE_SUCCESS";
         } catch (Exception e) {

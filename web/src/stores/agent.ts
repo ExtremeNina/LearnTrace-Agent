@@ -18,7 +18,7 @@ export interface ChatMsg {
   content: string
   imageUrl?: string
   streaming?: boolean
-  /** 解答类回答（跟在带图消息后），底部展示"保存到拍照记录"引导 */
+  /** 解答类回答（跟在带图消息后），底部展示"保存到题目管理"引导 */
   fromQuestion?: boolean
   /** 用户消息附带视频（B11） */
   video?: { durationSec?: number }
@@ -33,6 +33,10 @@ export interface ChatMsg {
 export const useAgentStore = defineStore('agent', () => {
   /** 本地记住当前会话：刷新页面后恢复到同一会话 */
   const ACTIVE_KEY = 'xj_active_conversation'
+  /** 今日简报缓存：{date, content, conversationId}——刷新后恢复会话时重新注入气泡，开新对话才消失 */
+  const BRIEF_CACHE_KEY = 'xj_brief_cache'
+  /** 当日简报 dismiss 标记：用户开启新对话后当日不再注入 */
+  const BRIEF_DISMISS_KEY = 'xj_brief_dismissed'
 
   const conversations = ref<ConversationInfo[]>([])
   const activeId = ref<number | null>(null)
@@ -139,7 +143,8 @@ export const useAgentStore = defineStore('agent', () => {
   }
 
   /**
-   * 开启新对话：重置会话状态，下一条消息会创建新会话
+   * 开启新对话：重置会话状态，下一条消息会创建新会话。
+   * 写当日简报 dismiss 标记——开新对话后简报不再跟随注入（次日重新生成）
    */
   function startNew() {
     activeId.value = null
@@ -148,10 +153,12 @@ export const useAgentStore = defineStore('agent', () => {
     error.value = ''
     pendingImage.value = ''
     pendingVideo.value = null
+    localStorage.setItem(BRIEF_DISMISS_KEY, briefToday())
   }
 
   /**
-   * 刷新后恢复上次会话：本地记录的会话仍存在则重新加载，否则静默回到新对话
+   * 刷新后恢复上次会话：本地记录的会话仍存在则重新加载，否则静默回到新对话；
+   * 恢复成功且当日简报未 dismiss 时，把缓存的简报气泡重新注入对话顶部
    */
   async function restoreLastConversation() {
     const saved = localStorage.getItem(ACTIVE_KEY)
@@ -160,9 +167,49 @@ export const useAgentStore = defineStore('agent', () => {
     }
     try {
       await openConversation(Number(saved))
+      injectCachedBriefing()
     } catch {
       rememberActive(null)
     }
+  }
+
+  function briefToday() {
+    return new Date().toISOString().slice(0, 10)
+  }
+
+  function readBriefCache(): { date: string; content: string; conversationId: number | null } | null {
+    try {
+      const raw = localStorage.getItem(BRIEF_CACHE_KEY)
+      if (!raw) {
+        return null
+      }
+      const obj = JSON.parse(raw)
+      return obj?.date && obj?.content ? obj : null
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * 当日简报缓存有效（未 dismiss、仍属当前会话、气泡未在列）时注入对话顶部。
+   * 供恢复会话 / 首页每日加载调用；返回是否已注入
+   */
+  function injectCachedBriefing() {
+    const brief = readBriefCache()
+    if (!brief || brief.date !== briefToday()) {
+      return false
+    }
+    if (localStorage.getItem(BRIEF_DISMISS_KEY) === brief.date) {
+      return false
+    }
+    if (brief.conversationId != null && brief.conversationId !== activeId.value) {
+      return false
+    }
+    if (messages.value.some((m) => m.briefing)) {
+      return true
+    }
+    messages.value.unshift({ id: -1, role: 'assistant', content: brief.content, briefing: true })
+    return true
   }
 
   /**
@@ -255,10 +302,17 @@ export const useAgentStore = defineStore('agent', () => {
 
   async function loadBriefing() {
     const briefing = await getTodayBriefing()
+    const content = `**☀ 今日简报 · ${briefing.briefDate}**\n\n` + (briefing.content ?? '')
     const target = messages.value.find((m) => m.briefing)
     if (target) {
-      target.content = `**☀ 今日简报 · ${briefing.briefDate}**\n\n` + (briefing.content ?? '')
+      target.content = content
     }
+    // 成功后写当日缓存（附归属会话）：刷新恢复会话时由 injectCachedBriefing 重新注入
+    localStorage.setItem(BRIEF_CACHE_KEY, JSON.stringify({
+      date: briefToday(),
+      content,
+      conversationId: activeId.value,
+    }))
   }
 
   function removeBriefingPlaceholder() {
@@ -435,6 +489,7 @@ export const useAgentStore = defineStore('agent', () => {
     showBriefingPlaceholder,
     loadBriefing,
     removeBriefingPlaceholder,
+    injectCachedBriefing,
     send,
     stop,
     handleEvent,

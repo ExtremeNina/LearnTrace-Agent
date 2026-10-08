@@ -7,7 +7,7 @@ export type QuestionSource = 'photo' | 'similar_ai'
 /**
  * 题目记录（拍照题目 + AI 相似题合并列表）：分页列表、详情、编辑与删除
  */
-export function listQuestions(params: { date?: string; subject?: string; page: number; size: number }): Promise<PageInfo<QuestionItemInfo>> {
+export function listQuestions(params: { date?: string; subject?: string; keyword?: string; page: number; size: number }): Promise<PageInfo<QuestionItemInfo>> {
   return request<PageInfo<QuestionItemInfo>>({ method: 'GET', url: '/question/list', params })
 }
 

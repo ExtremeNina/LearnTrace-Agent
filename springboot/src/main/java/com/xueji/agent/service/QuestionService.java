@@ -24,9 +24,9 @@ public interface QuestionService {
 
     /**
      * 当前用户的题目分页列表：拍照题目与 AI 相似题合并（相似题 source = similar_ai），
-     * 可按日期（yyyy-MM-dd）与学科筛选
+     * 可按日期（yyyy-MM-dd）、学科与题干关键词筛选
      */
-    PageVO<QuestionItemVO> listByUser(Long userId, String date, String subject, int page, int size);
+    PageVO<QuestionItemVO> listByUser(Long userId, String date, String subject, String keyword, int page, int size);
 
     /**
      * 题目详情（校验归属，不存在或非本人返回 404）

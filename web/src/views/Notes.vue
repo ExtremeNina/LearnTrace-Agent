@@ -383,7 +383,7 @@ function openLink(link: { linkType: string; targetId: number; tsSec?: number | n
     router.push(link.tsSec != null ? `/courses/${link.targetId}?t=${formatTs(link.tsSec)}` : `/courses/${link.targetId}`)
     return
   }
-  // 题目：跳拍照记录列表并自动弹出该题详情
+  // 题目：跳题目管理列表并自动弹出该题详情
   if (link.linkType === 'question') {
     router.push(`/questions?open=${link.targetId}`)
   }

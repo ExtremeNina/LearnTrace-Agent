@@ -16,7 +16,8 @@ import java.util.List;
 public interface QuestionRecordMapper extends BaseMapper<QuestionRecord> {
 
     String MERGED_FILTER = "<if test='date != null and date != \"\"'> AND DATE(created_at) = #{date} </if>"
-            + "<if test='subject != null and subject != \"\"'> AND subject = #{subject} </if>";
+            + "<if test='subject != null and subject != \"\"'> AND subject = #{subject} </if>"
+            + "<if test='keyword != null and keyword != \"\"'> AND question_text LIKE CONCAT('%', #{keyword}, '%') </if>";
 
     /**
      * 拍照题目与 AI 相似题合并分页（相似题的 answer 映射为 correctAnswer，无图 / 无作答字段）
@@ -34,8 +35,8 @@ public interface QuestionRecordMapper extends BaseMapper<QuestionRecord> {
             + " ORDER BY createdAt DESC LIMIT #{size} OFFSET #{offset}"
             + "</script>")
     List<QuestionItemVO> listMerged(@Param("userId") Long userId, @Param("date") String date,
-                                    @Param("subject") String subject, @Param("size") int size,
-                                    @Param("offset") long offset);
+                                    @Param("subject") String subject, @Param("keyword") String keyword,
+                                    @Param("size") int size, @Param("offset") long offset);
 
     @Select("<script>"
             + "SELECT COUNT(*) FROM ("
@@ -44,5 +45,6 @@ public interface QuestionRecordMapper extends BaseMapper<QuestionRecord> {
             + "SELECT created_at FROM similar_question WHERE user_id = #{userId} AND deleted = 0" + MERGED_FILTER
             + ") t"
             + "</script>")
-    long countMerged(@Param("userId") Long userId, @Param("date") String date, @Param("subject") String subject);
+    long countMerged(@Param("userId") Long userId, @Param("date") String date,
+                     @Param("subject") String subject, @Param("keyword") String keyword);
 }

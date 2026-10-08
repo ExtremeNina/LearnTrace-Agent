@@ -246,7 +246,7 @@ function onPanelClick(e: MouseEvent) {
               v-if="msg.fromQuestion && !msg.streaming"
               class="mt-2.5 rounded-xl bg-panel px-3 py-2 text-[13px] leading-5 text-ink-2"
             >
-              这道题如果值得整理，回复「保存」，我会把它收进你的拍照记录，方便考前集中复习。
+              这道题如果值得整理，回复「保存」，我会把它收进题目管理，方便考前集中复习。
             </p>
             </template>
             <template v-else>{{ msg.content }}</template>

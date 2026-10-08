@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { BookmarkPlus, Camera, Check, ImageOff, Pencil, Sparkles, Trash2, X } from 'lucide-vue-next'
+import { BookmarkPlus, Camera, Check, ImageOff, Pencil, Search, Sparkles, Trash2, X } from 'lucide-vue-next'
 import * as questionApi from '../api/question'
 import * as reviewApi from '../api/review'
 import { useToastStore } from '../stores/toast'
@@ -10,8 +10,9 @@ import { SUBJECTS } from '../constants/subjects'
 import { renderMarkdown } from '../utils/markdown'
 
 /**
- * 题目记录（PRD §3.3 + §8）：拍照题目与 AI 生成的相似题合并列表（相似题标注「AI 生成」）、
- * 按日期与学科筛选、详情、编辑与删除；相似题生成统一走 AI 对话（B26 反馈精简）
+ * 题目管理（PRD §3.3 + §8）：拍照题目与 AI 生成的相似题合并列表（相似题标注「AI 生成」）、
+ * 搜索框 + 学科/日期筛选同行、类方形圆角卡片网格、批量管理模式（勾选删除）、
+ * 详情、编辑与删除；相似题生成统一走 AI 对话（B26 反馈精简）。结构对齐视频管理页
  */
 const PAGE_SIZE = 10
 
@@ -23,6 +24,8 @@ const error = ref('')
 const page = ref(1)
 const pages = ref(1)
 const total = ref(0)
+/** 按题干关键词搜索（服务端模糊匹配） */
+const keyword = ref('')
 /** 按日期筛选（yyyy-MM-dd），空为全部 */
 const dateFilter = ref('')
 /** 按学科筛选，空为全部 */
@@ -30,6 +33,11 @@ const subjectFilter = ref('')
 /** 当前查看 / 编辑的记录 */
 const active = ref<QuestionItemInfo | null>(null)
 const editMode = ref(false)
+
+// ---- 批量管理（勾选删除；key = source-id，两类来源删除接口不同） ----
+const selectMode = ref(false)
+const selectedKeys = ref<string[]>([])
+const batchDeleting = ref(false)
 const editForm = reactive({
   questionText: '',
   userAnswer: '',
@@ -89,6 +97,7 @@ async function load() {
     const result = await questionApi.listQuestions({
       date: dateFilter.value || undefined,
       subject: subjectFilter.value || undefined,
+      keyword: keyword.value.trim() || undefined,
       page: page.value,
       size: PAGE_SIZE,
     })
@@ -108,6 +117,7 @@ function onFilterChange() {
 }
 
 function clearFilters() {
+  keyword.value = ''
   dateFilter.value = ''
   subjectFilter.value = ''
   onFilterChange()
@@ -119,6 +129,71 @@ function goPage(target: number) {
   }
   page.value = target
   load()
+}
+
+// ---- 批量管理 ----
+
+function recKey(r: QuestionItemInfo): string {
+  return `${r.source}-${r.id}`
+}
+
+function toggleSelect(r: QuestionItemInfo) {
+  const key = recKey(r)
+  const idx = selectedKeys.value.indexOf(key)
+  if (idx >= 0) {
+    selectedKeys.value.splice(idx, 1)
+  } else {
+    selectedKeys.value.push(key)
+  }
+}
+
+function toggleSelectMode() {
+  selectMode.value = !selectMode.value
+  selectedKeys.value = []
+}
+
+const allSelected = computed(() => records.value.length > 0 && records.value.every((r) => selectedKeys.value.includes(recKey(r))))
+
+function toggleSelectAll() {
+  if (allSelected.value) {
+    selectedKeys.value = []
+  } else {
+    selectedKeys.value = records.value.map(recKey)
+  }
+}
+
+/** 批量删除：循环单删接口逐个容错（单条失败不中断），结果汇总提示 */
+async function batchDelete() {
+  const n = selectedKeys.value.length
+  if (n === 0 || batchDeleting.value) {
+    return
+  }
+  if (!window.confirm(`确定删除选中的 ${n} 道题目吗？删除后不可恢复。`)) {
+    return
+  }
+  batchDeleting.value = true
+  let ok = 0
+  let failed = 0
+  for (const key of [...selectedKeys.value]) {
+    const [source, id] = [key.slice(0, key.indexOf('-')), Number(key.slice(key.indexOf('-') + 1))] as const
+    try {
+      await questionApi.deleteQuestion(id, source === 'similar_ai' ? 'similar_ai' : 'photo')
+      ok++
+    } catch {
+      failed++
+    }
+  }
+  batchDeleting.value = false
+  selectedKeys.value = []
+  toast.push(failed === 0 ? `已删除 ${ok} 道题目` : `已删除 ${ok} 道，${failed} 道删除失败`)
+  if (failed > 0) {
+    await load()
+    return
+  }
+  if (records.value.length === 0 && page.value > 1) {
+    page.value -= 1
+  }
+  await load()
 }
 
 function startEdit() {
@@ -183,36 +258,65 @@ const pageLabel = computed(() => `第 ${page.value} / ${pages.value} 页 · 共 
 
 <template>
   <div class="h-full overflow-y-auto">
-    <div class="mx-auto max-w-3xl px-4 py-8">
-      <div class="flex flex-wrap items-center justify-between gap-3">
-        <h1 class="flex items-center gap-2 text-[18px] font-semibold">
+    <div class="mx-auto max-w-5xl px-6 py-8">
+      <!-- 标题行：数量统计 + 批量管理入口（对齐视频管理页） -->
+      <div class="flex items-center justify-between">
+        <h1 class="flex items-center gap-2 text-[18px] font-semibold text-ink">
           <Camera :size="20" class="text-ink-2" />
-          拍照记录
+          题目管理
+          <span class="text-[13px] font-normal text-ink-2">共 {{ total }} 题</span>
         </h1>
-        <!-- 按日期与学科筛选 -->
-        <div class="flex items-center gap-2 text-[13px]">
-          <select
-            v-model="subjectFilter"
-            class="rounded-lg border border-line bg-surface px-2.5 py-1.5 outline-none focus:border-primary"
-            @change="onFilterChange"
-          >
-            <option value="">全部学科</option>
-            <option v-for="s in SUBJECTS" :key="s" :value="s">{{ s }}</option>
-          </select>
+        <button
+          class="flex items-center gap-1.5 rounded-xl border px-3.5 py-2 text-[14px] transition-colors"
+          :class="selectMode ? 'border-primary bg-primary-soft text-primary' : 'border-line text-ink hover:bg-panel'"
+          @click="toggleSelectMode"
+        >
+          <Check v-if="selectMode" :size="16" />
+          <Trash2 v-else :size="16" />
+          {{ selectMode ? '退出批量管理' : '批量管理' }}
+        </button>
+      </div>
+
+      <!-- 过滤行：搜索框 + 学科 / 日期筛选同一行 -->
+      <div class="mt-5 flex flex-wrap items-center gap-3">
+        <div class="relative">
+          <Search :size="15" class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-2" />
           <input
-            v-model="dateFilter"
-            type="date"
-            class="rounded-lg border border-line px-2.5 py-1.5 outline-none focus:border-primary"
-            @change="onFilterChange"
+            v-model="keyword"
+            type="text"
+            placeholder="按题干关键词搜索…"
+            class="w-64 rounded-xl border border-line bg-surface py-2 pl-9 pr-3 text-[13px] text-ink outline-none focus:border-primary"
+            @keydown.enter="onFilterChange"
           />
-          <button
-            v-if="dateFilter || subjectFilter"
-            class="rounded-lg px-2 py-1.5 text-ink-2 hover:bg-line/60 hover:text-ink"
-            @click="clearFilters"
-          >
-            清除
-          </button>
         </div>
+        <select
+          v-model="subjectFilter"
+          class="rounded-xl border border-line bg-surface px-2.5 py-2 text-[13px] outline-none focus:border-primary"
+          @change="onFilterChange"
+        >
+          <option value="">全部学科</option>
+          <option v-for="s in SUBJECTS" :key="s" :value="s">{{ s }}</option>
+        </select>
+        <input
+          v-model="dateFilter"
+          type="date"
+          class="rounded-xl border border-line px-2.5 py-1.5 text-[13px] outline-none focus:border-primary"
+          @change="onFilterChange"
+        />
+        <button
+          v-if="keyword || dateFilter || subjectFilter"
+          class="rounded-xl px-2 py-2 text-[13px] text-ink-2 hover:bg-line/60 hover:text-ink"
+          @click="clearFilters"
+        >
+          清除
+        </button>
+        <button
+          v-if="keyword !== ''"
+          class="ml-auto rounded-xl bg-primary px-3.5 py-2 text-[13px] text-white hover:opacity-90"
+          @click="onFilterChange"
+        >
+          搜索
+        </button>
       </div>
 
       <!-- 加载 / 出错 -->
@@ -220,46 +324,60 @@ const pageLabel = computed(() => `第 ${page.value} / ${pages.value} 页 · 共 
       <p v-else-if="error" class="mt-8 text-[14px] text-red-600">{{ error }}</p>
 
       <!-- 空状态 -->
-      <div v-else-if="records.length === 0" class="mt-8 rounded-xl border border-dashed border-line py-16 text-center">
-        <p class="text-[14px] text-ink-2">{{ dateFilter || subjectFilter ? '该筛选条件下没有保存过题目' : '还没有保存过题目' }}</p>
+      <div v-else-if="records.length === 0" class="mt-10 rounded-2xl border border-dashed border-line py-16 text-center">
+        <p class="text-[14px] text-ink-2">{{ keyword || dateFilter || subjectFilter ? '没有符合条件的题目' : '还没有保存过题目' }}</p>
         <p class="mt-1 text-[12px] text-ink-2">在对话里拍照发一道题，解答后回复「保存」即可收进这里</p>
       </div>
 
-      <!-- 列表 -->
-      <div v-else class="mt-6 flex flex-col gap-3">
-        <button
+      <!-- 卡片网格（类方形圆角卡片，批量模式下点击即勾选） -->
+      <div v-else class="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div
           v-for="r in records"
-          :key="r.id"
-          class="flex items-start gap-3 rounded-2xl border border-line bg-surface p-4 text-left transition-colors hover:border-ink-2/40"
-          @click="openDetail(r)"
+          :key="recKey(r)"
+          class="relative overflow-hidden rounded-2xl border bg-surface p-4 transition-shadow"
+          :class="[
+            selectMode && selectedKeys.includes(recKey(r)) ? 'border-primary ring-2 ring-primary/30' : 'border-line',
+            selectMode ? 'cursor-pointer' : 'cursor-pointer hover:shadow-md',
+          ]"
+          @click="selectMode ? toggleSelect(r) : openDetail(r)"
         >
-          <img
-            v-if="r.imageOssKey"
-            :src="r.imageOssKey"
-            alt="题目图"
-            class="h-16 w-16 shrink-0 rounded-xl border border-line object-cover"
-          />
-          <div v-else class="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl border border-line text-ink-2">
-            <ImageOff :size="18" />
-          </div>
-          <div class="min-w-0 flex-1">
-            <p class="truncate text-[14px] text-ink">{{ excerpt(r.questionText) }}</p>
-            <p class="mt-1.5 text-[12px] text-ink-2">{{ formatTime(r.createdAt) }}</p>
-          </div>
+          <!-- 批量选择勾选框 -->
           <span
-            v-if="r.source === 'similar_ai'"
-            class="flex shrink-0 items-center gap-1 self-start rounded-md bg-violet-50 px-2 py-0.5 text-[11px] text-violet-600"
+            v-if="selectMode"
+            class="absolute right-2.5 top-2.5 z-10 flex h-6 w-6 items-center justify-center rounded-md border-2 bg-surface/90"
+            :class="selectedKeys.includes(recKey(r)) ? 'border-primary bg-primary text-white' : 'border-line text-transparent'"
           >
-            <Sparkles :size="11" />
-            AI 生成
+            <Check :size="14" />
           </span>
-          <span
-            v-if="r.subject"
-            class="shrink-0 self-start rounded-md bg-primary-soft px-2 py-0.5 text-[11px] text-primary"
-          >
-            {{ r.subject }}
-          </span>
-        </button>
+
+          <div class="flex items-start gap-3">
+            <img
+              v-if="r.imageOssKey"
+              :src="r.imageOssKey"
+              alt="题目图"
+              class="h-16 w-16 shrink-0 rounded-xl border border-line object-cover"
+            />
+            <div v-else class="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl border border-line text-ink-2">
+              <ImageOff :size="18" />
+            </div>
+            <div class="min-w-0 flex-1 pr-6">
+              <p class="line-clamp-2 text-[13px] leading-relaxed text-ink">{{ excerpt(r.questionText) }}</p>
+            </div>
+          </div>
+          <div class="mt-3 flex flex-wrap items-center gap-1.5">
+            <span
+              v-if="r.source === 'similar_ai'"
+              class="flex items-center gap-1 rounded-md bg-violet-50 px-2 py-0.5 text-[11px] text-violet-600"
+            >
+              <Sparkles :size="11" />
+              AI 生成
+            </span>
+            <span v-if="r.subject" class="rounded-md bg-primary-soft px-2 py-0.5 text-[11px] text-primary">
+              {{ r.subject }}
+            </span>
+            <span class="ml-auto text-[11px] text-ink-2">{{ formatTime(r.createdAt) }}</span>
+          </div>
+        </div>
       </div>
 
       <!-- 分页 -->
@@ -282,6 +400,28 @@ const pageLabel = computed(() => `第 ${page.value} / ${pages.value} 页 · 共 
           </button>
         </div>
       </div>
+    </div>
+
+    <!-- 批量管理操作栏（底部浮动，对齐视频管理页） -->
+    <div
+      v-if="selectMode"
+      class="fixed bottom-6 left-1/2 z-30 flex -translate-x-1/2 items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-2.5 shadow-lg"
+    >
+      <button
+        class="rounded-lg px-2.5 py-1.5 text-[13px] text-ink-2 hover:bg-line/60 hover:text-ink"
+        @click="toggleSelectAll"
+      >
+        {{ allSelected ? '取消全选' : '全选本页' }}
+      </button>
+      <span class="text-[13px] text-ink-2">已选 {{ selectedKeys.length }} 题</span>
+      <button
+        class="flex items-center gap-1.5 rounded-xl bg-red-500 px-3.5 py-2 text-[13px] text-white hover:opacity-90 disabled:opacity-40"
+        :disabled="selectedKeys.length === 0 || batchDeleting"
+        @click="batchDelete"
+      >
+        <Trash2 :size="14" />
+        {{ batchDeleting ? '删除中…' : `删除所选（${selectedKeys.length}）` }}
+      </button>
     </div>
 
     <!-- 详情 / 编辑弹窗 -->

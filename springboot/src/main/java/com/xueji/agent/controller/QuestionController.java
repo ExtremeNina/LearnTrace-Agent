@@ -32,14 +32,16 @@ public class QuestionController {
      *
      * @param date    可选，按日期筛选（yyyy-MM-dd）
      * @param subject 可选，按学科筛选
+     * @param keyword 可选，按题干关键词模糊搜索
      */
     @GetMapping("/list")
     public Result<PageVO<QuestionItemVO>> list(
             @RequestParam(required = false) String date,
             @RequestParam(required = false) String subject,
+            @RequestParam(required = false) String keyword,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int size) {
-        return Result.data(questionService.listByUser(UserUtils.getCurrentLoginId(), date, subject, page, size));
+        return Result.data(questionService.listByUser(UserUtils.getCurrentLoginId(), date, subject, keyword, page, size));
     }
 
     /**

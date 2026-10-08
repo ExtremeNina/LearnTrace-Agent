@@ -16,6 +16,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.memory.ChatMemoryRepository;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -56,6 +57,12 @@ class TranscriptionServiceImplTest {
 
     @Mock
     private ChatMemoryRepository chatMemoryRepository;
+
+    @Mock
+    private ChatClient generationChatClient;
+
+    @Mock
+    private ChatClient.ChatClientRequestSpec promptSpec;
 
     @InjectMocks
     private TranscriptionServiceImpl service;
@@ -108,6 +115,37 @@ class TranscriptionServiceImplTest {
         verify(chatMemoryRepository).saveAll(eq("9"), any());
         org.mockito.Mockito.verify(chatMemoryRepository, org.mockito.Mockito.atLeastOnce())
                 .findByConversationId("9");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void runTaskShouldAttachVoiceNoteDraftWhenLlmSucceeds() throws Exception {
+        ReflectionTestUtils.setField(service, "maxMessages", 100);
+        Path video = newTempVideo();
+        Message row = placeholder(1L);
+        when(messageMapper.selectById(1L)).thenReturn(row);
+        when(messageMapper.updateById(any(Message.class))).thenReturn(1);
+        when(aliUploadUtils.uploadLocalFile(any(Path.class), anyString())).thenReturn("https://oss/fake");
+        when(qwenAsrTool.transcribeSegments(anyString())).thenAnswer(inv -> List.of(
+                new AsrSegment(5000, 8000, "第一句")));
+
+        ChatClient.CallResponseSpec callSpec = org.mockito.Mockito.mock(ChatClient.CallResponseSpec.class);
+        when(generationChatClient.prompt()).thenReturn(promptSpec);
+        when(promptSpec.system(anyString())).thenReturn(promptSpec);
+        when(promptSpec.user(anyString())).thenReturn(promptSpec);
+        when(promptSpec.call()).thenReturn(callSpec);
+        when(callSpec.content()).thenReturn("# 整理稿");
+
+        try (MockedStatic<MediaUtils> ignored = mockStatic(MediaUtils.class)) {
+            service.runTask(5L, 9L, 1L, video, 100);
+        }
+
+        verify(messageMapper, org.mockito.Mockito.atLeastOnce()).updateById(messageCaptor.capture());
+        Message last = messageCaptor.getAllValues().get(messageCaptor.getAllValues().size() - 1);
+        assertThat(last.getContent()).contains("## 📝 语音笔记（草稿）").contains("# 整理稿");
+        assertThat(last.getPayload()).contains("noteDraft").contains("\"status\":\"done\"");
+        // 记忆追加的仍是转写原文（草稿属展示层，不进记忆）
+        verify(chatMemoryRepository).saveAll(eq("9"), any());
     }
 
     @Test

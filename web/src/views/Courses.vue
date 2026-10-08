@@ -7,7 +7,7 @@ import type { CourseInfo } from '../api/course'
 import { SUBJECTS } from '../constants/subjects'
 
 /**
- * 网课记录列表（PRD §3.2）：视频库式竖向卡片网格。
+ * 视频管理列表（PRD §3.2）：视频库式竖向卡片网格。
  * 数据来自后端 /courses；支持标题关键词、状态、日期与学科筛选，处理中的课程定时轮询状态。
  * 支持批量管理模式：勾选多门网课一次性删除（处理中的不可选）。
  * 上传入口已收敛到 AI 对话（B11 分流），本页只做管理：列表 / 进度 / 播放 / 删除 / 重试。
@@ -198,7 +198,7 @@ async function batchDelete() {
       <!-- 标题行 -->
       <div class="flex items-center justify-between">
         <h1 class="text-[18px] font-semibold text-ink">
-          网课记录
+          视频管理
           <span class="ml-1 text-[13px] font-normal text-ink-2">
             {{ courses.length }} 个网课 · {{ generatedCount }} 个已生成
           </span>
