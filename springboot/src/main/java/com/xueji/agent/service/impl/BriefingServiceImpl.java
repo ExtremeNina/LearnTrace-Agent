@@ -214,6 +214,7 @@ public class BriefingServiceImpl implements BriefingService {
                 .setBriefDate(row.getBriefDate().toString())
                 .setContent(row.getContent())
                 .setStats(stats)
-                .setGeneratedAt(row.getUpdatedAt());
+                // 落位用生成时刻（createdAt）：updatedAt 会随补绑定/刷新内容变化，导致简报在会话中跳位
+                .setGeneratedAt(row.getCreatedAt());
     }
 }
