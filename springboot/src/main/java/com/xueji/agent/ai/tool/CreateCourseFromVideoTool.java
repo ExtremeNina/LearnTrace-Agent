@@ -102,15 +102,16 @@ public class CreateCourseFromVideoTool {
         return value == null ? null : value.toString();
     }
 
-    /** 标题有效性：空 / LLM 模板化默认名（「课程视频（45 分钟）」之类）回退文件名（B26 反馈 bug） */
-    private boolean isMeaningfulTitle(String title) {
+    /** 标题有效性：空 / LLM 模板化默认名（「课程视频（45 分钟）」之类）回退文件名（B26 反馈 bug）；静态纯函数便于单测 */
+    static boolean isMeaningfulTitle(String title) {
         if (title == null || title.isBlank()) {
             return false;
         }
         return !title.trim().matches("(课程视频|视频课程).*");
     }
 
-    private String titleFromFileName(Path video) {
+    /** 视频文件名 → 课程标题（静态纯函数便于单测） */
+    static String titleFromFileName(Path video) {
         String name = video.getFileName().toString();
         int dot = name.lastIndexOf('.');
         String base = dot > 0 ? name.substring(0, dot) : name;

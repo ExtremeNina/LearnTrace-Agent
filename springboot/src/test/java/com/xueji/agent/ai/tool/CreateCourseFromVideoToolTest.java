@@ -79,4 +79,32 @@ class CreateCourseFromVideoToolTest {
 
         assertThat(result).isEqualTo("CREATE_OK");
     }
+
+    @Test
+    void titleFromFileNameShouldStripUploadPrefixes() {
+        // 原始文件名原样保留（去扩展名）
+        assertThat(CreateCourseFromVideoTool.titleFromFileName(Path.of("x/线性代数第5讲-矩阵乘法.mp4")))
+                .isEqualTo("线性代数第5讲-矩阵乘法");
+        // UUID 前缀（>8 位十六进制-）剥离（该实现要求前缀长于 8 才剥离）
+        assertThat(CreateCourseFromVideoTool.titleFromFileName(Path.of("a1b2c3d4e5f6-如果全球冰封.mp4")))
+                .isEqualTo("如果全球冰封");
+        // xj-chat-video-<时间戳>- 前缀剥离
+        assertThat(CreateCourseFromVideoTool.titleFromFileName(Path.of("xj-chat-video-1728382712-我的视频.mkv")))
+                .isEqualTo("我的视频");
+        // 尾部 -<10 位以上时间戳> 序号剥离
+        assertThat(CreateCourseFromVideoTool.titleFromFileName(Path.of("如果全球冰封-1728382712.mp4")))
+                .isEqualTo("如果全球冰封");
+        // 全部被剥离干净 → 兜底「未命名课程」
+        assertThat(CreateCourseFromVideoTool.titleFromFileName(Path.of("xj-chat-video-1728382712-.mp4")))
+                .isEqualTo("未命名课程");
+    }
+
+    @Test
+    void isMeaningfulTitleShouldRejectBlankAndTemplateNames() {
+        assertThat(CreateCourseFromVideoTool.isMeaningfulTitle(null)).isFalse();
+        assertThat(CreateCourseFromVideoTool.isMeaningfulTitle("  ")).isFalse();
+        assertThat(CreateCourseFromVideoTool.isMeaningfulTitle("课程视频（45 分钟）")).isFalse();
+        assertThat(CreateCourseFromVideoTool.isMeaningfulTitle("视频课程：第一章")).isFalse();
+        assertThat(CreateCourseFromVideoTool.isMeaningfulTitle("线性代数第5讲")).isTrue();
+    }
 }

@@ -40,4 +40,23 @@ class IntentAgentServiceTest {
         assertThat(IntentAgentService.parseIntent(null)).isNull();
         assertThat(IntentAgentService.parseIntent("{\"plan\": []}")).isNull();
     }
+
+    @Test
+    void titleFromFileNameShouldStripUploadPrefixes() {
+        // 原始文件名原样保留（去扩展名）
+        assertThat(IntentAgentService.titleFromFileName(java.nio.file.Path.of("x/线性代数第5讲-矩阵乘法.mp4")))
+                .isEqualTo("线性代数第5讲-矩阵乘法");
+        // xj-chat-video-<时间戳>- 前缀剥离（上传临时文件名）
+        assertThat(IntentAgentService.titleFromFileName(java.nio.file.Path.of("xj-chat-video-1728382712-我的视频.mp4")))
+                .isEqualTo("我的视频");
+        // UUID 前缀（8+ 位十六进制-）剥离
+        assertThat(IntentAgentService.titleFromFileName(java.nio.file.Path.of("a1b2c3d4-如果全球冰封.mp4")))
+                .isEqualTo("如果全球冰封");
+        // 尾部 -<10 位以上时间戳> 序号剥离
+        assertThat(IntentAgentService.titleFromFileName(java.nio.file.Path.of("如果全球冰封-1728382712.mp4")))
+                .isEqualTo("如果全球冰封");
+        // 全部被剥离干净 → 兜底「未命名课程」
+        assertThat(IntentAgentService.titleFromFileName(java.nio.file.Path.of("xj-chat-video-1728382712-.mp4")))
+                .isEqualTo("未命名课程");
+    }
 }

@@ -215,6 +215,20 @@ class BriefingServiceImplTest {
     }
 
     @Test
+    void getTodayBriefing_generatedAtUsesCreatedAt_notUpdatedAt() {
+        // 落位时间必须是真实生成时刻（createdAt）：updatedAt 会随补绑定/刷新内容变化，导致简报在会话中跳位（B27）
+        LocalDateTime generated = LocalDateTime.now().minusHours(3);
+        DailyBriefing cached = row(CONV_A, BRIEFING_TEXT)
+                .setCreatedAt(generated)
+                .setUpdatedAt(LocalDateTime.now());
+        when(dailyBriefingMapper.selectOne(any())).thenReturn(cached);
+
+        var vo = service.getTodayBriefing(USER_ID, CONV_A);
+
+        assertThat(vo.getGeneratedAt()).isEqualTo(generated);
+    }
+
+    @Test
     void buildUserContent_shouldEmbedStatsJson() {
         String content = BriefingServiceImpl.buildUserContent(Map.of("dueToday", 3L, "weakCards", List.of()));
 

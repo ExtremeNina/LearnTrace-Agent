@@ -414,8 +414,8 @@ public class IntentAgentService {
         return String.format("%02d:%02d", durationSec / 60, durationSec % 60);
     }
 
-    /** 视频文件名 → 课程标题（去上传链路临时文件前缀；与 CreateCourseFromVideoTool 同规则扩展） */
-    private String titleFromFileName(Path video) {
+    /** 视频文件名 → 课程标题（去上传链路临时文件前缀；与 CreateCourseFromVideoTool 同规则扩展；静态纯函数便于单测） */
+    static String titleFromFileName(Path video) {
         String name = video.getFileName().toString();
         int dot = name.lastIndexOf('.');
         String base = dot > 0 ? name.substring(0, dot) : name;
