@@ -419,7 +419,8 @@ public class IntentAgentService {
         String name = video.getFileName().toString();
         int dot = name.lastIndexOf('.');
         String base = dot > 0 ? name.substring(0, dot) : name;
-        base = base.replaceFirst("^xj-chat-video-\\d+-?", "").replaceFirst("^[0-9a-fA-F]{8,}-", "");
+        base = base.replaceFirst("^xj-chat-video-\\d+-?", "").replaceFirst("^[0-9a-fA-F]{8,}-", "")
+                .replaceFirst("-\\d{10,}$", "");
         return base.isBlank() ? "未命名课程" : base;
     }
 }

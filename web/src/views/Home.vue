@@ -161,6 +161,14 @@ const uploadInputRef = ref<HTMLInputElement | null>(null)
 // 历史对话弹窗（B26 反馈：对话模块直接可见的历史入口）
 const showHistory = ref(false)
 
+/** 当前会话名（B27：header 展示；无 activeId 即新对话） */
+const activeConversationTitle = computed(() => {
+  if (agent.activeId === null) {
+    return '新对话'
+  }
+  return agent.conversations.find((c) => c.id === agent.activeId)?.title ?? '当前会话'
+})
+
 async function openHistory() {
   showHistory.value = true
   await agent.loadConversations()
@@ -424,6 +432,14 @@ watch(
                   AI 助手
                 </h2>
                 <div class="flex items-center gap-2">
+                  <!-- B27：加号新建（原「新对话」按钮位置移到历史左侧），当前会话名展示在右侧 -->
+                  <button
+                    class="flex h-7 w-7 items-center justify-center rounded-full border border-blue-200 text-blue-500 transition-colors hover:bg-blue-50"
+                    title="开启新会话（原会话保留在 /chat 历史）"
+                    @click="agent.startNew()"
+                  >
+                    <Plus :size="14" />
+                  </button>
                   <button
                     class="flex h-7 w-7 items-center justify-center rounded-full border border-blue-200 text-blue-500 transition-colors hover:bg-blue-50"
                     title="查看历史对话"
@@ -431,13 +447,12 @@ watch(
                   >
                     <History :size="14" />
                   </button>
-                  <button
-                    class="rounded-full border border-blue-200 px-3 py-1 text-[12px] text-blue-500 transition-colors hover:bg-blue-50"
-                    title="开新会话（原会话保留在 /chat 历史）"
-                    @click="agent.startNew()"
+                  <span
+                    class="max-w-40 truncate rounded-full bg-blue-50 px-3 py-1 text-[12px] text-blue-600"
+                    :title="activeConversationTitle"
                   >
-                    新对话
-                  </button>
+                    {{ activeConversationTitle }}
+                  </span>
                 </div>
               </div>
               <div

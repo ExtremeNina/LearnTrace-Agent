@@ -114,11 +114,12 @@ public class CreateCourseFromVideoTool {
         String name = video.getFileName().toString();
         int dot = name.lastIndexOf('.');
         String base = dot > 0 ? name.substring(0, dot) : name;
-        // 去掉上传链路的 UUID 前缀与常见序号标记
+        // 去掉上传链路的 UUID 前缀、xj-chat-video 临时前缀与常见序号标记
         int dash = base.indexOf('-');
         if (dash > 8 && base.substring(0, dash).matches("[0-9a-fA-F]{8,}")) {
             base = base.substring(dash + 1);
         }
+        base = base.replaceFirst("^xj-chat-video-\\d+-?", "").replaceFirst("-\\d{10,}$", "");
         return base.isBlank() ? "未命名课程" : base;
     }
 }

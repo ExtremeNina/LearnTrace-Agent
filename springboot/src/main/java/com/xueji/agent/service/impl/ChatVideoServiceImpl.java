@@ -38,7 +38,9 @@ public class ChatVideoServiceImpl implements ChatVideoService {
 
         Path temp = null;
         try {
-            temp = Files.createTempFile("xj-chat-video-", "." + ext);
+            // 保留原始文件名（+随机后缀保唯一）：下游建课标题兜底取文件名，
+            // 无语义的 xj-chat-video-<随机数> 会导致课程标题失去可读性（B27 反馈）
+            temp = Files.createTempFile(baseName(original) + "-", "." + ext);
             file.transferTo(temp);
             int durationSec = MediaUtils.ffprobeDurationSec(temp);
             log.info("对话视频上传完成, 时长={}s, 大小={}B", durationSec, file.getSize());
@@ -61,6 +63,24 @@ public class ChatVideoServiceImpl implements ChatVideoService {
             return "";
         }
         return fileName.substring(fileName.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT);
+    }
+
+    /** 原始文件名去扩展名做临时文件基名；清洗非法路径字符，无有效名回退默认（公开静态便于单测） */
+    static String baseName(String fileName) {
+        if (fileName == null || fileName.isBlank()) {
+            return "xj-chat-video";
+        }
+        String name = fileName;
+        int slash = Math.max(name.lastIndexOf('/'), name.lastIndexOf('\\'));
+        if (slash >= 0) {
+            name = name.substring(slash + 1);
+        }
+        int dot = name.lastIndexOf('.');
+        if (dot > 0) {
+            name = name.substring(0, dot);
+        }
+        name = name.replaceAll("[\\\\/:*?\"<>|\\s]", "_").trim();
+        return name.isBlank() ? "xj-chat-video" : name;
     }
 
     private void cleanupQuietly(Path file) {

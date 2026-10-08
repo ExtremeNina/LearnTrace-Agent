@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { AlertCircle, Check, LoaderCircle, RotateCcw, Search, Trash2 } from 'lucide-vue-next'
-import { listCourses, retryCourse, batchDeleteCourses } from '../api/course'
+import { AlertCircle, Check, LoaderCircle, Pencil, RotateCcw, Search, Trash2 } from 'lucide-vue-next'
+import { listCourses, retryCourse, batchDeleteCourses, updateCourse } from '../api/course'
 import type { CourseInfo } from '../api/course'
+import { useToastStore } from '../stores/toast'
 import { SUBJECTS } from '../constants/subjects'
 
 /**
@@ -52,6 +53,35 @@ onUnmounted(() => {
     window.clearTimeout(pollTimer)
   }
 })
+
+// ---- 批量模式行内改名（B27）----
+const toast = useToastStore()
+const editingId = ref<number | null>(null)
+const editTitle = ref('')
+
+function startEditTitle(c: CourseInfo) {
+  editingId.value = c.id
+  editTitle.value = c.title
+}
+
+/** 回车/失焦保存；标题为空或未变则跳过 */
+async function saveTitle(c: CourseInfo) {
+  if (editingId.value !== c.id) {
+    return
+  }
+  editingId.value = null
+  const title = editTitle.value.trim()
+  if (!title || title === c.title) {
+    return
+  }
+  try {
+    await updateCourse(c.id, { title })
+    c.title = title
+    toast.push('标题已更新')
+  } catch (e) {
+    toast.push(e instanceof Error ? e.message : '标题修改失败')
+  }
+}
 
 async function retry(c: CourseInfo) {
   await retryCourse(c.id)
@@ -306,7 +336,27 @@ async function batchDelete() {
           </div>
 
           <div class="px-3.5 py-3">
-            <p class="line-clamp-2 min-h-[42px] text-[14px] leading-5 text-ink">{{ c.title }}</p>
+            <!-- B27 批量模式行内改名：铅笔进入编辑，回车/失焦保存 -->
+            <div v-if="selectMode && editingId === c.id" class="min-h-[42px]" @click.stop>
+              <input
+                v-model="editTitle"
+                type="text"
+                class="w-full rounded-lg border border-primary bg-surface px-2 py-1 text-[13px] text-ink outline-none"
+                @keydown.enter="saveTitle(c)"
+                @blur="saveTitle(c)"
+              />
+            </div>
+            <p v-else class="line-clamp-2 min-h-[42px] text-[14px] leading-5 text-ink">
+              {{ c.title }}
+              <button
+                v-if="selectMode && selectable(c)"
+                class="ml-1 inline-flex align-middle text-ink-2 hover:text-primary"
+                title="修改标题"
+                @click.stop="startEditTitle(c)"
+              >
+                <Pencil :size="12" />
+              </button>
+            </p>
 
             <div v-if="c.status === 'SUCCESS'" class="mt-2.5 flex items-center justify-between text-[12px] text-ink-2">
               <span>本地上传</span>

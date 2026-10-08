@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { BookmarkPlus, Camera, Check, ImageOff, Pencil, Search, Sparkles, Trash2, X } from 'lucide-vue-next'
+// Pencil：批量模式快速改名入口（打开编辑弹窗）
 import * as questionApi from '../api/question'
 import * as reviewApi from '../api/review'
 import { useToastStore } from '../stores/toast'
@@ -365,6 +366,16 @@ const pageLabel = computed(() => `第 ${page.value} / ${pages.value} 页 · 共 
             </div>
           </div>
           <div class="mt-3 flex flex-wrap items-center gap-1.5">
+            <!-- B27 批量模式快速改名：铅笔打开编辑弹窗（题干多行编辑，复用现有保存接口） -->
+            <button
+              v-if="selectMode"
+              class="flex items-center gap-1 rounded-md border border-line px-1.5 py-0.5 text-[11px] text-ink-2 hover:border-primary hover:text-primary"
+              title="修改题目内容"
+              @click.stop="openDetail(r); startEdit()"
+            >
+              <Pencil :size="11" />
+              改名
+            </button>
             <span
               v-if="r.source === 'similar_ai'"
               class="flex items-center gap-1 rounded-md bg-violet-50 px-2 py-0.5 text-[11px] text-violet-600"
