@@ -406,9 +406,11 @@ watch(
               </div>
             </section>
 
-            <!-- AI 助手：与 /chat 共享会话（row-span-4 拉伸使下边界精确对齐最近学习卡）；
-                 overflow-hidden + 消息区 min-h-0 内部滚动——对话加长不反向撑高左列，也不破坏下滚 -->
-            <section class="flex flex-col overflow-hidden rounded-lg border border-gray-100 bg-white p-6 shadow-sm lg:col-start-2 lg:row-start-1 lg:row-span-4">
+            <!-- AI 助手：与 /chat 共享会话。wrapper 占右列 grid 位（高度完全由左列四行决定），
+                 面板 lg 下绝对定位填满 wrapper——不参与行高计算，对话再长也不撑高左列三卡片；
+                 消息区 min-h-0 flex-1 内部滚动（对话内滚动条），下边界精确对齐最近学习卡 -->
+            <div class="min-h-44 lg:col-start-2 lg:row-start-1 lg:row-span-4 lg:relative">
+              <section class="flex flex-col overflow-hidden rounded-lg border border-gray-100 bg-white p-6 shadow-sm lg:absolute lg:inset-0">
               <div class="flex items-center justify-between">
                 <h2 class="flex items-center gap-2 text-[15px] font-bold text-gray-900">
                   <Sparkles :size="17" class="text-blue-500" />
@@ -561,6 +563,7 @@ watch(
                 </div>
               </div>
             </section>
+            </div>
         </div>
       </template>
     </div>
