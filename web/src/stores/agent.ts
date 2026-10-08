@@ -33,10 +33,8 @@ export interface ChatMsg {
 export const useAgentStore = defineStore('agent', () => {
   /** 本地记住当前会话：刷新页面后恢复到同一会话 */
   const ACTIVE_KEY = 'xj_active_conversation'
-  /** 今日简报缓存：{date, content, conversationId}——刷新后恢复会话时重新注入气泡，开新对话才消失 */
+  /** 今日简报缓存：{date, content}——刷新后恢复会话时重新注入气泡，当日始终显示 */
   const BRIEF_CACHE_KEY = 'xj_brief_cache'
-  /** 当日简报 dismiss 标记：用户开启新对话后当日不再注入 */
-  const BRIEF_DISMISS_KEY = 'xj_brief_dismissed'
 
   const conversations = ref<ConversationInfo[]>([])
   const activeId = ref<number | null>(null)
@@ -143,20 +141,15 @@ export const useAgentStore = defineStore('agent', () => {
   }
 
   /**
-   * 开启新对话：重置会话状态，下一条消息会创建新会话。
-   * 仅用户显式「新对话」入口（dismissBriefing=true）写当日简报 dismiss 标记——
-   * 简报不再跟随注入（次日重新生成）；课程详情页等程序化调用不 dismiss
+   * 开启新对话：重置会话状态，下一条消息会创建新会话
    */
-  function startNew(dismissBriefing = false) {
+  function startNew() {
     activeId.value = null
     rememberActive(null)
     messages.value = []
     error.value = ''
     pendingImage.value = ''
     pendingVideo.value = null
-    if (dismissBriefing) {
-      localStorage.setItem(BRIEF_DISMISS_KEY, briefToday())
-    }
   }
 
   /**
@@ -194,17 +187,12 @@ export const useAgentStore = defineStore('agent', () => {
   }
 
   /**
-   * 当日简报缓存有效（未 dismiss、气泡未在列）时注入对话顶部。
-   * 不做会话归属校验：dismiss 标记（开新对话写入）已完整表达「新对话后不要」，
-   * 归属校验反而导致恢复会话失败 / 新对话状态下简报被误拦不显示（B27 反馈）。
+   * 当日简报缓存存在且气泡未在列时注入对话顶部（当日始终显示，次日由新缓存替换）。
    * 供恢复会话 / 首页每日加载调用；返回是否已注入
    */
   function injectCachedBriefing() {
     const brief = readBriefCache()
     if (!brief || brief.date !== briefToday()) {
-      return false
-    }
-    if (localStorage.getItem(BRIEF_DISMISS_KEY) === brief.date) {
       return false
     }
     if (messages.value.some((m) => m.briefing)) {

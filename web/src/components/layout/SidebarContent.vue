@@ -37,7 +37,7 @@ async function openConversation(id: number) {
 }
 
 function startNew() {
-  agent.startNew(true)
+  agent.startNew()
   router.push('/')
   showHistory.value = false
 }

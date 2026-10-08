@@ -195,25 +195,23 @@ async function batchDelete() {
 <template>
   <div class="h-full overflow-y-auto">
     <div class="max-w-5xl px-6 py-8">
-      <!-- 标题行 -->
-      <div class="flex items-center justify-between">
+      <!-- 标题行：标题 + 统计 + 批量管理按钮紧跟其右 -->
+      <div class="flex items-center gap-4">
         <h1 class="text-[18px] font-semibold text-ink">
           视频管理
           <span class="ml-1 text-[13px] font-normal text-ink-2">
             {{ courses.length }} 个网课 · {{ generatedCount }} 个已生成
           </span>
         </h1>
-        <div class="flex items-center gap-2">
-          <button
-            class="flex items-center gap-1.5 rounded-xl border px-3.5 py-2 text-[14px] transition-colors"
-            :class="selectMode ? 'border-primary bg-primary-soft text-primary' : 'border-line text-ink hover:bg-panel'"
-            @click="toggleSelectMode"
-          >
-            <Check v-if="selectMode" :size="16" />
-            <Trash2 v-else :size="16" />
-            {{ selectMode ? '退出批量管理' : '批量管理' }}
-          </button>
-        </div>
+        <button
+          class="flex items-center gap-1.5 rounded-xl border px-3.5 py-2 text-[14px] transition-colors"
+          :class="selectMode ? 'border-primary bg-primary-soft text-primary' : 'border-line text-ink hover:bg-panel'"
+          @click="toggleSelectMode"
+        >
+          <Check v-if="selectMode" :size="16" />
+          <Trash2 v-else :size="16" />
+          {{ selectMode ? '退出批量管理' : '批量管理' }}
+        </button>
       </div>
 
       <!-- 过滤行 -->
@@ -264,8 +262,8 @@ async function batchDelete() {
         </button>
       </div>
 
-      <!-- 卡片网格 -->
-      <div class="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      <!-- 卡片网格：auto-fill 自适应列数，每行放满才换行 -->
+      <div class="mt-6 grid grid-cols-[repeat(auto-fill,minmax(230px,1fr))] gap-5">
         <div
           v-for="c in filtered"
           :key="c.id"
