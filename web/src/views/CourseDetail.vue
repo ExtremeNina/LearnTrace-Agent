@@ -219,20 +219,23 @@ function onVideoLoadedMetadata() {
   applyInitialSeek()
 }
 
-/** 执行 ?t= 初始 seek：成功后清掉 URL 参数（防止页面内手动拖动后刷新又被拽回旧进度） */
+/** 执行初始 seek：?t=（首页继续学习 / 笔记时间戳）优先，无参数时回退上次播放进度（与首页共享同一份服务端进度）；
+ *  成功后清掉 URL 参数（防止页面内手动拖动后刷新又被拽回旧进度） */
 function applyInitialSeek() {
   if (initialSeek.done) {
     return
   }
   const t = route.query.t
   initialSeek.done = true
-  if (!t) {
-    return
+  let sec = t ? parseTs(String(t)) : NaN
+  if (!Number.isFinite(sec) || sec < 0) {
+    sec = data.value?.course.lastPositionSec ?? 0
   }
-  const sec = parseTs(String(t))
-  if (Number.isFinite(sec) && sec >= 0) {
+  if (Number.isFinite(sec) && sec > 0) {
     seekTo(sec)
-    router.replace({ query: {} }).catch(() => undefined)
+    if (t) {
+      router.replace({ query: {} }).catch(() => undefined)
+    }
   }
 }
 

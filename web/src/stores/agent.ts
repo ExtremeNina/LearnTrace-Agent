@@ -144,16 +144,19 @@ export const useAgentStore = defineStore('agent', () => {
 
   /**
    * 开启新对话：重置会话状态，下一条消息会创建新会话。
-   * 写当日简报 dismiss 标记——开新对话后简报不再跟随注入（次日重新生成）
+   * 仅用户显式「新对话」入口（dismissBriefing=true）写当日简报 dismiss 标记——
+   * 简报不再跟随注入（次日重新生成）；课程详情页等程序化调用不 dismiss
    */
-  function startNew() {
+  function startNew(dismissBriefing = false) {
     activeId.value = null
     rememberActive(null)
     messages.value = []
     error.value = ''
     pendingImage.value = ''
     pendingVideo.value = null
-    localStorage.setItem(BRIEF_DISMISS_KEY, briefToday())
+    if (dismissBriefing) {
+      localStorage.setItem(BRIEF_DISMISS_KEY, briefToday())
+    }
   }
 
   /**
@@ -177,7 +180,7 @@ export const useAgentStore = defineStore('agent', () => {
     return new Date().toISOString().slice(0, 10)
   }
 
-  function readBriefCache(): { date: string; content: string; conversationId: number | null } | null {
+  function readBriefCache(): { date: string; content: string } | null {
     try {
       const raw = localStorage.getItem(BRIEF_CACHE_KEY)
       if (!raw) {
@@ -191,7 +194,9 @@ export const useAgentStore = defineStore('agent', () => {
   }
 
   /**
-   * 当日简报缓存有效（未 dismiss、仍属当前会话、气泡未在列）时注入对话顶部。
+   * 当日简报缓存有效（未 dismiss、气泡未在列）时注入对话顶部。
+   * 不做会话归属校验：dismiss 标记（开新对话写入）已完整表达「新对话后不要」，
+   * 归属校验反而导致恢复会话失败 / 新对话状态下简报被误拦不显示（B27 反馈）。
    * 供恢复会话 / 首页每日加载调用；返回是否已注入
    */
   function injectCachedBriefing() {
@@ -200,9 +205,6 @@ export const useAgentStore = defineStore('agent', () => {
       return false
     }
     if (localStorage.getItem(BRIEF_DISMISS_KEY) === brief.date) {
-      return false
-    }
-    if (brief.conversationId != null && brief.conversationId !== activeId.value) {
       return false
     }
     if (messages.value.some((m) => m.briefing)) {
@@ -307,11 +309,10 @@ export const useAgentStore = defineStore('agent', () => {
     if (target) {
       target.content = content
     }
-    // 成功后写当日缓存（附归属会话）：刷新恢复会话时由 injectCachedBriefing 重新注入
+    // 成功后写当日缓存：刷新恢复会话时由 injectCachedBriefing 重新注入
     localStorage.setItem(BRIEF_CACHE_KEY, JSON.stringify({
       date: briefToday(),
       content,
-      conversationId: activeId.value,
     }))
   }
 

@@ -258,7 +258,7 @@ const pageLabel = computed(() => `第 ${page.value} / ${pages.value} 页 · 共 
 
 <template>
   <div class="h-full overflow-y-auto">
-    <div class="mx-auto max-w-5xl px-6 py-8">
+    <div class="max-w-5xl px-6 py-8">
       <!-- 标题行：数量统计 + 批量管理入口（对齐视频管理页） -->
       <div class="flex items-center justify-between">
         <h1 class="flex items-center gap-2 text-[18px] font-semibold text-ink">

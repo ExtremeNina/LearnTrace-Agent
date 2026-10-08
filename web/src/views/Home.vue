@@ -420,7 +420,7 @@ watch(
                   <button
                     class="rounded-full border border-blue-200 px-3 py-1 text-[12px] text-blue-500 transition-colors hover:bg-blue-50"
                     title="开新会话（原会话保留在 /chat 历史）"
-                    @click="agent.startNew()"
+                    @click="agent.startNew(true)"
                   >
                     新对话
                   </button>
