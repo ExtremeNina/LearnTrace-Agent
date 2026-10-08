@@ -181,12 +181,12 @@ class QuestionServiceImplTest {
 
     @Test
     void listByUser_mergedPaging() {
-        when(questionRecordMapper.countMerged(1L, null, null)).thenReturn(12L);
-        when(questionRecordMapper.listMerged(1L, null, null, 10, 0L)).thenReturn(List.of(
+        when(questionRecordMapper.countMerged(1L, null, null, null)).thenReturn(12L);
+        when(questionRecordMapper.listMerged(1L, null, null, null, 10, 0L)).thenReturn(List.of(
                 new QuestionItemVO().setId(12L).setSource("similar_ai").setQuestionText("相似题"),
                 new QuestionItemVO().setId(3L).setSource("photo").setQuestionText("拍照题")));
 
-        PageVO<QuestionItemVO> result = service.listByUser(1L, null, null, 1, 10);
+        PageVO<QuestionItemVO> result = service.listByUser(1L, null, null, null, 1, 10);
 
         assertEquals(12L, result.getTotal());
         assertEquals(10L, result.getSize());

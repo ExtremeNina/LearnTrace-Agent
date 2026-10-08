@@ -39,17 +39,17 @@ import static com.alibaba.cloud.ai.graph.StateGraph.END;
 import static com.alibaba.cloud.ai.graph.StateGraph.START;
 
 /**
- * 理解 - 评审 - 渲染 - 课后习题子流程（B26，SAA StateGraph 驱动，三 Agent 出题）：
+ * 理解 - 评审 - 渲染 - 课后习题子流程（B27 三 Agent 重排，SAA StateGraph 驱动）：
  *
  * <pre>
- * START → quizPlan → understand → reviewL1 ─(PASS/耗尽)→ render → reviewL2 ─(PASS/耗尽)→ writeQuiz → judgeQuiz ─(PASS/耗尽)→ END
- *                        ↑              └─(REVISE 首次)─┘             └─(REVISE 首次)─┘        └─(REVISE 首次)─┘
+ * START → understand → reviewL1 ─(PASS/耗尽)→ render → reviewL2 ─(PASS/耗尽)→ quizPlan → writeQuiz → judgeQuiz ─(PASS/耗尽)→ END
+ *            ↑              └─(REVISE 首次)─┘             └─(REVISE 首次)─┘                          └─(REVISE 首次)─┘
  * </pre>
  *
- * 出题三 Agent（数量内生于命题规划，无代码公式兜底）：
- * - quizPlan（出题 Agent）：转写 + 画像 → 命题规划（知识点 / 题型 / 角度 / 时间点）
+ * 出题三 Agent（B27 重排：出题 Agent 在 AI 笔记生成并评审通过后启动，读取笔记 + 画像命题）：
+ * - quizPlan（出题 Agent）：AI 笔记 + 画像 → 确认知识点数量 / 出题思路 / 题目编排（题量不设固定值，上限 100）
  * - writeQuiz（写题 Agent）：按规划逐题实现
- * - judgeQuiz（判题 Agent）：代码闸（QuizQualityChecker）+ LLM 评审（结合画像）；不合格反馈回写题 ≤1 轮
+ * - judgeQuiz（审题 Agent）：代码闸（QuizQualityChecker）+ LLM 评审（结合画像）；不合格反馈回写题 ≤1 轮
  * 媒体前置链路（上传 / 抽取 / ASR / OCR）仍由 CoursePipelineService 编排，不在本图内
  */
 @Slf4j
@@ -118,7 +118,7 @@ public class NotePipelineGraphRunner {
 
         StateGraph graph = new StateGraph(factory)
                 .addNode("quizPlan", AsyncNodeAction.node_async((NodeAction) state ->
-                        quizPlanNode(course, transcript, profile, durationSec, listener)))
+                        quizPlanNode(state, course, profile, listener)))
                 .addNode("understand", AsyncNodeAction.node_async((NodeAction) state ->
                         understandNode(course, transcript, durationSec, listener)))
                 .addNode("reviewL1", AsyncNodeAction.node_async((NodeAction) state ->
@@ -131,8 +131,7 @@ public class NotePipelineGraphRunner {
                         writeQuizNode(state, course, transcript, profile, listener)))
                 .addNode("judgeQuiz", AsyncNodeAction.node_async((NodeAction) state ->
                         judgeQuizNode(state, course, transcript, durationSec, profile, listener)))
-                .addEdge(START, "quizPlan")
-                .addEdge("quizPlan", "understand")
+                .addEdge(START, "understand")
                 .addEdge("understand", "reviewL1")
                 .addConditionalEdges("reviewL1", AsyncEdgeAction.edge_async((EdgeAction) state -> {
                     boolean revise = "REVISE".equals(state.value("l1Verdict", ""));
@@ -143,8 +142,9 @@ public class NotePipelineGraphRunner {
                 .addConditionalEdges("reviewL2", AsyncEdgeAction.edge_async((EdgeAction) state -> {
                     List<String> feedback = state.<List<String>>value("feedback").orElse(List.of());
                     boolean canRevise = Integer.valueOf(1).equals(state.<Integer>value("l2Rounds").orElse(0));
-                    return !feedback.isEmpty() && canRevise ? "render" : "writeQuiz";
-                }), Map.of("render", "render", "writeQuiz", "writeQuiz"))
+                    return !feedback.isEmpty() && canRevise ? "render" : "quizPlan";
+                }), Map.of("render", "render", "quizPlan", "quizPlan"))
+                .addEdge("quizPlan", "writeQuiz")
                 .addEdge("writeQuiz", "judgeQuiz")
                 .addConditionalEdges("judgeQuiz", AsyncEdgeAction.edge_async((EdgeAction) state -> {
                     List<String> judgeFeedback = state.<List<String>>value("judgeFeedback").orElse(List.of());
@@ -164,13 +164,15 @@ public class NotePipelineGraphRunner {
         return result;
     }
 
-    /** 出题 Agent 节点（命题规划）：转写 + 画像 → 规划；失败不阻断（quizPlan 置空，后续节点跳过出题） */
-    private Map<String, Object> quizPlanNode(Course course, List<CourseTranscriptSegment> transcript,
-                                             UserProfile profile, int durationSec, StageListener listener) {
+    /** 出题 Agent 节点（B27 重排）：AI 笔记（state.noteMarkdown）+ 画像 → 命题规划；失败不阻断（quizPlan 置空跳过出题） */
+    private Map<String, Object> quizPlanNode(OverAllState state, Course course,
+                                             UserProfile profile, StageListener listener) {
         Map<String, Object> update = new HashMap<>();
         try {
-            listener.onStage("QUIZ_PLANNING", "出题 Agent 正在规划课后习题…");
-            List<PlanItem> plan = quizPlanService.planQuiz(transcript, profile, durationSec);
+            listener.onStage("QUIZ_PLANNING", "出题 Agent 正在通读 AI 笔记规划课后习题…");
+            String noteMarkdown = state.<String>value("noteMarkdown")
+                    .orElseThrow(() -> new IllegalStateException("渲染节点未产出笔记"));
+            List<PlanItem> plan = quizPlanService.planQuiz(noteMarkdown, profile);
             update.put("quizPlan", plan);
             log.info("命题规划完成, courseId={}, 条数={}", course.getId(), plan.size());
         } catch (Exception e) {

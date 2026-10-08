@@ -77,6 +77,13 @@ function onSend() {
   draft.value = ''
   agent.send(content)
 }
+
+/** 意图确认选项卡片点击：选项文本直接作为用户消息发送（视频经工具回查拿到，无需重传） */
+function onIntentChip(text: string) {
+  if (!agent.streaming && !agent.uploading) {
+    agent.send(text)
+  }
+}
 </script>
 
 <template>
@@ -113,7 +120,7 @@ function onSend() {
         <History :size="14" />
         会话
       </button>
-      <ChatPanel empty-title="你好，今天想学点什么？" />
+      <ChatPanel empty-title="你好，今天想学点什么？" @intent="onIntentChip" />
     <!-- 底部：居中输入框 -->
     <div class="shrink-0 px-4 pb-6">
       <div class="mx-auto w-full max-w-3xl">

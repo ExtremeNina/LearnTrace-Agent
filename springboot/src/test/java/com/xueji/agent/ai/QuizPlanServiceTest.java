@@ -41,11 +41,11 @@ class QuizPlanServiceTest {
     }
 
     @Test
-    void planPromptShouldCarryTranscriptProfileAndFeedback() {
+    void planPromptShouldCarryNoteProfileAndFeedback() {
         String prompt = QuizPlanService.buildPlanPrompt(
-                List.of(segment(0, 300, "线性代数的本质是线性变换。")), null, 300, "数量过少");
-        assertThat(prompt).contains("视频时长：300 秒")
-                .contains("[0-300s] 线性代数的本质是线性变换。")
+                "# 线性代数笔记\n\n本质是线性变换。", null, "数量过少");
+        assertThat(prompt).contains("[AI 笔记全文]")
+                .contains("# 线性代数笔记")
                 .contains("规划反馈").contains("数量过少");
         // 无画像不出现画像段
         assertThat(prompt).doesNotContain("学习者画像");

@@ -17,9 +17,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 出题 Agent（B26 三 Agent 协作第一步：命题规划）：
- * 输入转写全文 + 学习画像，规划课后习题——出哪些知识点、什么题型、什么角度、共几题。
- * 数量内生于内容规划（无公式下限）；规划明显异常（<2 或 >20 条）时重规划一次，再失败抛异常由调用方兜底
+ * 出题 Agent（B27 三 Agent 协作重排：AI 笔记生成并评审通过后启动）：
+ * 输入生成的 AI 笔记 + 学习画像，确认知识点数量、出题思路与题目编排。
+ * 题量不设固定值（由笔记知识点覆盖决定，上限 100）；规划明显异常（<2 或 >100 条）时重规划一次，
+ * 再失败抛异常由调用方兜底
  */
 @Slf4j
 @Service
@@ -27,7 +28,7 @@ public class QuizPlanService {
 
     /** 规划条数合理区间（异常时重规划一次） */
     static final int MIN_PLAN_ITEMS = 2;
-    static final int MAX_PLAN_ITEMS = 20;
+    static final int MAX_PLAN_ITEMS = 100;
 
     /** 单条命题规划 */
     public static class PlanItem {
@@ -57,15 +58,15 @@ public class QuizPlanService {
     private ChatClient generationChatClient;
 
     /**
-     * 命题规划主入口（重规划 ≤1 次）
+     * 命题规划主入口（B27 重排：输入 AI 笔记 + 画像；重规划 ≤1 次）
      */
-    public List<PlanItem> planQuiz(List<CourseTranscriptSegment> transcript, UserProfile profile, int durationSec) {
-        List<PlanItem> plan = planOnce(transcript, profile, durationSec, null);
+    public List<PlanItem> planQuiz(String noteMarkdown, UserProfile profile) {
+        List<PlanItem> plan = planOnce(noteMarkdown, profile, null);
         if (plan.size() < MIN_PLAN_ITEMS || plan.size() > MAX_PLAN_ITEMS) {
             log.warn("命题规划数量异常（{} 条），重规划一次", plan.size());
-            plan = planOnce(transcript, profile, durationSec,
+            plan = planOnce(noteMarkdown, profile,
                     "上一版规划数量为 " + plan.size() + " 条，超出合理区间（" + MIN_PLAN_ITEMS + "~" + MAX_PLAN_ITEMS
-                            + "），请按内容密度重新规划数量");
+                            + "），请按笔记知识点覆盖重新规划数量（每个知识点至少一题，上限 " + MAX_PLAN_ITEMS + "）");
         }
         if (plan.size() < MIN_PLAN_ITEMS || plan.size() > MAX_PLAN_ITEMS) {
             throw new BusinessException("命题规划异常，请稍后重试");
@@ -74,29 +75,19 @@ public class QuizPlanService {
         return plan;
     }
 
-    private List<PlanItem> planOnce(List<CourseTranscriptSegment> transcript, UserProfile profile,
-                                    int durationSec, String feedback) {
+    private List<PlanItem> planOnce(String noteMarkdown, UserProfile profile, String feedback) {
         String text = generationChatClient.prompt()
                 .system(AgentPrompts.QUIZ_PLAN_PROMPT)
-                .user(buildPlanPrompt(transcript, profile, durationSec, feedback))
+                .user(buildPlanPrompt(noteMarkdown, profile, feedback))
                 .call()
                 .content();
         return parsePlan(text);
     }
 
     /** 规划用户消息（公开静态便于单测） */
-    public static String buildPlanPrompt(List<CourseTranscriptSegment> transcript, UserProfile profile,
-                                         int durationSec, String feedback) {
+    public static String buildPlanPrompt(String noteMarkdown, UserProfile profile, String feedback) {
         StringBuilder sb = new StringBuilder();
-        sb.append("视频时长：").append(durationSec).append(" 秒。\n\n");
-        sb.append("[转写文本（含起止秒）]\n");
-        for (CourseTranscriptSegment segment : transcript) {
-            String line = segment.getTextCorrected() != null ? segment.getTextCorrected() : segment.getText();
-            if (line != null && !line.isBlank()) {
-                sb.append("[").append(segment.getStartSec()).append("-").append(segment.getEndSec()).append("s] ")
-                        .append(line).append('\n');
-            }
-        }
+        sb.append("[AI 笔记全文]\n").append(noteMarkdown == null ? "" : noteMarkdown).append('\n');
         if (profile != null) {
             String profileText = ContentReviewService.profileText(profile);
             if (!profileText.contains("未提供")) {

@@ -11,7 +11,7 @@ import type { HomeOverview } from '../api/home'
 import ModelPicker from '../components/chat/ModelPicker.vue'
 import { useAgentStore } from '../stores/agent'
 import { useReviewModalStore } from '../stores/reviewModal'
-import { renderMarkdown } from '../utils/markdown'
+import { renderIntentChips, renderMarkdown } from '../utils/markdown'
 import bannerWaterUrl from '../assets/banner-water.webp'
 
 /**
@@ -190,6 +190,14 @@ function sendDraft() {
   const content = text || '请转写这个视频'
   draft.value = ''
   agent.send(content)
+}
+
+/** 意图确认选项卡片点击（事件委托）：选项文本直接作为用户消息发送 */
+function onAssistantClick(e: MouseEvent) {
+  const chip = (e.target as HTMLElement).closest('[data-chip]') as HTMLElement | null
+  if (chip?.dataset.chip && !agent.streaming && !agent.uploading) {
+    agent.send(chip.dataset.chip)
+  }
 }
 
 // 新消息或流式输出推进时滚到底部
@@ -398,8 +406,9 @@ watch(
               </div>
             </section>
 
-            <!-- AI 助手：与 /chat 共享会话（与左列 banner~最近学习同排，下边界对齐最近学习） -->
-            <section class="flex flex-col rounded-lg border border-gray-100 bg-white p-6 shadow-sm lg:col-start-2 lg:row-start-1 lg:row-span-4">
+            <!-- AI 助手：与 /chat 共享会话（与左列 banner~最近学习同排，下边界对齐最近学习）；
+                 面板限高 + 消息区内部滚动（min-h-0 收缩），对话加长不再反向撑高左列卡片 -->
+            <section class="flex flex-col overflow-hidden rounded-lg border border-gray-100 bg-white p-6 shadow-sm lg:col-start-2 lg:row-start-1 lg:row-span-4 lg:max-h-[calc(100vh-6rem)]">
               <div class="flex items-center justify-between">
                 <h2 class="flex items-center gap-2 text-[15px] font-bold text-gray-900">
                   <Sparkles :size="17" class="text-blue-500" />
@@ -422,7 +431,11 @@ watch(
                   </button>
                 </div>
               </div>
-              <div ref="assistantBox" class="mt-3 flex min-h-44 flex-1 flex-col gap-2.5 overflow-y-auto">
+              <div
+                ref="assistantBox"
+                class="mt-3 flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto"
+                @click="onAssistantClick"
+              >
                 <div v-if="agent.messages.length === 0" class="text-[12px] leading-5 text-gray-500">
                   <p class="text-[13px] font-semibold text-gray-900">你好！我是你的学习助手</p>
                   <p class="mt-1.5">我可以帮你：</p>
@@ -473,7 +486,7 @@ watch(
                   <div
                     v-else
                     class="assistant-md mr-4 text-[13px] leading-6 text-gray-700"
-                    v-html="renderMarkdown(msg.content)"
+                    v-html="renderIntentChips(renderMarkdown(msg.content))"
                   ></div>
                 </template>
               </div>
@@ -564,5 +577,23 @@ watch(
 .assistant-md :deep(ul),
 .assistant-md :deep(ol) {
   padding-left: 1.1rem;
+}
+.assistant-md :deep(.intent-chip) {
+  display: inline-flex;
+  align-items: center;
+  margin: 0.25rem 0.5rem 0.25rem 0;
+  padding: 0.3rem 0.9rem;
+  border: 1px solid #bfdbfe;
+  border-radius: 9999px;
+  background: #eff6ff;
+  color: #2563eb;
+  font-size: 13px;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.assistant-md :deep(.intent-chip:hover) {
+  background: #dbeafe;
+  border-color: #60a5fa;
 }
 </style>

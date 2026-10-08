@@ -32,6 +32,18 @@ export function renderMarkdown(source: string): string {
 }
 
 /**
+ * 意图确认选项卡片（B27 视频分流）：把助手消息中的 [chip:选项文本] 标记渲染为可点击按钮。
+ * 事件经容器 click 委托读取 data-chip 上报（v-html 内容无法直接绑事件）；
+ * DOMPurify 默认允许 button，但为防 sanitize 吞属性，本函数在 sanitize 之后调用
+ */
+export function renderIntentChips(html: string): string {
+  return html.replace(
+    /\[chip:([^\]]+)\]/g,
+    '<button type="button" class="intent-chip" data-chip="$1">$1</button>'
+  )
+}
+
+/**
  * 笔记正文统一渲染管线（AI 笔记阅读态与编辑预览共用）：
  * 块级空行归一化（LLM 输出的标题/列表前常缺空行）→ 按空行分块渲染 → [mm:ss] 转时间戳胶囊。
  * 表格块单独直渲染：防粘连规则会在「中文 - xxx」单元格内断行、破坏表格结构

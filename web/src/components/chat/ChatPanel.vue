@@ -4,7 +4,7 @@ import {
   Check, Copy, Film, LoaderCircle, MonitorPlay, RefreshCw, Share2, Sparkles, ThumbsDown, ThumbsUp, Volume2,
 } from 'lucide-vue-next'
 import { useAgentStore } from '../../stores/agent'
-import { renderMarkdown } from '../../utils/markdown'
+import { renderIntentChips, renderMarkdown } from '../../utils/markdown'
 
 /**
  * 会话消息流面板（/chat 与网课详情「AI 问答」共用）：
@@ -18,7 +18,7 @@ const props = defineProps<{
   chipTimestamps?: boolean
 }>()
 
-const emit = defineEmits<{ chip: [ts: string] }>()
+const emit = defineEmits<{ chip: [ts: string]; intent: [text: string] }>()
 
 const agent = useAgentStore()
 const scrollBox = ref<HTMLElement | null>(null)
@@ -111,20 +111,26 @@ function courseStageText(task: { stage: string; text?: string }): string {
   return labels[task.stage] ?? '正在处理…'
 }
 
-/** Markdown 渲染；chipTimestamps 时把 [mm:ss] 包成可点击胶囊（课程问答跳视频用） */
+/** Markdown 渲染；chipTimestamps 时把 [mm:ss] 包成可点击胶囊（课程问答跳视频用）；[chip:xxx] 渲染为意图选项卡 */
 function renderContent(content: string): string {
   const html = renderMarkdown(content)
-  if (!props.chipTimestamps) {
-    return html
+  let out = renderIntentChips(html)
+  if (props.chipTimestamps) {
+    out = out.replace(
+      /\[(\d{1,2}:[0-5]\d(?::\d{2})?)\]/g,
+      '<span class="ts-chip" data-ts="$1">$1</span>'
+    )
   }
-  return html.replace(
-    /\[(\d{1,2}:[0-5]\d(?::\d{2})?)\]/g,
-    '<span class="ts-chip" data-ts="$1">$1</span>'
-  )
+  return out
 }
 
 function onPanelClick(e: MouseEvent) {
   const chip = e.target as HTMLElement
+  const intentChip = chip.closest('[data-chip]') as HTMLElement | null
+  if (intentChip?.dataset.chip) {
+    emit('intent', intentChip.dataset.chip)
+    return
+  }
   const target = chip.closest('[data-ts]') as HTMLElement | null
   if (target?.dataset.ts) {
     emit('chip', target.dataset.ts)
@@ -269,5 +275,26 @@ function onPanelClick(e: MouseEvent) {
   font-size: 12px;
   cursor: pointer;
   vertical-align: middle;
+}
+
+/* 意图确认选项卡片（视频分流）：点击即作为用户消息发送 */
+.intent-chip {
+  display: inline-flex;
+  align-items: center;
+  margin: 0.25rem 0.5rem 0.25rem 0;
+  padding: 0.3rem 0.9rem;
+  border: 1px solid #bfdbfe;
+  border-radius: 9999px;
+  background: #eff6ff;
+  color: #2563eb;
+  font-size: 13px;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.intent-chip:hover {
+  background: #dbeafe;
+  border-color: #60a5fa;
 }
 </style>

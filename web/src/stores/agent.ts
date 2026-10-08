@@ -111,6 +111,8 @@ export const useAgentStore = defineStore('agent', () => {
       }
       return item
     })
+    // 当日简报统一注入（幂等）：任何打开会话的路径（历史点击 / 刷新恢复）简报都在对话顶部，无需刷新
+    injectCachedBriefing()
   }
 
   function parsePayloadImageUrl(payload: string | null): string | undefined {
@@ -153,17 +155,21 @@ export const useAgentStore = defineStore('agent', () => {
   }
 
   /**
-   * 刷新后恢复上次会话：本地记录的会话仍存在则重新加载，否则静默回到新对话；
-   * 恢复成功且当日简报未 dismiss 时，把缓存的简报气泡重新注入对话顶部
+   * 刷新后恢复上次会话：本地记录的会话仍存在则重新加载；
+   * 标记缺失/失效（如详情页程序化 startNew 清空）时回退恢复最近一次会话——历史不再丢失；
+   * 恢复后当日简报缓存重新注入对话顶部（openConversation 内部已统一处理）
    */
   async function restoreLastConversation() {
+    await loadConversations()
     const saved = localStorage.getItem(ACTIVE_KEY)
-    if (!saved) {
+    const targetId = saved && conversations.value.some((c) => c.id === Number(saved))
+      ? Number(saved)
+      : conversations.value[0]?.id
+    if (!targetId) {
       return
     }
     try {
-      await openConversation(Number(saved))
-      injectCachedBriefing()
+      await openConversation(targetId)
     } catch {
       rememberActive(null)
     }

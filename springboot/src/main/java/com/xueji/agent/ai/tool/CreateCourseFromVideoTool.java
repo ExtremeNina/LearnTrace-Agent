@@ -1,6 +1,8 @@
 package com.xueji.agent.ai.tool;
 
 import cn.hutool.json.JSONObject;
+import cn.hutool.json.JSONUtil;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.xueji.agent.domain.entity.Course;
 import com.xueji.agent.domain.entity.Message;
 import com.xueji.agent.mapper.MessageMapper;
@@ -42,14 +44,31 @@ public class CreateCourseFromVideoTool {
             ToolContext toolContext) {
         Long userId = ((Number) toolContext.getContext().get("userId")).longValue();
         Long conversationId = ((Number) toolContext.getContext().get("conversationId")).longValue();
-        Object tempPathObj = toolContext.getContext().get("videoTempPath");
-        if (tempPathObj == null) {
+        // 视频参数解析：优先 ToolContext（当前回合附带）；画像问询等后续回合从会话最近一条视频消息 payload 回查
+        //（与 TranscribeVideoTool 同款回查，根治「回答完学段/目标后建课提示重新上传视频」）
+        String tempPath = contextStr(toolContext, "videoTempPath");
+        if (tempPath == null || tempPath.isBlank()) {
+            Message videoMessage = messageMapper.selectOne(new QueryWrapper<Message>()
+                    .eq("conversation_id", conversationId)
+                    .eq("role", "user")
+                    .eq("msg_type", "video")
+                    .orderByDesc("id")
+                    .last("LIMIT 1"));
+            if (videoMessage != null && videoMessage.getPayload() != null && !videoMessage.getPayload().isBlank()) {
+                try {
+                    tempPath = JSONUtil.parseObj(videoMessage.getPayload()).getStr("videoTempPath", null);
+                } catch (Exception e) {
+                    log.warn("视频消息 payload 解析失败, messageId={}", videoMessage.getId());
+                }
+            }
+        }
+        if (tempPath == null || tempPath.isBlank()) {
             return "CREATE_FAILED: 当前会话没有待处理的视频";
         }
         try {
-            Path video = Path.of(tempPathObj.toString());
+            Path video = Path.of(tempPath);
             if (!Files.exists(video)) {
-                return "CREATE_FAILED: 视频临时文件已丢失，请重新上传";
+                return "CREATE_FAILED: 视频临时文件已丢失（可能已被转写流程清理），请让用户重新上传";
             }
             String courseTitle = isMeaningfulTitle(title) ? title.trim() : titleFromFileName(video);
             Course course = courseService.uploadFromLocal(userId, video, courseTitle, expectations);
@@ -76,6 +95,11 @@ public class CreateCourseFromVideoTool {
             log.error("课程创建工具执行失败, userId={}, conversationId={}", userId, conversationId, e);
             return "CREATE_FAILED: " + e.getMessage();
         }
+    }
+
+    private static String contextStr(ToolContext toolContext, String key) {
+        Object value = toolContext.getContext().get(key);
+        return value == null ? null : value.toString();
     }
 
     /** 标题有效性：空 / LLM 模板化默认名（「课程视频（45 分钟）」之类）回退文件名（B26 反馈 bug） */
