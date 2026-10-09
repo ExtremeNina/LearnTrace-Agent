@@ -28,7 +28,7 @@ function isActive(path: string): boolean {
   <div class="flex h-full min-h-0 flex-col">
     <!-- 品牌区 -->
     <div class="px-5 pb-4 pt-5">
-      <p class="text-[18px] font-bold leading-5 tracking-tight text-gray-900">学迹</p>
+      <p class="brand-title text-[20px] leading-6">LearnTrace</p>
       <p class="mt-0.5 text-[11px] text-gray-400">让学习更有轨迹</p>
     </div>
 
@@ -60,3 +60,16 @@ function isActive(path: string): boolean {
     </nav>
   </div>
 </template>
+
+<style scoped>
+/* 品牌艺术字：手写体 + 渐变填充（系统字体栈，不依赖外部字体源） */
+.brand-title {
+  font-family: 'Segoe Script', 'Brush Script MT', 'Lucida Handwriting', 'Savoye LET', cursive;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  background: linear-gradient(90deg, #2563eb 0%, #6366f1 55%, #a855f7 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+</style>
