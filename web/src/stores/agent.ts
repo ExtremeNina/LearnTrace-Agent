@@ -338,7 +338,7 @@ export const useAgentStore = defineStore('agent', () => {
   /** 上传成功 → 消息流插入本地提示气泡（不落库，切换会话自然清除；B26 反馈：上传反馈进气泡） */
   function pushUploadNotice(name: string, durationSec: number) {
     const m = Math.floor(durationSec / 60)
-    const s = durationSec % 60
+    const s = Math.floor(durationSec % 60)
     messages.value.push({
       role: 'assistant',
       content: `**视频《${name}》（${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}）已上传完成**\n`
