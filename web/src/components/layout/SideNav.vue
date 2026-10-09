@@ -8,6 +8,9 @@ import { Home, MonitorPlay, NotebookPen, Camera, Settings } from 'lucide-vue-nex
  */
 const emit = defineEmits<{ navigate: []; 'open-profile': [] }>()
 
+/** 今日到期复习卡数（>0 时「首页」项显示红点角标，B28 顶栏铃铛迁移至此） */
+const props = defineProps<{ dueCount?: number }>()
+
 const route = useRoute()
 
 const items = [
@@ -44,6 +47,12 @@ function isActive(path: string): boolean {
       >
         <component :is="item.icon" :size="18" />
         {{ item.label }}
+        <!-- 复习到期红点：挂在「首页」项（今日复习卡片所在页） -->
+        <span
+          v-if="item.path === '/' && (props.dueCount ?? 0) > 0"
+          class="ml-auto h-2 w-2 shrink-0 rounded-full bg-red-500"
+          :title="`${props.dueCount} 张卡片待复习`"
+        />
       </RouterLink>
 
       <!-- 我的 -->
