@@ -39,24 +39,25 @@
 - 端到端冒烟：`node web/test-review-smoke.mjs`（一次性账号全流程 20 断言：加卡 / 去重 / 队列组装 / 评分推进与重置 / 统计 / 删除级联 / 移出恢复）
 - 人工：复习页刷卡全流程（键盘快捷键）、删除笔记后复习角标与队列变化
 
-## 每日简报（路线图 P0-2，2026-10-03 完成）
+## 每日简报（路线图 P0-2，2026-10-03 完成；B27 升级会话归属）
 
 ### 职责与业务
-/review 页顶部"今日简报"卡片：LLM 把学习统计翻译成三段式诊断（本周做了什么 → 薄弱主题 → 下周建议）；启动时若有待复习卡，右上角 toast 轻推一次（每天最多一次，受个人页面通知开关控制）。Agent 工具 get_learning_status（B07 起步）与简报共用 LearningStatsService 统计口径。
+LLM 把学习统计翻译成三段式诊断（本周做了什么 → 薄弱主题 → 下周建议）。B27 起简报以对话气泡形态呈现在会话消息流中（不再只是 /review 页顶部卡片）：按「用户 × 会话 × 日期」后端持久化归属，气泡按生成时间插入该会话对应时间点最后一次对话之后，同一会话跨天使用每天各留一条。启动时若有待复习卡，右上角 toast 轻推一次（每天最多一次，受个人页面通知开关控制）。Agent 工具 get_learning_status（B07 起步）与简报共用 LearningStatsService 统计口径。
 
 ### 边界
-- 输入：`GET /briefing/today`（惰性生成）、`POST /briefing/refresh`（强制刷新）
-- 输出：daily_briefing 表（UNIQUE(user_id, brief_date)，stats_json 快照 + LLM 正文）
+- 输入：`GET /briefing/today?conversationId=`（按 用户×会话×日期 幂等：已有读缓存；conversation_id 为 NULL 的旧数据自动补绑定到当前会话；同日已有其他会话简报则复用内容，不重复调 LLM；conversationId 缺省=新对话尚未创建）、`POST /briefing/refresh?conversationId=`（强制刷新，目标缺失时优先补绑定旧行）、`GET /briefing/conversation/{id}`（按会话查全部简报，切换会话时恢复位置）
+- 输出：daily_briefing 表（UNIQUE(user_id, conversation_id, brief_date)，conversation_id NULL=旧数据未绑定；stats_json 快照 + LLM 正文；落位时间取 created_at——updated_at 随补绑定/刷新变化会导致跳位）
 - 统计口径（LearningStatsService，确定性查询）：dueToday / totalCards / reviewedThisWeek / againThisWeek / notesCreatedThisWeek / coursesTotal / coursesSuccess / weakCards（本周生疏卡 Top5，含题干与错因）
 - 生成：generationChatClient（无对话工具、无记忆的专用 ChatClient）+ AgentPrompts.BRIEFING_PROMPT；统计是代码算的，LLM 只做归纳措辞，不编造
+- 前端归属（stores/agent.ts）：openConversation 拉取会话简报列表并按 generatedAt 插入消息流（最后一条 createdAt ≤ generatedAt 的消息之后）；简报标记 localStorage 键按用户 ID 隔离（多账号共用浏览器互不污染）；旧版归属缓存一次性迁移到后端（绑定成功才清缓存键）
 - 提醒：前端 MainLayout 启动时查 /review/stats，dueCount>0 且当天未提醒且通知开关开启 → toast；localStorage 记录当天已提醒
 
 ### 不做（边界外）
 - 服务端主动推送 / 邮件（WS 推送能力已有，等真实使用节奏）
-- 独立仪表盘页（简报卡片即迷你仪表盘，验证需求后再立项）
+- 独立仪表盘页（首页学习仪表盘已承接，简报在对话内呈现）
 - learning_record 依赖的时长类统计（等学习轨迹数据层）
 
 ### 测试方法
-- 单元：BriefingServiceImplTest（惰性生成幂等 / 强刷重生成 / 用户消息携带统计 JSON）、LearningStatsServiceImplTest（计数口径 / 薄弱卡去重与来源已删剔除 / 上限 5）
+- 单元：BriefingServiceImplTest（同会话读缓存幂等 / 生成并绑定会话 / 旧数据补绑定 / 无会话复用当日简报 / 跨会话内容复用不重复调 LLM / 强刷重生成 / 按会话查询 / generatedAt 取 createdAt / 用户消息携带统计 JSON）、LearningStatsServiceImplTest（计数口径 / 薄弱卡去重与来源已删剔除 / 上限 5）
 - 端到端冒烟：`node web/test-briefing-smoke.mjs`（真实 LLM，8 断言）
-- 人工：/review 页简报卡生成与刷新；改个人页面通知开关后提醒不再出现
+- 人工：切换会话时简报只出现在归属会话且位置正确（同一会话跨天多条各自落位）；开新对话生成后 send 创建会话简报跟随；/review 页简报卡生成与刷新

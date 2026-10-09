@@ -10,9 +10,11 @@ WS 流式对话（DeepSeek 流式 + 工具调用）、回合互斥、消息双�
 - WS `chat.stop`：取消当前回合
 - REST：会话创建 / 列表 / 消息 / 重命名 / 删除（全部经 OwnershipCheck 校验归属）；`POST /upload/chat-video`（B11 对话视频：1GB + 白名单 + ffprobe 探时长——不做时长拒绝，分流在工具层）
 
-**视频上传分流（B11，2026-10-05 统一入口）**
+**视频上传分流（B11，2026-10-05 统一入口；B27 意图 Agent 接管）**
 - AI 对话是唯一视频上传入口（视频管理页仅管理：列表 / 进度 / 播放 / 删除 / 重试）
 - LLM 按 VIDEO_PROMPT 意图分流：≤30min 默认调 `TranscribeVideoTool` 轻量转写（话术明示默认方针）；「做成课程 / 系统学习」或 >30min 调 `CreateCourseFromVideoTool` → `CourseService.uploadFromLocal` 建课走完整流水线
+- **意图确认 Agent（B27，2026-10-08）**：上传视频后的回合由 `IntentAgentService` 接管——LLM 按用户输入定制提问（学段 / 目标 / 偏好画像落档 user_profile，pending 存 Redis），意图明确时不再出流程选择卡直接触发转写或建课；提问以 `intentCard` 大卡片结构随 `COMPLETE.payload` 透出（ChatPanel / 首页 AI 面板渲染，历史消息同构），选项点选即发送；两级降级：提问失败用模板卡、解析失败按时长默认意图；WS 断线重连后复位 streaming 并重新拉取会话消息
+- 标题提取：上传临时文件名（`xj-chat-video-<时间戳>-` / UUID 前缀 / 尾部时间戳序号）剥离，course.title 兜底取原始文件名基名（IntentAgentService 与 CreateCourseFromVideoTool 各一份同规则实现，均有单测）
 - 课程流水线进度回流：`CreateCourseFromVideoTool` 创建 `course_task` 占位消息（message.course_id 关联），CoursePipelineService 各阶段更新 payload 并推 `ChatEvent.COURSE` 事件，完成附 `/courses/{id}` 链接（页面路径上传无占位消息，自动跳过推送）
 - 循环依赖：createCourseFromVideoTool 的 CourseService 参数标 `@Lazy`（chatClient → 工具 → CourseService → AiModelService → chatClient）
 
@@ -47,6 +49,6 @@ WS 流式对话（DeepSeek 流式 + 工具调用）、回合互斥、消息双�
 
 ## 测试方法
 - 单元（Mockito）：ConversationServiceImplTest——默认标题 / 保留给定标题 / 越权 404 / 消息列表归属 / 删除连带清理消息与记忆 / 30 天清理只删过期 / 轮次计数越权
-- 单元：RedisChatMemoryRepositoryTest（JSON 互转 / 键约定 / 缓存缺失自 MySQL 重建并回填 / 末尾未配对用户消息不进记忆 / 非数字会话 ID 跳过重建 / 重建失败降级 / 查询条件断言）、ChatEventTest（事件结构）
+- 单元：RedisChatMemoryRepositoryTest（JSON 互转 / 键约定 / 缓存缺失自 MySQL 重建并回填 / 末尾未配对用户消息不进记忆 / 非数字会话 ID 跳过重建 / 重建失败降级 / 查询条件断言）、ChatEventTest（事件结构）、IntentAgentServiceTest（意图解析 JSON 容错：剥围栏 / 找大括号 / 大小写归一 / 非法输出；标题提取剥离规则）
 - 手动全链路：web/test-ws.mjs（WS 连接、发送、断线重连）；页面实测错误事件展示（CONVERSATION_LIMIT 文案）
 - 启动冒烟：登录 + /courses + /notes/tree
