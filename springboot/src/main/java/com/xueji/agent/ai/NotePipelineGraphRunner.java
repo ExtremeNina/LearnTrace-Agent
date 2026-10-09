@@ -135,7 +135,7 @@ public class NotePipelineGraphRunner {
                 .addEdge("understand", "reviewL1")
                 .addConditionalEdges("reviewL1", AsyncEdgeAction.edge_async((EdgeAction) state -> {
                     boolean revise = "REVISE".equals(state.value("l1Verdict", ""));
-                    boolean canRevise = Integer.valueOf(0).equals(state.<Integer>value("l1Revised").orElse(0));
+                    boolean canRevise = Integer.valueOf(1).equals(state.<Integer>value("l1Revised").orElse(0));
                     return revise && canRevise ? "understand" : "render";
                 }), Map.of("understand", "understand", "render", "render"))
                 .addEdge("render", "reviewL2")
@@ -147,9 +147,9 @@ public class NotePipelineGraphRunner {
                 .addEdge("quizPlan", "writeQuiz")
                 .addEdge("writeQuiz", "judgeQuiz")
                 .addConditionalEdges("judgeQuiz", AsyncEdgeAction.edge_async((EdgeAction) state -> {
+                    // 回写条件只看 judgeFeedback：终局（通过 / 轮次耗尽）时节点已将其清空，杜绝残留导致的无限循环
                     List<String> judgeFeedback = state.<List<String>>value("judgeFeedback").orElse(List.of());
-                    boolean canRevise = Integer.valueOf(1).equals(state.<Integer>value("quizRounds").orElse(0));
-                    return !judgeFeedback.isEmpty() && canRevise ? "writeQuiz" : END;
+                    return !judgeFeedback.isEmpty() ? "writeQuiz" : END;
                 }), Map.of("writeQuiz", "writeQuiz", END, END));
 
         CompiledGraph compiled = graph.compile();
@@ -210,7 +210,10 @@ public class NotePipelineGraphRunner {
 
         Map<String, Object> update = new HashMap<>();
         update.put("l1Verdict", verdict.getVerdict());
-        update.put("l1Revised", verdict.isRevise() ? 1 : 0);
+        // 回写语义（B28 修复）：REVISE 且尚未回写过 → 置 1 允许回写 understand 一次；
+        // 已回写过再 REVISE → 置 2 阻断（否则旧判定残留导致 L1 无限循环）
+        int revisedRounds = state.<Integer>value("l1Revised").orElse(0);
+        update.put("l1Revised", verdict.isRevise() && revisedRounds == 0 ? 1 : 2);
         // REVISE 时把结构问题反馈给下一轮理解（问题随重生成自然消解；理解 prompt 不直接消费，仅记录用于汇总）
         String summary = "内容设计评审: " + verdict.getVerdict()
                 + (verdict.getScore() != null ? "（" + verdict.getScore() + " 分）" : "")
@@ -330,6 +333,7 @@ public class NotePipelineGraphRunner {
         int rounds = state.<Integer>value("quizRounds").orElse(0);
         boolean bad = kept.isEmpty() || (verdict != null && verdict.isRevise());
         if (bad && rounds < 1) {
+            // 首轮不合格：反馈回写题一次（edge 据非空 judgeFeedback 回 writeQuiz）
             update.put("quizRounds", 1);
             update.put("judgeFeedback", judgeFeedback(plan, problems, verdict));
             log.info("判题 Agent 未通过，反馈回写题, courseId={}, kept={}, problems={}",
@@ -337,12 +341,15 @@ public class NotePipelineGraphRunner {
             return update;
         }
 
-        if (kept.isEmpty()) {
-            appendIssue(update, "课后习题生成失败：重写后仍无合格题目");
+        // 终局（通过 / 轮次耗尽）：清除回写标记——否则残留的非空 judgeFeedback 会让 edge 无限回写（B28 修复）
+        update.put("judgeFeedback", List.of());
+        if (bad) {
+            appendIssue(update, rounds >= 1
+                    ? "课后习题生成失败：重写后仍无合格题目"
+                    : "课后习题生成失败：未产出合格题目");
             return update;
         }
         courseQuizService.saveQuizQuestions(course, kept);
-        update.put("quizRounds", rounds);
         if (verdict != null && verdict.isRevise() && !verdict.getIssues().isEmpty()) {
             appendIssue(update, "课后习题评审意见（已按现状入库）：" + String.join("；", verdict.getIssues()));
         }

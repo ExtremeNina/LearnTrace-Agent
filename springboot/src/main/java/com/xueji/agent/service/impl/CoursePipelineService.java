@@ -256,7 +256,7 @@ public class CoursePipelineService {
 
             course.setStatus(CourseStatus.SUCCESS)
                     .setDuration(durationSec)
-                    .setErrorMsg(noteIssue == null ? null : "网课处理完成，但 " + noteIssue)
+                    .setErrorMsg(noteIssue == null ? null : truncate("网课处理完成，但 " + noteIssue))
                     .setUpdatedAt(LocalDateTime.now());
             courseMapper.updateById(course);
             pushCourseStage(course, taskMessage, "COMPLETED",
@@ -407,14 +407,21 @@ public class CoursePipelineService {
     // ---- 工具 ----
 
     private void updateStatus(Course course, String status, String errorMsg) {
-        course.setStatus(status).setErrorMsg(errorMsg).setUpdatedAt(LocalDateTime.now());
+        // 截断收口：error_msg 列 varchar(2000)，调用方可自由拼接前缀，超长在此统一截断（B28 修复）
+        course.setStatus(status).setErrorMsg(truncate(errorMsg)).setUpdatedAt(LocalDateTime.now());
         courseMapper.updateById(course);
     }
 
     private void markFailed(Course course, String message, Message taskMessage) {
         log.error("网课处理失败, courseId={}: {}", course.getId(), message);
-        updateStatus(course, CourseStatus.FAILED, truncate(message));
-        pushCourseStage(course, taskMessage, "FAILED", "课程处理失败：" + truncate(message), null);
+        try {
+            updateStatus(course, CourseStatus.FAILED, message);
+        } catch (Exception e) {
+            // 失败状态写库异常（如错误信息超长）→ 降级为短文案重试一次，保证状态落库且失败事件必达（B28 修复）
+            log.warn("失败状态写库异常，降级短文案重试, courseId={}", course.getId(), e);
+            updateStatus(course, CourseStatus.FAILED, truncate(message, 200));
+        }
+        pushCourseStage(course, taskMessage, "FAILED", "课程处理失败：" + truncate(message, 500), null);
     }
 
     /**
@@ -460,8 +467,19 @@ public class CoursePipelineService {
         }
     }
 
+    /** course.error_msg 列宽（varchar(2000)），截断上限与之对齐 */
+    static final int ERROR_MSG_MAX = 2000;
+
     private String truncate(String s) {
-        return s == null ? "" : s.substring(0, Math.min(500, s.length()));
+        return truncate(s, ERROR_MSG_MAX);
+    }
+
+    private String truncate(String s, int max) {
+        if (s == null) {
+            return "";
+        }
+        // 按字符数安全截断（utf8mb4 下 varchar(n) 即 n 字符）
+        return s.substring(0, Math.min(max, s.length()));
     }
 
     private String extOf(String fileName) {
