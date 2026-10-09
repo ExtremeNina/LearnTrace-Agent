@@ -6,6 +6,7 @@ import com.xueji.agent.ai.tool.CreateCourseFromVideoTool;
 import com.xueji.agent.ai.tool.ContentSearchTool;
 import com.xueji.agent.ai.tool.CreateNoteTool;
 import com.xueji.agent.ai.tool.QuizGenerateTool;
+import com.xueji.agent.ai.tool.SaveCourseNoteTool;
 import com.xueji.agent.ai.tool.SaveProfileTool;
 import com.xueji.agent.ai.tool.TranscribeVideoTool;
 import com.xueji.agent.ai.tool.LearningStatusTool;
@@ -263,6 +264,14 @@ public class SpringAIConfig {
         return new LearningStatusTool(learningStatsService);
     }
 
+    /**
+     * 保存网课 AI 笔记工具（B28）：网课 AI 笔记默认不进笔记管理，用户明确要求保存时由模型调用
+     */
+    @Bean
+    public SaveCourseNoteTool saveCourseNoteTool(com.xueji.agent.service.NoteService noteService) {
+        return new SaveCourseNoteTool(noteService);
+    }
+
     @Bean
     public ChatClient chatClient(ChatClient.Builder chatClientBuilder,
                                  Advisor messageChatMemoryAdvisor,
@@ -275,12 +284,13 @@ public class SpringAIConfig {
                                  CreateCourseFromVideoTool createCourseFromVideoTool,
                                  ContentSearchTool contentSearchTool,
                                  QuizGenerateTool quizGenerateTool,
-                                 SaveProfileTool saveProfileTool) {
+                                 SaveProfileTool saveProfileTool,
+                                 SaveCourseNoteTool saveCourseNoteTool) {
         return chatClientBuilder
                 .defaultAdvisors(messageChatMemoryAdvisor, loggerAdvisor)
                 .defaultTools(questionSaveTool, ragSearchTool, learningStatusTool,
                         transcribeVideoTool, createNoteTool, createCourseFromVideoTool,
-                        contentSearchTool, quizGenerateTool, saveProfileTool)
+                        contentSearchTool, quizGenerateTool, saveProfileTool, saveCourseNoteTool)
                 .build();
     }
 

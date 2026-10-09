@@ -183,6 +183,7 @@ public class CourseServiceImpl implements CourseService {
         Note aiNote = noteMapper.selectOne(new QueryWrapper<Note>()
                 .eq("course_id", courseId)
                 .eq("source_type", 1)
+                .eq("deleted", 0)
                 .orderByDesc("id")
                 .last("LIMIT 1"));
 

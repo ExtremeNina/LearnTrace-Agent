@@ -43,6 +43,14 @@ public interface NoteService {
      */
     Long saveTranscriptNote(Long userId, String groupName, String title, String content);
 
+    /**
+     * 把网课 AI 笔记保存进笔记管理（B28）：该课程 sourceType=1 未删除的 AI 笔记 save_status 0→1，
+     * 节点挂根目录（用户可自行拖拽分组）。课程不存在 / 无归属抛 BusinessException。
+     *
+     * @return "SAVED"=本次保存成功；"ALREADY_SAVED"=均已保存（幂等）；"NOT_FOUND"=该网课还没有 AI 笔记
+     */
+    String saveAiNoteToWorkspace(Long userId, Long courseId);
+
     /** 添加知识联系（linkType: course / question / note；remark 可选关联说明） */
     void addLink(Long userId, Long noteId, String linkType, Long targetId, Integer tsSec, String remark);
 

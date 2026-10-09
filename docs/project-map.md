@@ -23,18 +23,20 @@ LJ-Agent/
 - 复习系统 MVP 完成（2026-10-03）：统一复习队列（题目/相似题/笔记）+ SM-2 简化版调度 + 今日待复习独立入口（/review），端到端冒烟 20 断言通过。
 - 模型管理完成（2026-10-04）：用户自建 OpenAI 兼容模型配置（Base URL / API 格式 / API Key / 模型名，测试连接）+ 对话输入框模型切换器与管理弹窗 + 按模块的模型偏好（对话/网课笔记/简报，个人页面配置）+ ChatClientFactory（DB 驱动构建缓存，配置变更失效）；系统默认模型（部署者配置的 DeepSeek）为内置兜底；注销物理删除配置。冒烟 16 断言通过。
 - 每日简报完成（2026-10-03）：惰性生成（当天首次访问触发 LLM 并落库缓存）+ /review 页顶部简报卡 + 启动时复习提醒 toast（每天一次，受通知偏好控制）+ Agent 工具 get_learning_status；真实 LLM 冒烟 8 断言通过（生成 350 字 / 缓存 0.01s）。
-- 模型管理完成（2026-10-04）：用户自建 OpenAI 兼容模型配置（管理弹窗：Base URL / API 格式 / API Key / 模型名 + 测试连接）+ 对话输入框当前模型指示器与切换器 + 按模块的模型偏好（对话 / 网课笔记 / 简报）+ ChatClientFactory（DB 驱动构建缓存，配置变更失效）；系统默认模型（部署者配置的 DeepSeek）为内置兜底；注销物理删除配置。冒烟 16 断言通过。
+- 意图确认 Agent（2026-10-08）：上传视频后的对话回合由独立 IntentAgentService 接管——LLM 按用户输入定制提问（学段/目标/偏好画像落档 user_profile），意图明确时不再出流程选择卡直接触发转写/建课；提问以 IntentCard 大卡片确认（历史消息渲染同构）；两级降级（提问失败模板卡、解析失败按时长默认意图）。
+- 首页学习仪表盘（2026-10-08）：问候 banner + 继续学习（本课重点）/ 今日复习（薄弱卡队列）/ 最近学习；AI 助手面板与 /chat 共享会话状态（流式同步），全断点锁定高度内滚、输入框固定可见，长对话不撑长页面；上传资料整合进输入框加号。
+- 今日简报归属升级（2026-10-08）：简报移入对话气泡——按（用户 × 会话 × 日期）后端持久化归属（daily_briefing 加 conversation_id，唯一键改三元组，含 ALTER 迁移），简报气泡按生成时间插入会话消息流、同一会话跨天每天一条；同日跨会话复用内容不重复调 LLM；未绑定旧数据首次访问自动补绑定；前端简报标记按用户 ID 隔离（多账号共用浏览器互不污染）。落位时间取 createdAt（updatedAt 随补绑定/刷新变化会导致跳位）。
 - 已知遗留：Redis db1 与其他项目共用且 sa-token 键前缀相同（`sa-token:`），他项目 token 可通过本系统鉴权——B06 搁置期间接受，公开部署前改 `token-name` 隔离；对话图片上传的 OSS 配置走 git 忽略的本地配置文件方案（endpoint=武汉 lr 区）；`uploadChatImage` 只捕获 IOException、前端 Agent.vue 未渲染上传失败提示（早期记录，未复核）。
 
 ## 后端模块索引（springboot/src/main/java/com/xueji/agent/）
 
 | 模块 | 主要文件 | 业务 | 模块文档 |
 | --- | --- | --- | --- |
-| 会话与 Agent 对话 | ws/AgentWebSocketHandler、service/impl/AgentChatServiceImpl、ai/memory/*、ConversationServiceImpl | WS 流式对话（outbox 离线暂存）、回合互斥、消息双写、会话 CRUD/自动标题/100 轮上限/30 天清理、Redis 会话记忆 + MySQL 重建兜底 | docs/modules/agent-chat.md |
+| 会话与 Agent 对话 | ws/AgentWebSocketHandler、service/impl/AgentChatServiceImpl、ai/IntentAgentService、ai/memory/*、ConversationServiceImpl | WS 流式对话（outbox 离线暂存）、回合互斥、消息双写、视频回合意图确认（定制提问/画像落档/大卡片透出）、会话 CRUD/自动标题/100 轮上限/30 天清理、Redis 会话记忆 + MySQL 重建兜底 | docs/modules/agent-chat.md |
 | 题目记录与相似题 RAG | QuestionController/ServiceImpl、ai/tool/QuestionSaveTool、RagSearchTool、impl/QuestionVectorStoreService、ai/RagIngestService | 拍照题与相似题双表存储（question_record + similar_question）、合并列表、生成相似题入口、统一向量化（q:/sq: 前缀）、rag_search 来源标记召回 | docs/modules/questions-rag.md |
 | 视频转写流水线 | CourseController/ServiceImpl、impl/CoursePipelineService、mq/CourseProcessConsumer、ai/tool/QwenAsrTool、PaddleOcrTool、ai/NoteGenerationService | 上传→MQ→FFmpeg→ASR→帧 OCR→LLM 笔记；失败重试；删除（批量）与连带清理；处理超时自愈；标题/学科/学习笔记编辑 | docs/modules/video-pipeline.md |
 | 笔记整理与知识联系 | NoteController/ServiceImpl | 5 层分组树、双轨编辑（AI=md / 手动=HTML）、知识联系挂链与说明、级联删除、笔记向量化钩子 | docs/modules/notes-wiki.md |
-| 复习系统与每日简报 | ReviewController/ServiceImpl、ReviewScheduler（SM-2 简化版纯函数）、BriefingController/ServiceImpl、LearningStatsService、task/CourseWatchScheduler | 统一复习队列（题目/相似题/笔记）：加卡（单条/批量）、今日队列、三档评分调度、统计；来源删除级联移出；每日简报（惰性 LLM 生成）与学习状态快照（Agent 工具 get_learning_status）；处理超时自愈 | docs/modules/review.md |
+| 复习系统与每日简报 | ReviewController/ServiceImpl、ReviewScheduler（SM-2 简化版纯函数）、BriefingController/ServiceImpl、LearningStatsService、HomeController/ServiceImpl、task/CourseWatchScheduler | 统一复习队列（题目/相似题/笔记）：加卡（单条/批量）、今日队列、三档评分调度、统计；来源删除级联移出；每日简报（惰性 LLM 生成，按 用户×会话×日期 归属：补绑定/按会话查询）与学习状态快照（Agent 工具 get_learning_status）；首页仪表盘聚合（继续学习/今日复习/最近学习）与学习时长心跳；处理超时自愈 | docs/modules/review.md |
 | 练习 / 测验模式 | QuizController/ServiceImpl | 从题库（question_record + similar_question）按学科/时间段/来源随机抽题组卷（无状态，不建会话表）；错题经批量加卡沉淀进复习队列 | docs/modules/quiz.md |
 | 模型管理 | AiModelController/ServiceImpl、config/ChatClientFactory | 用户自建 OpenAI 兼容模型配置（CRUD/脱敏/连接测试）、按模块的模型偏好（对话/网课笔记/简报）、ChatClient 按配置构建缓存与失效、解析链（用户偏好→系统默认） | docs/modules/infrastructure.md |
 | 用户与个人页面 | UserController/ServiceImpl、AuthController/AuthServiceImpl | 登录注册（Sa-Token）、资料（头像/昵称/邮箱/简介）、偏好（主题/任务通知）、改密、注销（逻辑删除 + 登录拦截） | docs/modules/infrastructure.md |
@@ -46,10 +48,10 @@ LJ-Agent/
 
 | 模块 | 文件 | 业务 |
 | --- | --- | --- |
-| 页面 | views/Agent.vue、Review.vue、Quiz.vue、Questions.vue、Courses.vue、CourseDetail.vue、Notes.vue、Login/Register.vue | 对话 / 复习 / 练习测验（组卷-作答-错题入队）/ 题目记录（含生成相似题）/ 网课列表（批量删除）与详情 / 笔记整理 / 登录注册 |
+| 页面 | views/Home.vue、Agent.vue、Review.vue、Quiz.vue、Questions.vue、Courses.vue、CourseDetail.vue、Notes.vue、Login/Register.vue | 学习仪表盘（仪表盘卡片 + AI 助手面板与对话页共享会话、今日简报气泡）/ 对话 / 复习 / 练习测验（组卷-作答-错题入队）/ 题目记录（含生成相似题）/ 网课列表（批量删除、批量改名）与详情 / 笔记整理 / 登录注册 |
 | 接口层 | api/*.ts | 后端接口封装（统一 Result 解包、sa-token 注入） |
-| 状态 | stores/agent.ts、auth.ts、user.ts、toast.ts、ui.ts | 对话流式状态与种子消息 / 登录态 / 资料与主题 / 轻提示与任务通知轮询 / 侧栏模式与收缩 |
-| 组件 | components/ProfileModal.vue、ToastHost.vue、layout/*、notes/* | 个人页面弹窗、全局轻提示、可收缩双模式侧栏（对话 / 学习资产）、笔记树与编辑器、知识联系面板 |
+| 状态 | stores/agent.ts、auth.ts、user.ts、toast.ts、ui.ts | 对话流式状态与种子消息、简报按会话×日期恢复落位（标记按用户隔离）/ 登录态 / 资料与主题 / 轻提示与任务通知轮询 / 侧栏模式与收缩 |
+| 组件 | components/ProfileModal.vue、ToastHost.vue、chat/*（ChatPanel、IntentCard、ModelPicker）、layout/*、notes/* | 个人页面弹窗、全局轻提示、对话面板与意图确认大卡片与模型切换器、可收缩双模式侧栏（对话 / 学习资产）、笔记树与编辑器、知识联系面板 |
 | 渲染 | utils/markdown.ts | Markdown+KaTeX 渲染、[mm:ss] 时间戳胶囊（DOMPurify 消毒） |
 | 通信 | ws/agentSocket.ts | WebSocket 封装（指数退避重连 + 离线 outbox 暂存冲刷） |
 | 主题 | style.css | Tailwind v4 @theme 语义令牌；html.dark 翻转变量实现深色主题 |
@@ -64,14 +66,16 @@ LJ-Agent/
 | similar_question | AI 相似题（source_question_id 可空、subject、conversation_id 溯源；is_correct 二期） | 逻辑删除（deleted） |
 | course | 网课（model_config_id = 上传时选择的笔记生成模型，NULL = 系统默认；last_position_sec / progress_pct / last_studied_at = 播放进度打点，播放器定时上报） | 逻辑删除（deleted；删除连带 AI 笔记 / 知识联系 / 向量 / OSS 清理） |
 | course_transcript_segment / course_frame | 转写分段 / 关键帧 | 随重试清理重建；随网课删除移出向量库 |
-| note / note_link | 笔记树与知识联系 | 笔记逻辑删除；note_link 物理删除（分组级联时双向清理） |
+| note / note_link | 笔记树与知识联系（save_status：0=网课 AI 笔记未保存（树不展示，B28） / 1=已保存；流水线生成置 0、重生成继承、save_course_note 工具置 1） | 笔记逻辑删除；note_link 物理删除（分组级联时双向清理） |
 | user | 用户（bio / theme / notify_task_enabled / deleted） | 注销为逻辑删除（deleted），登录拦截 |
 | review_card / review_log | 复习卡（调度状态）与评分流水 | 复习卡逻辑删除（移出队列）；来源实体删除时级联移出 |
 | study_time_log | 学习时长日志（一天一行，前端心跳累计；今日学习时长供数） | 随账号保留 |
-| daily_briefing | 每日学习简报（惰性生成，当天缓存） | 物理删除不适用（随账号保留） |
+| daily_briefing | 每日学习简报（按 用户×会话×日期 归属：conversation_id NULL=旧数据未绑定、首次访问补绑定；唯一键 (user_id, conversation_id, brief_date)；惰性生成，同日跨会话复用内容） | 物理删除不适用（随账号保留） |
+| user_profile | 个人资料与偏好（头像/昵称/邮箱/简介/主题/任务通知；意图确认画像 grade_level/goal/note） | 随账号保留；注销时级联清理 |
 | ai_model_config | 用户自建模型配置（Base URL / Key / 模型名；Key 明文落库、接口脱敏） | 注销时物理删除（含密钥） |
 | user_model_pref | 用户按模块的模型偏好（chat / course_note / briefing → config_id，NULL = 系统默认） | 配置删除时级联清除（回退系统默认） |
 | invite_code / learning_record / async_task 等 | 预留 | 未接线（learning_record 属学习轨迹待办） |
+| course_chapter / course_quiz_question / content_document / content_knowledge_point / content_section | 课程章节与课后习题、内容理解（视频/文档结构化与知识点） | 随来源课程/文档级联 |
 
 ## 数据库操作
 
@@ -84,9 +88,9 @@ LJ-Agent/
 * `springboot/application-local.properties`（gitignored）：OSS（endpoint=武汉 lr 区）/ OCR / Qwen ASR 的密钥与 RabbitMQ 凭据——若丢失，凭据见阿里云控制台与 AI Studio，格式参照历史提交
 * RabbitMQ 容器 `rabbitmq`（5672）：内含用户 `xueji/xueji123`（需 `rabbitmqctl set_permissions -p / xueji ".*" ".*" ".*"`）；容器重建后重建用户
 * Redis 向量库容器 `redis-vector`（6380，redis-stack）：RAG 索引 `xueji-rag-idx`（JSON 存储，prefix `rag:question:`，TAG 字段 userId/subject/type）；改索引 schema 需 `docker exec redis-vector redis-cli -p 6379 FT.DROPINDEX xueji-rag-idx`，应用启动自动重建
-* MySQL `xueji` 库：14 张表 + 种子/测试数据（笔记分层树、3 个课程的完整流水线数据）
+* MySQL `xueji` 库：25 张表 + 种子/测试数据（笔记分层树、3 个课程的完整流水线数据）
 * 用户级环境变量（setx）：OSS_ACCESS_KEY / OSS_SECRET_KEY / OSS_BUCKET / OSS_ENDPOINT / RABBITMQ_USER / RABBITMQ_PASS（本地开发已不依赖，走本地配置文件）
-* 新会话热身三步：`mvn test`（114 个）→ `npm run build`（web）→ 后端启动冒烟（登录 + /courses + /notes/tree）
+* 新会话热身三步：`mvn test`（255 个）→ `npm run build`（web）→ 后端启动冒烟（登录 + /courses + /notes/tree）
 
 ## 冒烟脚本（需后端已启动）
 
@@ -108,4 +112,4 @@ LJ-Agent/
 
 ## 测试
 
-后端 156 个单元测试（18 个测试类：Mockito 单测 + FFmpeg 真实调用用例）；前端 `npm run build` 类型检查；Node 冒烟脚本五条（见上）。全链路人工验证：网课流水线 3 个真实视频、WS 对话（web/test-ws.mjs）、RAG 相似题闭环、个人页面全生命周期（web/test-profile-smoke.mjs）。各模块使用的测试方法详见 docs/modules/。
+后端 255 个单元测试（40 个测试类：Mockito 单测 + FFmpeg 真实调用用例）；前端 `npm run build` 类型检查；Node 冒烟脚本五条（见上）。全链路人工验证：网课流水线 3 个真实视频、WS 对话（web/test-ws.mjs）、RAG 相似题闭环、个人页面全生命周期（web/test-profile-smoke.mjs）。各模块使用的测试方法详见 docs/modules/。

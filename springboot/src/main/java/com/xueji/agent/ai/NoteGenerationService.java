@@ -125,6 +125,9 @@ public class NoteGenerationService {
         List<Note> oldNotes = noteMapper.selectList(new QueryWrapper<Note>()
                 .eq("course_id", course.getId())
                 .eq("source_type", 1));
+        // 重生成时继承"已保存进笔记管理"状态（B28）：用户显式保存过的树节点不因重生成消失，内容同步为新版
+        boolean previouslySaved = oldNotes.stream()
+                .anyMatch(n -> Integer.valueOf(1).equals(n.getSaveStatus()));
         noteMapper.delete(new QueryWrapper<Note>()
                 .eq("course_id", course.getId())
                 .eq("source_type", 1));
@@ -139,6 +142,8 @@ public class NoteGenerationService {
                 .setNoteType(0)
                 .setSourceType(1)
                 .setCourseId(course.getId())
+                // 首次生成 = 0（笔记管理不展示）；重生成且用户此前保存过 = 继承 1
+                .setSaveStatus(previouslySaved ? 1 : 0)
                 .setCreatedAt(LocalDateTime.now())
                 .setUpdatedAt(LocalDateTime.now());
         noteMapper.insert(note);

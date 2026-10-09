@@ -1,6 +1,7 @@
 package com.xueji.agent.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.xueji.agent.ai.RagIngestService;
 import com.xueji.agent.common.OwnershipCheck;
 import com.xueji.agent.domain.entity.Course;
@@ -65,6 +66,8 @@ public class NoteServiceImpl implements NoteService {
         List<Note> all = noteMapper.selectList(new QueryWrapper<Note>()
                 .eq("user_id", userId)
                 .eq("deleted", 0)
+                // B28：网课 AI 笔记默认不进笔记管理（save_status=0），用户显式保存（工具置 1）后才展示
+                .eq("save_status", 1)
                 .orderByAsc("created_at"));
         return buildTree(all);
     }
@@ -197,6 +200,32 @@ public class NoteServiceImpl implements NoteService {
         ragIngestService.ingestNoteAsync(note);
         log.info("对话转写笔记已保存, userId={}, groupId={}, noteId={}", userId, groupId, note.getId());
         return note.getId();
+    }
+
+    @Override
+    public String saveAiNoteToWorkspace(Long userId, Long courseId) {
+        Course course = courseMapper.selectById(courseId);
+        OwnershipCheck.requireOwned(course, userId, "网课不存在");
+        Long aiNoteCount = noteMapper.selectCount(new QueryWrapper<Note>()
+                .eq("course_id", courseId)
+                .eq("source_type", 1)
+                .eq("deleted", 0));
+        if (aiNoteCount == null || aiNoteCount == 0) {
+            return "NOT_FOUND";
+        }
+        int updated = noteMapper.update(null, new UpdateWrapper<Note>()
+                .eq("course_id", courseId)
+                .eq("source_type", 1)
+                .eq("deleted", 0)
+                .ne("save_status", 1)
+                .set("save_status", 1)
+                .set("updated_at", LocalDateTime.now()));
+        if (updated > 0) {
+            log.info("网课 AI 笔记已保存进笔记管理, userId={}, courseId={}, 篇数={}", userId, courseId, updated);
+            return "SAVED";
+        }
+        // 未更新的行均已处于已保存状态（幂等）
+        return "ALREADY_SAVED";
     }
 
     // ---- 重命名 / 移动 / 删除 ----

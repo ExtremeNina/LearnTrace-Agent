@@ -1,5 +1,6 @@
 package com.xueji.agent.service.impl;
 
+import com.xueji.agent.domain.entity.Course;
 import com.xueji.agent.domain.entity.Note;
 import com.xueji.agent.domain.entity.NoteLink;
 import com.xueji.agent.domain.vo.NoteTreeNodeVO;
@@ -273,6 +274,66 @@ class NoteServiceImplTest {
         verify(noteMapper).updateById(leaf);
         assertThat(leaf.getDeleted()).isEqualTo(1);
         verify(noteLinkMapper).delete(any());
+        verify(noteMapper, never()).update(isNull(), any());
+    }
+
+    // ---- 网课 AI 笔记保存状态（B28）----
+
+    @Test
+    void treeShouldFilterBySaveStatus() {
+        // 树查询必须带 save_status=1 条件：网课 AI 笔记（save_status=0）不在笔记管理展示
+        when(noteMapper.selectList(any())).thenReturn(List.of());
+
+        service.tree(USER_ID);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<Note>> captor =
+                ArgumentCaptor.forClass(com.baomidou.mybatisplus.core.conditions.query.QueryWrapper.class);
+        verify(noteMapper).selectList(captor.capture());
+        String sql = captor.getValue().getSqlSegment();
+        assertThat(sql).contains("save_status");
+        assertThat(sql).contains("deleted");
+    }
+
+    @Test
+    void saveAiNoteToWorkspaceShouldFlipStatusToSaved() {
+        Course course = new Course().setId(101L).setUserId(USER_ID);
+        when(courseMapper.selectById(101L)).thenReturn(course);
+        when(noteMapper.selectCount(any())).thenReturn(2L);
+        when(noteMapper.update(isNull(), any())).thenReturn(2);
+
+        assertThat(service.saveAiNoteToWorkspace(USER_ID, 101L)).isEqualTo("SAVED");
+        verify(noteMapper).update(isNull(), any());
+    }
+
+    @Test
+    void saveAiNoteToWorkspaceShouldBeIdempotentWhenAlreadySaved() {
+        Course course = new Course().setId(101L).setUserId(USER_ID);
+        when(courseMapper.selectById(101L)).thenReturn(course);
+        // 存在 AI 笔记但全部已是 save_status=1 → update 命中 0 行 → 幂等返回
+        when(noteMapper.selectCount(any())).thenReturn(1L);
+        when(noteMapper.update(isNull(), any())).thenReturn(0);
+
+        assertThat(service.saveAiNoteToWorkspace(USER_ID, 101L)).isEqualTo("ALREADY_SAVED");
+    }
+
+    @Test
+    void saveAiNoteToWorkspaceShouldReturnNotFoundWhenNoAiNote() {
+        Course course = new Course().setId(101L).setUserId(USER_ID);
+        when(courseMapper.selectById(101L)).thenReturn(course);
+        when(noteMapper.selectCount(any())).thenReturn(0L);
+
+        assertThat(service.saveAiNoteToWorkspace(USER_ID, 101L)).isEqualTo("NOT_FOUND");
+        verify(noteMapper, never()).update(isNull(), any());
+    }
+
+    @Test
+    void saveAiNoteToWorkspaceShouldCheckOwnership() {
+        Course foreign = new Course().setId(101L).setUserId(999L);
+        when(courseMapper.selectById(101L)).thenReturn(foreign);
+
+        assertThatThrownBy(() -> service.saveAiNoteToWorkspace(USER_ID, 101L))
+                .isInstanceOf(BusinessException.class);
         verify(noteMapper, never()).update(isNull(), any());
     }
 }

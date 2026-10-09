@@ -36,6 +36,9 @@ public class Note implements UserOwned {
     /** 来源：手动创建 / 网课 AI 笔记 / Agent 生成 */
     private Integer sourceType;
 
+    /** 保存状态：0=AI 生成未保存（笔记管理不展示） 1=已保存进笔记管理；手动 / 对话转写笔记恒为 1（列默认值） */
+    private Integer saveStatus;
+
     /** 节点类型：0笔记 1分组（OneNote 式分层） */
     private Integer nodeType;
 
