@@ -169,11 +169,10 @@ public class ContentUnderstandingService {
                     section.summary = o.getStr("summary", "");
                     section.startSec = clampSec(o.getInt("start", null), durationSec);
                     section.endSec = clampSec(o.getInt("end", null), durationSec);
-                    if (section.title == null || section.title.isBlank()
-                            || section.startSec == null || section.endSec == null) {
+                    if (section.title == null || section.title.isBlank()) {
                         continue;
                     }
-                    if (section.endSec < section.startSec) {
+                    if (section.startSec != null && section.endSec != null && section.endSec < section.startSec) {
                         int swap = section.startSec;
                         section.startSec = section.endSec;
                         section.endSec = swap;
@@ -211,7 +210,153 @@ public class ContentUnderstandingService {
             }
         }
         result.knowledgePoints = points;
+        // LLM 原始章节时间可能虚构（长视频 Reduce 阶段无内容级时间锚点，易退化为按时长均匀切分）：
+        // 先检测虚构特征，再用知识点真实时间重推导边界（时间戳永远锚定转写真实秒数）
+        String uniformIssue = detectUniformSplitIssue(sections);
+        deriveSectionBoundaries(result, durationSec);
+        // 新语义下 LLM 可省略 start/end（由系统推导）：推导后仍无边界的章节无法定位，丢弃并重排知识点归属
+        List<ContentUnderstanding.Section> located = new ArrayList<>();
+        List<Integer> oldToNew = new ArrayList<>();
+        for (ContentUnderstanding.Section section : sections) {
+            if (section.startSec != null && section.endSec != null) {
+                oldToNew.add(located.size());
+                located.add(section);
+            } else {
+                oldToNew.add(-1);
+            }
+        }
+        if (located.size() != sections.size()) {
+            for (ContentUnderstanding.KnowledgePoint point : points) {
+                int old = point.sectionSort == null ? 0 : point.sectionSort;
+                int mapped = old >= 0 && old < oldToNew.size() ? oldToNew.get(old) : -1;
+                point.sectionSort = mapped >= 0 ? mapped : Math.max(0, located.size() - 1);
+            }
+        }
+        result.sections = located;
+        if (uniformIssue != null) {
+            result.issue = uniformIssue + (hasAnchorTimes(points)
+                    ? "；已按知识点真实时间重推导章节边界"
+                    : "；知识点缺少真实时间锚点，边界未能修正，建议重新生成内容理解");
+        }
         return result;
+    }
+
+    /**
+     * 章节边界代码推导（时间戳锚定真实转写，杜绝 LLM 虚构）：
+     * LLM 只负责归类（知识点 sectionSort），边界切点 = 归组内知识点 timeSec 的最早值，
+     * 无锚点章节的切点按相邻已知切点线性插值兜底；首切点 0、末切点视频时长，章节首尾衔接平铺全片。
+     * LLM 归组错序时单调保护退化为零长章节（边界仍真实）；完全无锚点时保留 LLM 原边界
+     */
+    static void deriveSectionBoundaries(ContentUnderstanding result, int durationSec) {
+        List<ContentUnderstanding.Section> sections = result.sections;
+        List<ContentUnderstanding.KnowledgePoint> points = result.knowledgePoints;
+        if (sections == null || sections.isEmpty()) {
+            return;
+        }
+        int n = sections.size();
+        List<List<Integer>> anchors = new ArrayList<>();
+        for (int i = 0; i < n; i++) {
+            anchors.add(new ArrayList<>());
+        }
+        if (points != null) {
+            for (ContentUnderstanding.KnowledgePoint point : points) {
+                int sort = point.sectionSort == null ? 0 : point.sectionSort;
+                if (sort >= 0 && sort < n && point.timeSec != null && point.timeSec >= 0) {
+                    anchors.get(sort).add(point.timeSec);
+                }
+            }
+        }
+        boolean anyAnchor = false;
+        for (List<Integer> group : anchors) {
+            if (!group.isEmpty()) {
+                anyAnchor = true;
+                break;
+            }
+        }
+        if (!anyAnchor) {
+            return;
+        }
+        // 边界切点：cuts[0]=0、cuts[n]=时长，已知锚点章节以其最早知识点时间为切点
+        int maxSec = Math.max(durationSec, 0);
+        int[] cuts = new int[n + 1];
+        boolean[] known = new boolean[n + 1];
+        cuts[0] = 0;
+        known[0] = true;
+        cuts[n] = maxSec;
+        known[n] = true;
+        for (int i = 1; i < n; i++) {
+            List<Integer> group = anchors.get(i);
+            if (!group.isEmpty()) {
+                int min = Integer.MAX_VALUE;
+                for (Integer t : group) {
+                    if (t != null && t < min) {
+                        min = t;
+                    }
+                }
+                if (min != Integer.MAX_VALUE) {
+                    cuts[i] = Math.min(min, maxSec);
+                    known[i] = true;
+                }
+            }
+        }
+        // 未知切点按最近已知切点线性插值
+        int left = 0;
+        for (int i = 1; i <= n; i++) {
+            if (known[i]) {
+                for (int k = left + 1; k < i; k++) {
+                    cuts[k] = cuts[left] + (int) Math.round(
+                            (double) (cuts[i] - cuts[left]) * (k - left) / (i - left));
+                }
+                left = i;
+            }
+        }
+        // 单调保护
+        for (int i = 1; i <= n; i++) {
+            if (cuts[i] < cuts[i - 1]) {
+                cuts[i] = cuts[i - 1];
+            }
+        }
+        for (int i = 0; i < n; i++) {
+            sections.get(i).startSec = cuts[i];
+            sections.get(i).endSec = cuts[i + 1];
+        }
+    }
+
+    /**
+     * 均匀切分检测（纯函数）：≥3 章且相邻章节起点间隔完全相等 → LLM 按时长均分虚构的强特征
+     * （真实课程章节间隔完全相等可忽略）。NULL = 未命中
+     */
+    static String detectUniformSplitIssue(List<ContentUnderstanding.Section> sections) {
+        if (sections == null || sections.size() < 3) {
+            return null;
+        }
+        Integer prev = null;
+        Integer gap = null;
+        for (ContentUnderstanding.Section section : sections) {
+            if (section.startSec == null) {
+                return null;
+            }
+            if (prev != null) {
+                int d = section.startSec - prev;
+                if (d <= 0 || (gap != null && gap != d)) {
+                    return null;
+                }
+                gap = d;
+            }
+            prev = section.startSec;
+        }
+        return "内容理解章节时间呈均匀切分（相邻间隔均为 " + gap + "s，疑似虚构）";
+    }
+
+    private static boolean hasAnchorTimes(List<ContentUnderstanding.KnowledgePoint> points) {
+        if (points != null) {
+            for (ContentUnderstanding.KnowledgePoint point : points) {
+                if (point.timeSec != null) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private static Integer clampSec(Integer sec, int durationSec) {

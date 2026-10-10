@@ -172,20 +172,42 @@ public class ContentReviewService {
 
     /** QuizAgent 产物评审（B26 阶段 4）：可解性 / 难度分布 / 依据标注，复用 PRACTICE 维度 + 出题专用维度 */
     public Verdict reviewQuiz(String quizText, UserProfile profile) {
-        return review(buildQuizReviewPrompt(quizText, profile));
+        return reviewQuiz(quizText, profile, null);
+    }
+
+    /**
+     * QuizAgent 产物评审（带材料版）：材料为转写/笔记节选，供"依据标注真实性"维度逐条核实；
+     * 无材料时引导评审不要仅因无法核实时间戳而 REVISE（避免无据否决）
+     */
+    public Verdict reviewQuiz(String quizText, UserProfile profile, String materialExcerpt) {
+        return review(buildQuizReviewPrompt(quizText, profile, materialExcerpt));
     }
 
     /**
      * QuizAgent 产物评审用户消息：题目集文本 + 画像 + 维度（PRACTICE 矩阵 + 出题专用补充）
      */
     public static String buildQuizReviewPrompt(String quizText, UserProfile profile) {
+        return buildQuizReviewPrompt(quizText, profile, null);
+    }
+
+    /**
+     * QuizAgent 产物评审用户消息（带材料版，公开静态便于单测）
+     */
+    public static String buildQuizReviewPrompt(String quizText, UserProfile profile, String materialExcerpt) {
         StringBuilder sb = new StringBuilder();
         sb.append("[评审对象] QuizAgent 基于内部资料生成的练习题集\n");
         sb.append(quizText).append("\n\n");
         sb.append("[学习者画像]\n").append(profileText(profile));
         sb.append("\n\n[你的评审维度]\n").append(dimensionsText(Role.PRACTICE));
-        sb.append("- 依据标注真实性（sourceSec 时间戳必须是材料中真实讲到的位置）\n");
+        if (materialExcerpt == null || materialExcerpt.isBlank()) {
+            sb.append("- 依据标注真实性（本次未提供材料，无法逐条核实，不要仅因无法核实时间戳而 REVISE）\n");
+        } else {
+            sb.append("- 依据标注真实性（sourceSec 时间戳必须是下方材料中真实讲到的位置，可逐条对照核实）\n");
+        }
         sb.append("- 题目自含性（题面不依赖材料上下文即可作答）\n");
+        if (materialExcerpt != null && !materialExcerpt.isBlank()) {
+            sb.append("\n[评审材料（笔记/转写节选，用于核实依据标注）]\n").append(materialExcerpt).append('\n');
+        }
         return sb.toString();
     }
 

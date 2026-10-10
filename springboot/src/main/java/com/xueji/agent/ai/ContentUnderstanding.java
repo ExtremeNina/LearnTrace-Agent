@@ -12,6 +12,8 @@ public class ContentUnderstanding {
     String summary;
     List<Section> sections;
     List<KnowledgePoint> knowledgePoints;
+    /** 时间轴问题告警（如 LLM 章节时间呈均匀切分虚构特征），NULL = 无问题 */
+    String issue;
 
     public static class Section {
         String title;
@@ -83,5 +85,9 @@ public class ContentUnderstanding {
 
     public List<KnowledgePoint> getKnowledgePoints() {
         return knowledgePoints;
+    }
+
+    public String getIssue() {
+        return issue;
     }
 }

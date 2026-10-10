@@ -196,6 +196,10 @@ public class NotePipelineGraphRunner {
         update.put("document", document);
         update.put("sections", sections);
         update.put("points", points);
+        if (understanding.getIssue() != null) {
+            log.warn("内容理解时间轴告警, courseId={}, issue={}", course.getId(), understanding.getIssue());
+            update.put("noteIssue", understanding.getIssue());
+        }
         return update;
     }
 
@@ -238,7 +242,10 @@ public class NotePipelineGraphRunner {
         Map<String, Object> update = new HashMap<>();
         update.put("noteMarkdown", result.getContent());
         if (!result.getQualityDefects().isEmpty()) {
-            update.put("noteIssue", "AI 笔记质检未通过（" + String.join("；", result.getQualityDefects()) + "），已降级入库");
+            // 理解节点可能已写入时间轴告警：合并而非覆盖，避免丢失
+            String existing = state.<String>value("noteIssue").orElse(null);
+            String defectText = "AI 笔记质检未通过（" + String.join("；", result.getQualityDefects()) + "），已降级入库";
+            update.put("noteIssue", existing == null ? defectText : existing + "；" + defectText);
         }
         return update;
     }
@@ -303,7 +310,8 @@ public class NotePipelineGraphRunner {
 
     /**
      * 判题 Agent 节点：代码闸（QuizQualityChecker）→ LLM 评审（reviewQuiz 结合画像）；
-     * 不合格且还有重写轮次 → 反馈回写题；通过（或轮次耗尽且有产出）→ 落库
+     * 首轮不合格反馈回写题一次；终局轮次耗尽只要代码闸有合格题就落库（评审意见仅记录，不再一票否决），
+     * 仅代码闸 0 题存活才报生成失败
      */
     private Map<String, Object> judgeQuizNode(OverAllState state, Course course,
                                               List<CourseTranscriptSegment> transcript, int durationSec,
@@ -313,18 +321,24 @@ public class NotePipelineGraphRunner {
         List<QuizQuestion> draft = state.<List<QuizQuestion>>value("quizDraft").orElse(List.of());
         Map<String, Object> update = new HashMap<>();
         if (draft.isEmpty()) {
+            // 写题失败 / 规划为空：必须清空回写标记——若处于判题反馈轮后，残留的非空 judgeFeedback
+            // 会让条件边反复跳回 writeQuiz（B28 只清了终局分支，此处补齐）
+            update.put("judgeFeedback", List.of());
             return update;
         }
 
-        // 代码闸
-        QuizQualityChecker.Result checked = QuizQualityChecker.check(draft, transcript, List.of(), durationSec, List.of());
+        // 代码闸：材料 = 转写 + 语义层知识点（题面源自 AI 笔记润色语言，仅对原始 ASR 转写词面比对会误杀；
+        // 与追加出题链路 QuizAgentService.produceQuestions 的材料口径对齐）
+        List<ContentKnowledgePoint> points = state.<List<ContentKnowledgePoint>>value("points").orElse(List.of());
+        QuizQualityChecker.Result checked = QuizQualityChecker.check(draft, transcript, points, durationSec, List.of());
         List<QuizQuestion> kept = new ArrayList<>(checked.getKept());
         List<String> problems = new ArrayList<>(checked.getRemovedReasons());
 
-        // 判题 LLM 评审
+        // 判题 LLM 评审（携带转写节选，使"依据标注真实性"可核实，避免无据 REVISE）
         Verdict verdict = null;
         if (!kept.isEmpty()) {
-            verdict = contentReviewService.reviewQuiz(quizPlanService.questionsText(kept), profile);
+            verdict = contentReviewService.reviewQuiz(quizPlanService.questionsText(kept), profile,
+                    QuizAgentService.transcriptExcerpt(transcript));
             if (verdict.isRevise()) {
                 problems.addAll(verdict.getIssues());
             }
@@ -343,17 +357,18 @@ public class NotePipelineGraphRunner {
 
         // 终局（通过 / 轮次耗尽）：清除回写标记——否则残留的非空 judgeFeedback 会让 edge 无限回写（B28 修复）
         update.put("judgeFeedback", List.of());
-        if (bad) {
+        if (kept.isEmpty()) {
             appendIssue(update, rounds >= 1
                     ? "课后习题生成失败：重写后仍无合格题目"
                     : "课后习题生成失败：未产出合格题目");
             return update;
         }
+        // 有合格题即落库（与追加链路"REVISE 重出后有合格题就保留"语义统一）；评审挑刺仅记录不否决
         courseQuizService.saveQuizQuestions(course, kept);
         if (verdict != null && verdict.isRevise() && !verdict.getIssues().isEmpty()) {
             appendIssue(update, "课后习题评审意见（已按现状入库）：" + String.join("；", verdict.getIssues()));
         }
-        log.info("判题 Agent 通过, courseId={}, 题数={}, 评审={}",
+        log.info("判题 Agent 终局, courseId={}, 题数={}, 评审={}",
                 course.getId(), kept.size(), verdict == null ? "（代码闸后无题可评）" : verdict.getVerdict());
         return update;
     }

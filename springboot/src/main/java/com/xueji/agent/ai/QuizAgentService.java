@@ -157,8 +157,9 @@ public class QuizAgentService {
             log.info("课后习题代码闸剔除/补出, courseId={}, 保留={}, 剔除={}", course.getId(), kept.size(), defects.size());
         }
 
-        // 判题 Agent（结合画像整体评审），REVISE 重出 ≤1 次
-        Verdict verdict = contentReviewService.reviewQuiz(questionsText(kept), profile);
+        // 判题 Agent（结合画像整体评审，携带转写节选核实依据标注），REVISE 重出 ≤1 次
+        Verdict verdict = contentReviewService.reviewQuiz(questionsText(kept), profile,
+                transcriptExcerpt(material.transcript()));
         if (verdict.isRevise()) {
             log.info("判题 Agent 未通过，带意见重出一次, courseId={}, issues={}", course.getId(), verdict.getIssues());
             List<String> currentTexts = new ArrayList<>(existing);

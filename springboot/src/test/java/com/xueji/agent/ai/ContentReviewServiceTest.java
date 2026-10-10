@@ -72,4 +72,22 @@ class ContentReviewServiceTest {
         assertThatThrownBy(() -> ContentReviewService.parseVerdict("我无法评审")).isInstanceOf(IllegalStateException.class);
         assertThatThrownBy(() -> ContentReviewService.parseVerdict(null)).isInstanceOf(IllegalStateException.class);
     }
+
+    @Test
+    void quizReviewPromptShouldCarryMaterialForVerification() {
+        String withMaterial = ContentReviewService.buildQuizReviewPrompt(
+                "1. 题面\n", null, "[00:00] 四级翻译题主要考查中国的历史文化内容");
+        // 有材料：依据标注真实性可逐条对照核实，并附材料段
+        assertThat(withMaterial).contains("可逐条对照核实")
+                .contains("[评审材料（笔记/转写节选，用于核实依据标注）]")
+                .contains("四级翻译题主要考查中国的历史文化内容");
+        // 无材料（null / 空白）：引导评审不要仅因无法核实而 REVISE，不附材料段
+        String withoutMaterial = ContentReviewService.buildQuizReviewPrompt("1. 题面\n", null, null);
+        assertThat(withoutMaterial).contains("不要仅因无法核实时间戳而 REVISE")
+                .doesNotContain("[评审材料");
+        String blankMaterial = ContentReviewService.buildQuizReviewPrompt("1. 题面\n", null, "  ");
+        assertThat(blankMaterial).contains("不要仅因无法核实时间戳而 REVISE").doesNotContain("[评审材料");
+        // 维度段始终完整
+        assertThat(withMaterial).contains("题目自含性");
+    }
 }
