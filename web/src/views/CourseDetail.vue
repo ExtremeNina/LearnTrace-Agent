@@ -389,7 +389,17 @@ const notePages = computed(() => {
   if (current.some((l) => l.trim())) {
     pages.push({ label: current[0].replace(/^#\s*/, '').trim(), markdown: current.join('\n') })
   }
-  return pages.map((page) => ({
+  // 开篇短页合并：课程概览、章节时间线内容少且同属课程导读，并入首页减少翻页次数
+  const merged: { label: string; markdown: string }[] = []
+  for (const page of pages) {
+    const isPreface = /课程概览|章节时间线/.test(page.label)
+    if (isPreface && merged.length > 0) {
+      merged[merged.length - 1].markdown += '\n\n' + page.markdown
+    } else {
+      merged.push({ ...page })
+    }
+  }
+  return merged.map((page) => ({
     label: page.label.replace(/^##\s*/, '') || '正文',
     markdown: page.markdown,
   }))
@@ -980,8 +990,13 @@ const timelineTicks = computed(() => {
                   </MdSourceEditor>
                 </div>
                 <template v-else>
-                  <!-- 分页：切换式（第 X / N 页 + 上一页/下一页），每次只显示当前页 -->
-                  <div v-if="notePages.length > 1" class="mb-3 flex items-center gap-3 text-[13px] text-ink-2">
+                  <div class="note-view text-[14px] leading-7 text-ink" v-html="noteHtml" @click="onNoteClick"></div>
+                  <p v-if="!data.note" class="rounded-xl border border-dashed border-line py-8 text-center text-[13px] text-ink-2">
+                    AI 笔记生成中，完成后展示在这里
+                  </p>
+                  <p class="mt-2 text-[11px] text-ink-2">AI 笔记由转写与画面识别生成，点击时间戳可跳回原片段核对。</p>
+                  <!-- 分页：切换式（第 X / N 页 + 上一页/下一页），置于笔记底部 -->
+                  <div v-if="notePages.length > 1" class="mb-1 mt-3 flex items-center gap-3 text-[13px] text-ink-2">
                     <span class="truncate">第 {{ notePageIndex + 1 }} / {{ notePages.length }} 页 · {{ notePages[notePageIndex].label }}</span>
                     <div class="flex shrink-0 items-center gap-2">
                       <button
@@ -1002,11 +1017,6 @@ const timelineTicks = computed(() => {
                       </button>
                     </div>
                   </div>
-                  <div class="note-view text-[14px] leading-7 text-ink" v-html="noteHtml" @click="onNoteClick"></div>
-                  <p v-if="!data.note" class="rounded-xl border border-dashed border-line py-8 text-center text-[13px] text-ink-2">
-                    AI 笔记生成中，完成后展示在这里
-                  </p>
-                  <p class="mt-2 text-[11px] text-ink-2">AI 笔记由转写与画面识别生成，点击时间戳可跳回原片段核对。</p>
                 </template>
               </template>
 
