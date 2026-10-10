@@ -41,6 +41,13 @@ public final class NoteTimestampCalibrator {
     /** 命中后允许回退的句数（容纳笔记少量乱序引用） */
     private static final int BACKTRACK = 20;
 
+    /**
+     * 候选句文本长度上限：超过视为伪句级粗粒度残留（如 ASR 整分片打包的 ~900 字大段）。
+     * 巨型分段的 bigram 集合对任何锚定文本覆盖度都高、无区分度，参与匹配只会误命中；
+     * 全部被过滤时走「无佐证」降级（00:00 移除、非 0 保留），杜绝误回填+单调钳制连坐
+     */
+    private static final int MAX_CANDIDATE_CHARS = 300;
+
     private NoteTimestampCalibrator() {
     }
 
@@ -62,9 +69,8 @@ public final class NoteTimestampCalibrator {
             return markdown;
         }
         List<Sentence> sentences = index(transcript);
-        if (sentences.isEmpty()) {
-            return markdown;
-        }
+        // 候选为空（含粗粒度大段全被过滤）时继续走匹配流程：bestMatch 恒返回 null → 全部按无佐证降级，
+        // 而非原样返回——否则粗粒度数据下会保留成片占位 00:00
 
         Matcher matcher = TS.matcher(markdown);
         StringBuilder sb = new StringBuilder();
@@ -94,12 +100,15 @@ public final class NoteTimestampCalibrator {
         return sb.toString();
     }
 
-    /** 构建句级索引：textCorrected 优先，按 startSec 升序（正文顺序与视频时间对齐的前提） */
+    /** 构建句级索引：textCorrected 优先，按 startSec 升序；超长粗粒度大段（伪句级残留）不参与匹配 */
     private static List<Sentence> index(List<CourseTranscriptSegment> transcript) {
         List<Sentence> sentences = new ArrayList<>();
         for (CourseTranscriptSegment segment : transcript) {
             String text = segment.getTextCorrected() != null ? segment.getTextCorrected() : segment.getText();
             if (text == null || text.isBlank() || segment.getStartSec() == null) {
+                continue;
+            }
+            if (text.length() > MAX_CANDIDATE_CHARS) {
                 continue;
             }
             Set<String> grams = QuizQualityChecker.grams(text);

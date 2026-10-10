@@ -316,15 +316,24 @@ public class CoursePipelineService {
         }
     }
 
+    /** 伪句级判定：单段时长跨度占分片时长的比例下限（实测端点把整个 280s 分片打包为一句但带真实起止时间） */
+    static final double PSEUDO_SENTENCE_SPAN_RATIO = 0.8;
+
     /**
-     * ASR 兜底单段展开：端点未返回句级结构时整个分片打包为一句（时间戳 (0,0)），
-     * 按字符比例在分片时长内切分为句级分段（时间粒度从 280s 恢复到秒级）；正常句级结果原样返回
+     * ASR 兜底单段展开：两种伪句级形态都按句末标点切分为句级分段（时间粒度从 280s 恢复到秒级）；
+     * 正常句级结果（多句，或单句时长明显小于分片）原样返回：
+     * 1) 端点未返回句级结构：整个分片打包为一句且时间戳 (0,0)，在 [0, chunkLen] 内切分；
+     * 2) 端点返回「单句形态」但起止时间覆盖≈整个分片（实测主形态）：在真实时间区间内切分
      */
     static List<AsrSegment> expandFallbackSegments(List<AsrSegment> segments, long chunkLenMs) {
         if (segments.size() == 1) {
             AsrSegment only = segments.get(0);
             if (only.getBeginMs() == 0 && only.getEndMs() == 0) {
                 return QwenAsrTool.splitFallbackSegment(only, 0, chunkLenMs);
+            }
+            long spanMs = (long) only.getEndMs() - only.getBeginMs();
+            if (spanMs >= chunkLenMs * PSEUDO_SENTENCE_SPAN_RATIO) {
+                return QwenAsrTool.splitFallbackSegment(only, only.getBeginMs(), only.getEndMs());
             }
         }
         return segments;

@@ -75,6 +75,26 @@ class NoteTimestampCalibratorTest {
         assertThat(NoteTimestampCalibrator.calibrate(null, transcriptOf())).isNull();
     }
 
+    @Test
+    void coarseGiantSegmentsShouldBeRejectedFromMatching() {
+        // 粗粒度残留：整分片打包的 ~900 字大段（旧数据实况），不得参与回填匹配
+        String giantText = "等价无穷小替换洛必达法则抓大头极限分子分母无穷小洛必达法则分子分母分别求导。".repeat(20);
+        List<CourseTranscriptSegment> transcript = List.of(
+                segment(0, 280, giantText),
+                segment(2800, 3080, giantText));
+        String markdown = "## 知识点\n\n"
+                + "等价无穷小替换的使用前提是乘除运算 [00:00]\n\n"
+                + "无穷小分型极限的处理方式见 [01:00]";
+
+        String calibrated = NoteTimestampCalibrator.calibrate(markdown, transcript);
+
+        // 超长候选全部拒判 → 无佐证降级：00:00 移除、非 0 保留；不出现误回填（如大段时间 46:40）
+        assertThat(calibrated).doesNotContain("[00:00]");
+        assertThat(calibrated).doesNotContain("[46:40]");
+        assertThat(calibrated).contains("等价无穷小替换的使用前提是乘除运算");
+        assertThat(calibrated).contains("[01:00]");
+    }
+
     private static List<CourseTranscriptSegment> transcriptOf() {
         return List.of(segment0());
     }
