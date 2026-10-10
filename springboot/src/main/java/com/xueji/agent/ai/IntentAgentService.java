@@ -4,6 +4,7 @@ import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import com.xueji.agent.ai.prompt.AgentPrompts;
+import com.xueji.agent.common.ModelServiceErrors;
 import com.xueji.agent.domain.entity.Course;
 import com.xueji.agent.domain.entity.Message;
 import com.xueji.agent.domain.entity.UserProfile;
@@ -110,6 +111,12 @@ public class IntentAgentService {
                 throw new IllegalStateException("意图确认卡片输出异常");
             }
         } catch (Exception e) {
+            // 余额不足：不用模板卡（模板会引导用户继续走必然失败的流程），直接告知充值
+            if (ModelServiceErrors.isBalanceInsufficient(e)) {
+                log.warn("意图 Agent 提问遇到模型服务余额不足, conversationId={}", conversationId);
+                rememberPending(conversationId, videoTempPath, durationSec);
+                return new AskResult(ModelServiceErrors.BALANCE_MESSAGE, null);
+            }
             log.warn("意图 Agent 提问失败，降级模板确认卡, conversationId={}", conversationId, e);
             result = fallbackAsk(durationSec);
         }
@@ -142,6 +149,11 @@ public class IntentAgentService {
             saveProfilePatch(userId, profile, result);
             return executeIntent(userId, conversationId, userText, result, pending, durationSec);
         } catch (Exception e) {
+            // 余额不足：不执行默认意图（建课流水线会因同样原因失败），直接告知充值
+            if (ModelServiceErrors.isBalanceInsufficient(e)) {
+                log.warn("意图解析遇到模型服务余额不足, conversationId={}", conversationId);
+                return ModelServiceErrors.BALANCE_MESSAGE;
+            }
             log.warn("意图解析失败，按视频时长默认意图执行, conversationId={}", conversationId, e);
             IntentResult fallback = new IntentResult();
             fallback.intent = durationSec > MAX_TRANSCRIBE_SEC ? "COURSE" : "TRANSCRIBE";
@@ -183,6 +195,11 @@ public class IntentAgentService {
                 }
             }
         } catch (Exception e) {
+            // 余额不足：任务停止（转写已提交的除外，ASR 为独立计费不受影响），告知充值
+            if (ModelServiceErrors.isBalanceInsufficient(e)) {
+                log.warn("意图执行遇到模型服务余额不足, userId={}, conversationId={}, intent={}", userId, conversationId, intent);
+                return ModelServiceErrors.BALANCE_MESSAGE;
+            }
             log.error("意图执行失败, userId={}, conversationId={}, intent={}", userId, conversationId, intent, e);
             return "处理失败了（" + e.getMessage() + "），请回复「重试」再试一次。";
         }

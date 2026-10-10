@@ -9,12 +9,14 @@ import com.xueji.agent.ai.tool.AsrSegment;
 import com.xueji.agent.ai.NoteGenerationService;
 import com.xueji.agent.ai.tool.OcrTool;
 import com.xueji.agent.ai.tool.QwenAsrTool;
+import com.xueji.agent.common.ModelServiceErrors;
 import com.xueji.agent.domain.enums.CourseStatus;
 import com.xueji.agent.domain.entity.Course;
 import com.xueji.agent.domain.entity.CourseFrame;
 import com.xueji.agent.domain.entity.CourseTranscriptSegment;
 import com.xueji.agent.domain.entity.Message;
 import com.xueji.agent.domain.vo.ChatEvent;
+import com.xueji.agent.exception.BusinessException;
 import com.xueji.agent.mapper.CourseFrameMapper;
 import com.xueji.agent.mapper.CourseMapper;
 import com.xueji.agent.mapper.CourseTranscriptSegmentMapper;
@@ -270,6 +272,10 @@ public class CoursePipelineService {
             log.info("网课流水线完成, courseId={}, 时长={}s, 帧数={}, 转写句数={}, 转写字数={}, 笔记待改进={}",
                     courseId, durationSec, frames.size(), asrSegments == null ? 0 : asrSegments.size(),
                     transcriptChars, noteIssue != null);
+        } catch (BusinessException balance) {
+            // 模型服务余额不足：任务停止（置 FAILED），用户充值后可在列表页一键重试
+            log.warn("模型服务余额不足，任务停止, courseId={}", courseId);
+            markFailed(course, ModelServiceErrors.BALANCE_MESSAGE, taskMessage);
         } catch (Exception e) {
             log.error("网课流水线异常, courseId={}", courseId, e);
             markFailed(course, "处理异常：" + truncate(e.getMessage()), taskMessage);
@@ -297,6 +303,10 @@ public class CoursePipelineService {
                     (stage, text) -> pushCourseStage(course, taskMessage, stage, text, null));
             return result.getNoteIssue();
         } catch (Exception e) {
+            // 余额不足等模型服务故障：回退链路同样要调 LLM 必然再失败，直接上抛停止任务（课程置 FAILED 可重试）
+            if (ModelServiceErrors.isBalanceInsufficient(e)) {
+                throw new BusinessException(ModelServiceErrors.BALANCE_MESSAGE);
+            }
             log.warn("Graph 子流程失败，回退旧链路从转写直接生成, courseId={}", course.getId(), e);
         }
 
@@ -310,6 +320,9 @@ public class CoursePipelineService {
             }
             return null;
         } catch (Exception e) {
+            if (ModelServiceErrors.isBalanceInsufficient(e)) {
+                throw new BusinessException(ModelServiceErrors.BALANCE_MESSAGE);
+            }
             log.warn("AI 笔记生成失败（课程处理仍为成功）, courseId={}", course.getId(), e);
             return "AI 笔记生成失败：" + truncate(e.getMessage());
         }

@@ -3,6 +3,7 @@ package com.xueji.agent.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.xueji.agent.ai.RagIngestService;
 import com.xueji.agent.domain.enums.CourseStatus;
+import com.xueji.agent.common.ModelServiceErrors;
 import com.xueji.agent.common.MqKeys;
 import com.xueji.agent.common.OwnershipCheck;
 import com.xueji.agent.domain.dto.CourseUpdateDto;
@@ -222,6 +223,15 @@ public class CourseServiceImpl implements CourseService {
                 log.info("课程内容已重新生成, courseId={}", courseId);
             } catch (Exception e) {
                 log.warn("课程内容重生成失败, courseId={}", courseId, e);
+                // 余额不足等模型服务故障：原因写回课程 error_msg（该路径异步执行，状态语义不变，仅通知）
+                if (ModelServiceErrors.isBalanceInsufficient(e)) {
+                    try {
+                        courseMapper.updateById(courseRef.setErrorMsg(ModelServiceErrors.BALANCE_MESSAGE)
+                                .setUpdatedAt(LocalDateTime.now()));
+                    } catch (Exception ex) {
+                        log.warn("重生成失败原因写回课程失败, courseId={}", courseId, ex);
+                    }
+                }
             }
         });
     }

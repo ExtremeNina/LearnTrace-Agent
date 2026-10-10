@@ -48,12 +48,12 @@ function confirm() {
         <ListChecks :size="14" class="text-blue-500" />
         {{ q.title }}
       </p>
-      <div class="mt-2 flex flex-wrap gap-2">
+      <div class="mt-2 flex flex-col gap-2">
         <button
           v-for="opt in q.options"
           :key="opt"
           type="button"
-          class="rounded-xl border px-3 py-1.5 text-[13px] transition-all"
+          class="w-full overflow-x-auto whitespace-nowrap rounded-xl border px-3 py-1.5 text-left text-[13px] transition-all"
           :class="selections[q.title] === opt
             ? 'border-primary bg-primary-soft font-medium text-primary ring-1 ring-primary/30'
             : 'border-gray-200 text-gray-600 hover:border-blue-300 hover:bg-blue-50'"

@@ -201,7 +201,9 @@ async function appendQuiz(count = 5) {
     if (quizQuestions.value.length > before) {
       toast.push(`已新增 ${quizQuestions.value.length - before} 道课后习题`)
     } else {
-      toast.push('追加出题超时，可稍后手动刷新', 'error')
+      // 后端把真实失败原因写进了课程 error_msg（如模型服务余额不足），优先展示
+      const err = data.value?.course.errorMsg
+      toast.push(err && err.includes('余额不足') ? err : '追加出题超时，可稍后手动刷新', 'error')
     }
   } catch (e) {
     toast.push(e instanceof Error ? e.message : '追加出题失败', 'error')
@@ -253,9 +255,16 @@ async function onRegenerate() {
   regenerating.value = true
   try {
     await regenerateCourseContent(courseId)
-    // 轮询 3 次（内容理解 + 笔记渲染需数分钟），期间页面可正常使用
+    // 轮询 3 次（内容理解 + 笔记渲染需数分钟），期间页面可正常使用；末次检查失败原因（如余额不足）
     for (let i = 0; i < 3; i++) {
-      setTimeout(() => { reload().catch(() => undefined) }, 15000 * (i + 1))
+      setTimeout(() => {
+        reload().then(() => {
+          const err = data.value?.course.errorMsg
+          if (i === 2 && err && err.includes('余额不足')) {
+            toast.push(err, 'error')
+          }
+        }).catch(() => undefined)
+      }, 15000 * (i + 1))
     }
   } finally {
     regenerating.value = false

@@ -3,6 +3,7 @@ package com.xueji.agent.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.xueji.agent.ai.QuizAgentService;
 import com.xueji.agent.ai.QuizAgentService.QuizQuestion;
+import com.xueji.agent.common.ModelServiceErrors;
 import com.xueji.agent.common.OwnershipCheck;
 import com.xueji.agent.domain.entity.Course;
 import com.xueji.agent.domain.entity.CourseQuizQuestion;
@@ -110,8 +111,24 @@ public class CourseQuizServiceImpl implements CourseQuizService {
                 log.info("课后习题追加完成, courseId={}, 新增={}", courseId, added);
             } catch (Exception e) {
                 log.warn("课后习题追加失败, courseId={}", courseId, e);
+                // 余额不足等模型服务故障：原因写回课程 error_msg（前端轮询超时后读取展示，替代误导性的"超时"）
+                if (ModelServiceErrors.isBalanceInsufficient(e)) {
+                    markCourseError(courseId, ModelServiceErrors.BALANCE_MESSAGE);
+                }
             }
         });
+    }
+
+    /** 失败原因写回课程 error_msg（不改状态，课程仍为 SUCCESS；纯提示通道） */
+    private void markCourseError(Long courseId, String message) {
+        try {
+            Course course = courseMapper.selectById(courseId);
+            if (course != null) {
+                courseMapper.updateById(course.setErrorMsg(message).setUpdatedAt(LocalDateTime.now()));
+            }
+        } catch (Exception ex) {
+            log.warn("课后习题失败原因写回课程失败, courseId={}", courseId, ex);
+        }
     }
 
     @Override
