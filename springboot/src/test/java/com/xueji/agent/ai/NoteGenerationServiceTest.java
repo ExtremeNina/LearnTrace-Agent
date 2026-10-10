@@ -89,4 +89,24 @@ class NoteGenerationServiceTest {
         String normalized = NoteGenerationService.normalizeTimestamps(text);
         assertThat(normalized).contains("[a+b]").contains("[03:07]");
     }
+
+    @Test
+    void dedupeShouldCollapseConsecutiveDuplicateTimestamps() {
+        // 转写粒度坍缩场景：成片复制的同一时间戳折叠为首个（重复项之间的分隔符一并移除，末项后的"；"保留）
+        String text = "补码的定义如下 [04:40]，[04:40]，[04:40]、[04:40]；注意溢出 [04:40]";
+        String deduped = NoteGenerationService.dedupeConsecutiveTimestamps(text);
+        assertThat(deduped).isEqualTo("补码的定义如下 [04:40]；注意溢出 [04:40]");
+    }
+
+    @Test
+    void dedupeShouldKeepNonConsecutiveDuplicates() {
+        String text = "开头 [01:00]，中段 [02:00]，回到同一位置再讲 [01:00]";
+        assertThat(NoteGenerationService.dedupeConsecutiveTimestamps(text)).isEqualTo(text);
+    }
+
+    @Test
+    void dedupeShouldCollapseLongRunsStably() {
+        String text = "[04:40] [04:40] [04:40] [04:40] [04:40] 内容";
+        assertThat(NoteGenerationService.dedupeConsecutiveTimestamps(text)).isEqualTo("[04:40] 内容");
+    }
 }

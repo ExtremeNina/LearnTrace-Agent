@@ -152,7 +152,8 @@ public class CoursePipelineService {
             try {
                 String audioUrl = aliUploadUtils.uploadLocalFile(audio, "course/" + courseId + "/audio.wav");
                 if (durationSec <= ASR_CHUNK_SEC) {
-                    asrSegments.addAll(qwenAsrTool.transcribeSegments(audioUrl));
+                    asrSegments.addAll(expandFallbackSegments(qwenAsrTool.transcribeSegments(audioUrl),
+                            durationSec * 1000L));
                 } else {
                     for (int start = 0; start < durationSec; start += ASR_CHUNK_SEC) {
                         int len = Math.min(ASR_CHUNK_SEC, durationSec - start);
@@ -162,7 +163,8 @@ public class CoursePipelineService {
                         String chunkUrl = aliUploadUtils.uploadLocalFile(chunk,
                                 "course/" + courseId + "/audio-" + start + ".wav");
                         int offsetMs = start * 1000;
-                        for (AsrSegment segment : qwenAsrTool.transcribeSegments(chunkUrl)) {
+                        for (AsrSegment segment : expandFallbackSegments(qwenAsrTool.transcribeSegments(chunkUrl),
+                                len * 1000L)) {
                             asrSegments.add(new AsrSegment(offsetMs + segment.getBeginMs(),
                                     offsetMs + segment.getEndMs(), segment.getText()));
                         }
@@ -272,10 +274,10 @@ public class CoursePipelineService {
             log.info("网课流水线完成, courseId={}, 时长={}s, 帧数={}, 转写句数={}, 转写字数={}, 笔记待改进={}",
                     courseId, durationSec, frames.size(), asrSegments == null ? 0 : asrSegments.size(),
                     transcriptChars, noteIssue != null);
-        } catch (BusinessException balance) {
-            // 模型服务余额不足：任务停止（置 FAILED），用户充值后可在列表页一键重试
-            log.warn("模型服务余额不足，任务停止, courseId={}", courseId);
-            markFailed(course, ModelServiceErrors.BALANCE_MESSAGE, taskMessage);
+        } catch (BusinessException e) {
+            // 可读业务失败（模型服务余额不足 / Graph 节点重试后仍失败）：置 FAILED，用户可在列表页一键重试
+            log.warn("网课流水线业务失败, courseId={}: {}", courseId, e.getMessage());
+            markFailed(course, e.getMessage(), taskMessage);
         } catch (Exception e) {
             log.error("网课流水线异常, courseId={}", courseId, e);
             markFailed(course, "处理异常：" + truncate(e.getMessage()), taskMessage);
@@ -287,9 +289,11 @@ public class CoursePipelineService {
     // ---- 内容理解 + 评审 + 笔记渲染（B26 阶段 3：SAA Graph 子流程，节点函数化） ----
 
     /**
-     * 理解 - 评审 - 渲染子流程（NotePipelineGraphRunner，SAA StateGraph 驱动）：
-     * L1 内容设计评审前置门禁 → L2 讲解 / 练习双评审并行。
-     * Graph 整体失败时回退旧链路（从转写直接生成），保证「上传完成即有笔记」不被语义层故障拖垮。
+     * 理解 - 评审 - 渲染 - 课后习题子流程（NotePipelineGraphRunner，SAA StateGraph 驱动）：
+     * 产出必须完整齐全（AI 笔记 + 知识点/章节结构化数据 + 课后习题）——
+     * Graph 节点失败经重试（见 NotePipelineGraphRunner.callWithRetry）仍失败的直接上抛终止任务，
+     * 不再降级为转写直出笔记（回退链路已移除：缺知识点的残缺笔记价值有限且会掩盖真实故障）。
+     * 课程由 process() 置 FAILED（可读文案），充值 / 故障恢复后可在网课列表一键重试
      *
      * @return 待写入 course.errorMsg 的问题描述（NULL = 全部通过）
      */
@@ -297,35 +301,33 @@ public class CoursePipelineService {
                                            List<CourseFrame> frames, int durationSec) {
         List<CourseTranscriptSegment> transcriptRows = transcriptMapper.selectList(
                 new QueryWrapper<CourseTranscriptSegment>().eq("course_id", course.getId()).orderByAsc("sort"));
+        pushCourseStage(course, taskMessage, "NOTE_GENERATING", "正在生成 AI 笔记…", null);
         try {
             NotePipelineGraphRunner.RunResult result = notePipelineGraphRunner.run(course, transcriptRows, frames,
                     durationSec,
                     (stage, text) -> pushCourseStage(course, taskMessage, stage, text, null));
             return result.getNoteIssue();
         } catch (Exception e) {
-            // 余额不足等模型服务故障：回退链路同样要调 LLM 必然再失败，直接上抛停止任务（课程置 FAILED 可重试）
             if (ModelServiceErrors.isBalanceInsufficient(e)) {
                 throw new BusinessException(ModelServiceErrors.BALANCE_MESSAGE);
             }
-            log.warn("Graph 子流程失败，回退旧链路从转写直接生成, courseId={}", course.getId(), e);
+            log.error("Graph 子流程失败, courseId={}", course.getId(), e);
+            throw new BusinessException("AI 笔记与课后习题生成失败：" + truncate(e.getMessage()) + "，请在网课列表重试");
         }
+    }
 
-        // 回退：旧链路从转写直接生成（保底，保证「上传完成即有笔记」）
-        try {
-            pushCourseStage(course, taskMessage, "NOTE_GENERATING", "正在生成 AI 笔记…", null);
-            NoteGenerationService.NoteGenerationResult result = noteGenerationService.generateAndSaveNote(
-                    course, transcriptRows, frames, durationSec);
-            if (!result.getQualityDefects().isEmpty()) {
-                return "AI 笔记质检未通过（" + String.join("；", result.getQualityDefects()) + "），已降级入库";
+    /**
+     * ASR 兜底单段展开：端点未返回句级结构时整个分片打包为一句（时间戳 (0,0)），
+     * 按字符比例在分片时长内切分为句级分段（时间粒度从 280s 恢复到秒级）；正常句级结果原样返回
+     */
+    static List<AsrSegment> expandFallbackSegments(List<AsrSegment> segments, long chunkLenMs) {
+        if (segments.size() == 1) {
+            AsrSegment only = segments.get(0);
+            if (only.getBeginMs() == 0 && only.getEndMs() == 0) {
+                return QwenAsrTool.splitFallbackSegment(only, 0, chunkLenMs);
             }
-            return null;
-        } catch (Exception e) {
-            if (ModelServiceErrors.isBalanceInsufficient(e)) {
-                throw new BusinessException(ModelServiceErrors.BALANCE_MESSAGE);
-            }
-            log.warn("AI 笔记生成失败（课程处理仍为成功）, courseId={}", course.getId(), e);
-            return "AI 笔记生成失败：" + truncate(e.getMessage());
         }
+        return segments;
     }
 
     // ---- FFmpeg ----

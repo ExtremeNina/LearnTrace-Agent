@@ -96,6 +96,9 @@ public class QwenAsrTool {
                     text = root.path("text").asText("");
                 }
                 if (!text.isBlank()) {
+                    // 端点未返回句级结构（当前部署实测为纯文本形态）；打印响应片段供后续切换真句级解析留依据
+                    log.warn("Qwen ASR 未返回句级结构，走全文兜底, url={}, 响应片段={}", audioUrl,
+                            body.substring(0, Math.min(500, body.length())));
                     segments.add(new AsrSegment(0, 0, text));
                 }
             }
@@ -110,6 +113,61 @@ public class QwenAsrTool {
             log.error("Qwen ASR 转写失败, url={}", audioUrl, e);
             throw new IllegalStateException("语音转写失败：" + e.getMessage(), e);
         }
+    }
+
+    /**
+     * 兜底整块文本切分为句级分段（公开静态便于单测）：
+     * 按句末标点（。！？；，保留标点）切分，按各句字符占比在 [startMs, endMs] 毫秒区间内线性分摊起止时间；
+     * 单句或空文本原样返回。兜底整块无真实句级时间戳，估算粒度（秒级）远优于分片边界（280s）
+     */
+    public static List<AsrSegment> splitFallbackSegment(AsrSegment giant, long startMs, long endMs) {
+        List<AsrSegment> result = new ArrayList<>();
+        String text = giant.getText();
+        if (text == null || text.isBlank()) {
+            return result;
+        }
+        List<String> sentences = splitSentences(text);
+        if (sentences.size() <= 1) {
+            result.add(giant);
+            return result;
+        }
+        int totalChars = 0;
+        for (String sentence : sentences) {
+            totalChars += sentence.length();
+        }
+        long span = Math.max(0L, endMs - startMs);
+        long cursor = startMs;
+        for (String sentence : sentences) {
+            long sentenceMs = totalChars == 0 ? 0 : Math.round((double) span * sentence.length() / totalChars);
+            long begin = cursor;
+            long end = begin + sentenceMs;
+            result.add(new AsrSegment((int) begin, (int) end, sentence));
+            cursor = end;
+        }
+        // 末句对齐区间终点（吸收舍入误差遗留尾巴）
+        if (!result.isEmpty()) {
+            AsrSegment last = result.get(result.size() - 1);
+            result.set(result.size() - 1, new AsrSegment(last.getBeginMs(), (int) endMs, last.getText()));
+        }
+        return result;
+    }
+
+    /** 按句末标点切分文本（保留标点；无句末标点的尾段整段保留） */
+    static List<String> splitSentences(String text) {
+        List<String> sentences = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        for (int i = 0; i < text.length(); i++) {
+            char ch = text.charAt(i);
+            current.append(ch);
+            if (ch == '。' || ch == '！' || ch == '？' || ch == '；') {
+                sentences.add(current.toString());
+                current.setLength(0);
+            }
+        }
+        if (current.length() > 0) {
+            sentences.add(current.toString());
+        }
+        return sentences;
     }
 
     /**

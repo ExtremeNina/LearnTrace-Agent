@@ -17,10 +17,12 @@ import com.xueji.agent.service.NoteQualityChecker;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -77,7 +79,8 @@ public class NoteGenerationService {
     /**
      * 生成笔记并入库（重试幂等：先删除该课程此前生成的 AI 笔记再插入）。
      * 生成后经 NoteQualityChecker 校验，不合格带缺陷清单重生成一次（B26 阶段 1）。
-     * 生成失败抛出异常，由调用方决定降级方式
+     * 生成失败抛出异常，由调用方决定降级方式。
+     * 【回退链路已移除（2026-10-10）】本方法当前无生产调用方（仅测试覆盖），保留待清理
      */
     public NoteGenerationResult generateAndSaveNote(Course course, List<CourseTranscriptSegment> transcript,
                                                     List<CourseFrame> frames, int durationSec) {
@@ -105,8 +108,8 @@ public class NoteGenerationService {
                                                                 List<CourseTranscriptSegment> transcript,
                                                                 List<CourseFrame> frames, int durationSec,
                                                                 List<String> reviewFeedback) {
-        String markdown = normalizeTimestamps(generateFromDocument(course, document, sections, knowledgePoints,
-                transcript, frames, durationSec, reviewFeedback));
+        String markdown = normalizeTimestamps(renderNotePaged(course, document, sections, knowledgePoints,
+                transcript, durationSec, reviewFeedback));
         List<String> defects = NoteQualityChecker.check(markdown, transcript, durationSec);
         if (!defects.isEmpty()) {
             log.warn("AI 笔记质检未通过，带缺陷重生成一次, courseId={}, defects={}", course.getId(), defects);
@@ -118,6 +121,166 @@ public class NoteGenerationService {
             }
         }
         return saveNote(course, markdown, defects);
+    }
+
+    /**
+     * 分页渲染（长笔记输出 token 上限的根治）：骨架页（概览+章节时间线）→ 每章一页（知识点结合转写展开，
+     * detail 完整质量不瘦身）→ 总结页 → markdown 拼接整体落库（存储/质检/导出零适配）。
+     * 每页输出 1~3 千字符远低于 8192 token 上限，截断在结构上不可能发生；
+     * 页间连贯性：章节页 prompt 注入全局摘要 + 前页结尾 200 字；顺序生成（前页结尾依赖）
+     */
+    private String renderNotePaged(Course course, ContentDocument document, List<ContentSection> sections,
+                                   List<ContentKnowledgePoint> knowledgePoints,
+                                   List<CourseTranscriptSegment> transcript, int durationSec,
+                                   List<String> qualityDefects) {
+        String title = document.getTitle() == null || document.getTitle().isBlank()
+                ? course.getTitle() : document.getTitle();
+        StringBuilder sb = new StringBuilder("# ").append(title).append(" — 课程笔记\n\n");
+        ChatClient chatClient = aiModelService.resolveGenerationForCourse(course.getUserId(), course.getModelConfigId());
+
+        // 页 1：骨架（概览 + 章节时间线）
+        String skeleton = callLlm(chatClient, AgentPrompts.DOCUMENT_NOTE_SKELETON_PROMPT,
+                buildSkeletonUserContent(document, sections, durationSec, qualityDefects));
+        sb.append(skeleton.trim()).append("\n\n");
+
+        // 页 2~N+1：每章一页（知识点展开，页间连贯注入）
+        sb.append("## 知识点\n\n");
+        String prevTail = null;
+        for (int i = 0; i < sections.size(); i++) {
+            ContentSection section = sections.get(i);
+            List<ContentKnowledgePoint> chapterPoints = chapterPoints(knowledgePoints, i);
+            if (chapterPoints.isEmpty()) {
+                continue;
+            }
+            String chapterMd = callLlm(chatClient, AgentPrompts.DOCUMENT_NOTE_CHAPTER_PROMPT,
+                    buildChapterNoteUserContent(document, section, chapterPoints, transcript, prevTail, durationSec));
+            sb.append(chapterMd.trim()).append("\n\n");
+            prevTail = chapterMd.length() > 200 ? chapterMd.substring(chapterMd.length() - 200) : chapterMd;
+        }
+
+        // 末页：总结
+        String summaryMd = callLlm(chatClient, AgentPrompts.DOCUMENT_NOTE_SUMMARY_PROMPT,
+                buildSummaryUserContent(document, sections, knowledgePoints));
+        sb.append(summaryMd.trim());
+        return sb.toString();
+    }
+
+    /** 某一章节的知识点（sectionSort = 章节下标） */
+    private static List<ContentKnowledgePoint> chapterPoints(List<ContentKnowledgePoint> knowledgePoints, int sectionIndex) {
+        List<ContentKnowledgePoint> result = new ArrayList<>();
+        if (knowledgePoints != null) {
+            for (ContentKnowledgePoint point : knowledgePoints) {
+                if (point.getSectionSort() != null && point.getSectionSort() == sectionIndex) {
+                    result.add(point);
+                }
+            }
+        }
+        return result;
+    }
+
+    /** 骨架页用户消息：全局摘要 + 章节列表（含起止时间） + 视频时长 + 质检反馈 */
+    public static String buildSkeletonUserContent(ContentDocument document, List<ContentSection> sections,
+                                                  int durationSec, List<String> qualityDefects) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("视频时长：").append(durationSec).append(" 秒。\n\n");
+        sb.append("[全局摘要]\n").append(document.getSummary() == null ? "" : document.getSummary()).append("\n\n");
+        sb.append("[章节列表]\n");
+        for (ContentSection section : sections) {
+            sb.append("- ").append(section.getTitle())
+                    .append(" [").append(section.getStartSec()).append("-").append(section.getEndSec()).append("s]");
+            if (section.getSummary() != null && !section.getSummary().isBlank()) {
+                sb.append("：").append(section.getSummary());
+            }
+            sb.append('\n');
+        }
+        sb.append(qualityFeedback(qualityDefects));
+        return sb.toString();
+    }
+
+    /** 章节页用户消息：章节信息 + 该章知识点清单 + 该章转写切片（越界回退全文） + 全局摘要 + 前页结尾 */
+    public static String buildChapterNoteUserContent(ContentDocument document, ContentSection section,
+                                                     List<ContentKnowledgePoint> chapterPoints,
+                                                     List<CourseTranscriptSegment> transcript, String prevTail,
+                                                     int durationSec) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("视频时长：").append(durationSec).append(" 秒。\n\n");
+        sb.append("[全局摘要]\n").append(document.getSummary() == null ? "" : document.getSummary()).append("\n\n");
+        sb.append("[本章信息]\n- 标题：").append(section.getTitle())
+                .append(" [").append(section.getStartSec()).append("-").append(section.getEndSec()).append("s]");
+        if (section.getSummary() != null && !section.getSummary().isBlank()) {
+            sb.append("：").append(section.getSummary());
+        }
+        sb.append('\n');
+        sb.append("\n[本章知识点清单（每个都必须展开成小节）]\n");
+        for (ContentKnowledgePoint point : chapterPoints) {
+            sb.append("- ").append(point.getName());
+            if (point.getTimeSec() != null) {
+                sb.append(" [").append(point.getTimeSec()).append("s]");
+            }
+            if (point.getDetail() != null && !point.getDetail().isBlank()) {
+                sb.append("：").append(point.getDetail());
+            }
+            if (Integer.valueOf(1).equals(point.getImportant())) {
+                sb.append("（重点）");
+            }
+            if (Integer.valueOf(1).equals(point.getErrorProne())) {
+                sb.append("（易错点）");
+            }
+            sb.append('\n');
+        }
+        sb.append("\n[本章对应转写切片（含起止秒）]\n");
+        List<CourseTranscriptSegment> slice = new ArrayList<>();
+        for (CourseTranscriptSegment segment : transcript) {
+            if (section.getStartSec() != null && section.getEndSec() != null
+                    && segment.getStartSec() != null
+                    && segment.getStartSec() >= section.getStartSec() - 5
+                    && segment.getStartSec() <= section.getEndSec()) {
+                slice.add(segment);
+            }
+        }
+        if (slice.isEmpty()) {
+            slice = transcript;
+        }
+        for (CourseTranscriptSegment segment : slice) {
+            sb.append("[").append(segment.getStartSec()).append("-").append(segment.getEndSec()).append("s] ")
+                    .append(segment.getText()).append('\n');
+        }
+        if (prevTail != null && !prevTail.isBlank()) {
+            sb.append("\n[上一页结尾（衔接用，不要重复其内容）]\n").append(prevTail).append('\n');
+        }
+        return sb.toString();
+    }
+
+    /** 总结页用户消息：概览 + 各章知识点名（归纳用，小输入） */
+    public static String buildSummaryUserContent(ContentDocument document, List<ContentSection> sections,
+                                                 List<ContentKnowledgePoint> knowledgePoints) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("[全局摘要]\n").append(document.getSummary() == null ? "" : document.getSummary()).append("\n\n");
+        sb.append("[各章知识点]\n");
+        for (int i = 0; i < sections.size(); i++) {
+            sb.append("## ").append(sections.get(i).getTitle()).append('\n');
+            for (ContentKnowledgePoint point : chapterPoints(knowledgePoints, i)) {
+                sb.append("- ").append(point.getName()).append('\n');
+            }
+        }
+        return sb.toString();
+    }
+
+    /** 大输出调用的 token 上限（DeepSeek 输出上限 8192；默认 4096 偏小） */
+    private static final int MAX_OUTPUT_TOKENS = 8192;
+
+    private OpenAiChatOptions outputOptions() {
+        return OpenAiChatOptions.builder().maxTokens(MAX_OUTPUT_TOKENS).build();
+    }
+
+    /** 分页渲染统一调用入口：按课程解析生成形态客户端（用户模型偏好），带 maxTokens 拉满 */
+    private String callLlm(ChatClient chatClient, String systemPrompt, String userPrompt) {
+        return chatClient.prompt()
+                .system(systemPrompt)
+                .user(userPrompt)
+                .options(outputOptions())
+                .call()
+                .content();
     }
 
     /** 幂等落库：清掉旧 AI 笔记（同步移出向量库防孤儿向量）再插入新笔记并参与 RAG 检索 */
@@ -155,7 +318,8 @@ public class NoteGenerationService {
     }
 
     /**
-     * 从 ContentDocument 调 LLM 渲染笔记 Markdown（qualityDefects 非空时为带质检反馈的重生成）
+     * 从 ContentDocument 调 LLM 渲染笔记 Markdown（qualityDefects 非空时为带质检反馈的重生成）。
+     * 【已被分页渲染 renderNotePaged 取代（2026-10-10）】当前无生产调用方（保留待清理）
      */
     public String generateFromDocument(Course course, ContentDocument document,
                                        List<ContentSection> sections, List<ContentKnowledgePoint> knowledgePoints,
@@ -313,10 +477,14 @@ public class NoteGenerationService {
             java.util.regex.Pattern.compile("\\[(\\d{1,5})\\s*(?:s|S|秒)\\]");
     private static final java.util.regex.Pattern HMS_TS =
             java.util.regex.Pattern.compile("\\[(\\d{1,2}):(\\d{1,2}):(\\d{1,2})\\]");
+    /** 同一段落内紧邻的相同 [mm:ss]（中间仅空白/分隔符）——转写粒度坍缩时渲染 LLM 会成片复制同一时间戳 */
+    private static final java.util.regex.Pattern CONSECUTIVE_DUP_TS =
+            java.util.regex.Pattern.compile("(\\[\\d{1,2}:\\d{2}\\])(?:[\\s，、;；]*)\\1");
 
     /**
      * 时间戳归一化（公开静态便于单测）：LLM 偶发输出 [320s] / [1:15:30]，
-     * 前端胶囊与质检器均只识别 [mm:ss]，统一归一保证时间戳可点击跳转
+     * 前端胶囊与质检器均只识别 [mm:ss]，统一归一保证时间戳可点击跳转；
+     * 末尾追加连续重复去重（同段紧邻相同 [mm:ss] 只保留首个）
      */
     public static String normalizeTimestamps(String markdown) {
         if (markdown == null || markdown.isBlank()) {
@@ -340,7 +508,24 @@ public class NoteGenerationService {
             matcher.appendReplacement(sb, java.util.regex.Matcher.quoteReplacement(fmtTs(total)));
         }
         matcher.appendTail(sb);
-        return sb.toString();
+        return dedupeConsecutiveTimestamps(sb.toString());
+    }
+
+    /**
+     * 连续重复时间戳去重（公开静态便于单测）：同一段落内紧邻的相同 [mm:ss] 只保留第一个，
+     * 非连续重复不动；循环至稳定（三连及以上重复需多轮折叠）
+     */
+    public static String dedupeConsecutiveTimestamps(String markdown) {
+        if (markdown == null || markdown.isBlank()) {
+            return markdown;
+        }
+        String previous = null;
+        String current = markdown;
+        while (!current.equals(previous)) {
+            previous = current;
+            current = CONSECUTIVE_DUP_TS.matcher(current).replaceAll("$1");
+        }
+        return current;
     }
 
     private static String fmtTs(long sec) {

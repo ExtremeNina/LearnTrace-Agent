@@ -255,4 +255,58 @@ class ContentUnderstandingServiceTest {
         assertThat(understanding.getSections()).isEmpty();
         assertThat(understanding.getKnowledgePoints()).hasSize(1);
     }
+
+    // ---- 分页合并：大纲/章节页解析与块挑选 ----
+
+    @Test
+    void parseOutlineShouldReadChaptersAndChunkIndexes() {
+        String text = """
+                ```json
+                {"title": "计算机组成原理速通", "summary": "全局摘要",
+                 "sections": [
+                   {"title": "绪论", "summary": "发展史与层次结构", "chunks": [1]},
+                   {"title": "指令系统", "summary": "寻址方式", "chunks": [2, 3]},
+                   {"title": "", "summary": "无效项"}
+                 ]}
+                ```
+                """;
+        var chapters = ContentUnderstandingService.parseOutline(text);
+        assertThat(chapters).hasSize(2);
+        assertThat(chapters.get(0).getTitle()).isEqualTo("绪论");
+        assertThat(chapters.get(0).getChunkIndexes()).containsExactly(1);
+        assertThat(chapters.get(1).getChunkIndexes()).containsExactly(2, 3);
+    }
+
+    @Test
+    void parseChapterPointsShouldClampTimeAndSkipInvalid() {
+        String text = """
+                {"knowledgePoints": [
+                   {"name": "补码加法", "detail": "符号位参与运算，进位丢弃", "time": 280, "important": true},
+                   {"name": "", "detail": "无效项"},
+                   {"name": "越界时间点", "time": 99999, "errorProne": true}
+                 ]}
+                """;
+        var points = ContentUnderstandingService.parseChapterPoints(text, 2241);
+        assertThat(points).hasSize(2);
+        assertThat(points.get(0).getName()).isEqualTo("补码加法");
+        assertThat(points.get(0).getTimeSec()).isEqualTo(280);
+        assertThat(points.get(0).getImportant()).isTrue();
+        // 越界时间夹取到视频时长
+        assertThat(points.get(1).getTimeSec()).isEqualTo(2241);
+        assertThat(points.get(1).getErrorProne()).isTrue();
+    }
+
+    @Test
+    void pickMapPartsShouldSelectByOneBasedIndexAndFallbackToAll() {
+        List<String> mapParts = List.of("{\"analysis\": \"块1\"}", "{\"analysis\": \"块2\"}", "{\"analysis\": \"块3\"}");
+        assertThat(ContentUnderstandingService.pickMapParts(mapParts, new cn.hutool.json.JSONArray("[1, 3]")))
+                .contains("块1").contains("块3").doesNotContain("块2");
+        // 缺失/为空 → 回退全部块
+        assertThat(ContentUnderstandingService.pickMapParts(mapParts, null)).contains("块1", "块2", "块3");
+        assertThat(ContentUnderstandingService.pickMapParts(mapParts, new cn.hutool.json.JSONArray()))
+                .contains("块1", "块2", "块3");
+        // 越界序号忽略
+        assertThat(ContentUnderstandingService.pickMapParts(mapParts, new cn.hutool.json.JSONArray("[9]")))
+                .contains("块1", "块2", "块3");
+    }
 }

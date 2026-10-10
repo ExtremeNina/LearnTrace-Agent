@@ -21,6 +21,8 @@ import com.xueji.agent.domain.entity.Course;
 import com.xueji.agent.domain.entity.CourseFrame;
 import com.xueji.agent.domain.entity.CourseTranscriptSegment;
 import com.xueji.agent.domain.entity.UserProfile;
+import com.xueji.agent.common.ModelServiceErrors;
+import com.xueji.agent.exception.BusinessException;
 import com.xueji.agent.service.ContentDocumentService;
 import com.xueji.agent.service.CourseQuizService;
 import com.xueji.agent.service.ProfileService;
@@ -164,22 +166,40 @@ public class NotePipelineGraphRunner {
         return result;
     }
 
-    /** 出题 Agent 节点（B27 重排）：AI 笔记（state.noteMarkdown）+ 画像 → 命题规划；失败不阻断（quizPlan 置空跳过出题） */
+    /**
+     * LLM 调用节点级兜底（公开语义：异常反馈 + 重试一次，不再静默降级）：
+     * 首次异常 WARN 记录后重试；再失败抛 BusinessException（可读文案）终止任务。
+     * 余额不足不重试（必然再失败），直接携带充值文案
+     */
+    private <T> T callWithRetry(String what, java.util.function.Supplier<T> action) {
+        try {
+            return action.get();
+        } catch (Exception first) {
+            if (ModelServiceErrors.isBalanceInsufficient(first)) {
+                throw new BusinessException(ModelServiceErrors.BALANCE_MESSAGE);
+            }
+            log.warn("{} 失败，重试一次, 错误={}", what, first.getMessage());
+            try {
+                return action.get();
+            } catch (Exception second) {
+                if (ModelServiceErrors.isBalanceInsufficient(second)) {
+                    throw new BusinessException(ModelServiceErrors.BALANCE_MESSAGE);
+                }
+                throw new BusinessException(what + "失败：" + second.getMessage());
+            }
+        }
+    }
+
+    /** 出题 Agent 节点（B27 重排）：AI 笔记（state.noteMarkdown）+ 画像 → 命题规划；失败重试一次后上抛（快失败，不跳过出题） */
     private Map<String, Object> quizPlanNode(OverAllState state, Course course,
                                              UserProfile profile, StageListener listener) {
+        listener.onStage("QUIZ_PLANNING", "出题 Agent 正在通读 AI 笔记规划课后习题…");
+        String noteMarkdown = state.<String>value("noteMarkdown")
+                .orElseThrow(() -> new IllegalStateException("渲染节点未产出笔记"));
+        List<PlanItem> plan = callWithRetry("命题规划", () -> quizPlanService.planQuiz(noteMarkdown, profile));
         Map<String, Object> update = new HashMap<>();
-        try {
-            listener.onStage("QUIZ_PLANNING", "出题 Agent 正在通读 AI 笔记规划课后习题…");
-            String noteMarkdown = state.<String>value("noteMarkdown")
-                    .orElseThrow(() -> new IllegalStateException("渲染节点未产出笔记"));
-            List<PlanItem> plan = quizPlanService.planQuiz(noteMarkdown, profile);
-            update.put("quizPlan", plan);
-            log.info("命题规划完成, courseId={}, 条数={}", course.getId(), plan.size());
-        } catch (Exception e) {
-            log.warn("命题规划失败（跳过课后习题）, courseId={}", course.getId(), e);
-            update.put("quizPlan", List.of());
-            appendIssue(update, "课后习题生成失败：命题规划异常（" + e.getMessage() + "）");
-        }
+        update.put("quizPlan", plan);
+        log.info("命题规划完成, courseId={}, 条数={}", course.getId(), plan.size());
         return update;
     }
 
@@ -187,7 +207,8 @@ public class NotePipelineGraphRunner {
     private Map<String, Object> understandNode(Course course, List<CourseTranscriptSegment> transcript,
                                                int durationSec, StageListener listener) throws Exception {
         listener.onStage("UNDERSTANDING", "正在进行内容理解…");
-        ContentUnderstanding understanding = contentUnderstandingService.understand(transcript, durationSec);
+        ContentUnderstanding understanding = contentUnderstandingService.understand(
+                course.getId(), transcript, durationSec);
         contentDocumentService.save(course, understanding);
         ContentDocument document = contentDocumentService.findByCourse(course.getId());
         List<ContentSection> sections = contentDocumentService.listSections(document.getId());
@@ -210,7 +231,8 @@ public class NotePipelineGraphRunner {
         ContentDocument document = state.<ContentDocument>value("document").orElseThrow();
         List<ContentSection> sections = state.<List<ContentSection>>value("sections").orElseThrow();
         List<ContentKnowledgePoint> points = state.<List<ContentKnowledgePoint>>value("points").orElseThrow();
-        Verdict verdict = contentReviewService.reviewContentDesign(document, sections, points, profile);
+        Verdict verdict = callWithRetry("内容设计评审",
+                () -> contentReviewService.reviewContentDesign(document, sections, points, profile));
 
         Map<String, Object> update = new HashMap<>();
         update.put("l1Verdict", verdict.getVerdict());
@@ -237,8 +259,9 @@ public class NotePipelineGraphRunner {
         List<ContentKnowledgePoint> points = state.<List<ContentKnowledgePoint>>value("points").orElseThrow();
         List<String> feedback = state.<List<String>>value("feedback").orElse(List.of());
 
-        NoteGenerationResult result = noteGenerationService.generateAndSaveNoteFromDocument(
-                course, document, sections, points, transcript, frames, durationSec, feedback);
+        NoteGenerationResult result = callWithRetry("AI 笔记渲染", () ->
+                noteGenerationService.generateAndSaveNoteFromDocument(
+                        course, document, sections, points, transcript, frames, durationSec, feedback));
         Map<String, Object> update = new HashMap<>();
         update.put("noteMarkdown", result.getContent());
         if (!result.getQualityDefects().isEmpty()) {
@@ -258,9 +281,19 @@ public class NotePipelineGraphRunner {
                 .orElseThrow(() -> new IllegalStateException("渲染节点未产出笔记"));
 
         Future<Verdict> explainFuture = courseExecutor.submit(() ->
-                contentReviewService.reviewNote(Role.EXPLAIN, markdown, profile));
-        Verdict practiceVerdict = contentReviewService.reviewNote(Role.PRACTICE, markdown, profile);
-        Verdict explainVerdict = explainFuture.get();
+                callWithRetry("讲解评审", () -> contentReviewService.reviewNote(Role.EXPLAIN, markdown, profile)));
+        Verdict practiceVerdict = callWithRetry("练习评审",
+                () -> contentReviewService.reviewNote(Role.PRACTICE, markdown, profile));
+        Verdict explainVerdict;
+        try {
+            explainVerdict = explainFuture.get();
+        } catch (java.util.concurrent.ExecutionException e) {
+            // 线程内已重试过：直接透出业务异常（含可读文案），不再整体包一层 ExecutionException
+            if (e.getCause() instanceof BusinessException business) {
+                throw business;
+            }
+            throw e;
+        }
 
         List<String> issues = new ArrayList<>();
         for (Verdict verdict : List.of(explainVerdict, practiceVerdict)) {
@@ -284,7 +317,7 @@ public class NotePipelineGraphRunner {
         return update;
     }
 
-    /** 写题 Agent 节点：按命题规划逐题实现（判题反馈轮带不合格清单重写） */
+    /** 写题 Agent 节点：按命题规划逐题实现（判题反馈轮带不合格清单重写）；调用失败重试一次后上抛 */
     private Map<String, Object> writeQuizNode(OverAllState state, Course course,
                                               List<CourseTranscriptSegment> transcript, UserProfile profile,
                                               StageListener listener) throws Exception {
@@ -292,19 +325,15 @@ public class NotePipelineGraphRunner {
         List<PlanItem> plan = state.<List<PlanItem>>value("quizPlan").orElse(List.of());
         Map<String, Object> update = new HashMap<>();
         if (plan.isEmpty()) {
-            // 规划已失败：跳过出题（noteIssue 已由规划节点附加）
+            // 规划失败已在上游上抛，此分支为防御（清空回写标记防条件边残留）
             update.put("quizDraft", List.of());
+            update.put("judgeFeedback", List.of());
             return update;
         }
-        try {
-            List<String> judgeFeedback = state.<List<String>>value("judgeFeedback").orElse(List.of());
-            List<QuizQuestion> draft = quizPlanService.writeQuiz(plan, transcript, profile, judgeFeedback);
-            update.put("quizDraft", draft);
-        } catch (Exception e) {
-            log.warn("写题 Agent 失败, courseId={}", course.getId(), e);
-            update.put("quizDraft", List.of());
-            appendIssue(update, "课后习题生成失败：写题异常（" + e.getMessage() + "）");
-        }
+        List<String> judgeFeedback = state.<List<String>>value("judgeFeedback").orElse(List.of());
+        List<QuizQuestion> draft = callWithRetry("写题",
+                () -> quizPlanService.writeQuiz(plan, transcript, profile, judgeFeedback));
+        update.put("quizDraft", draft);
         return update;
     }
 
@@ -337,8 +366,8 @@ public class NotePipelineGraphRunner {
         // 判题 LLM 评审（携带转写节选，使"依据标注真实性"可核实，避免无据 REVISE）
         Verdict verdict = null;
         if (!kept.isEmpty()) {
-            verdict = contentReviewService.reviewQuiz(quizPlanService.questionsText(kept), profile,
-                    QuizAgentService.transcriptExcerpt(transcript));
+            verdict = callWithRetry("判题评审", () -> contentReviewService.reviewQuiz(
+                    quizPlanService.questionsText(kept), profile, QuizAgentService.transcriptExcerpt(transcript)));
             if (verdict.isRevise()) {
                 problems.addAll(verdict.getIssues());
             }
@@ -388,7 +417,8 @@ public class NotePipelineGraphRunner {
 
     private static void appendIssue(Map<String, Object> update, String issue) {
         // noteIssue 采用「覆盖写」：节点只附加自己的问题，已有问题由调用方视角在 state 中轮转保留
-        // 这里读取不可行（节点只拿 update），因此 writeQuiz/judgeQuiz 的失败问题以独立键由最后汇总合并
+        // 这里读取不可行（节点只拿 update），因此 judgeQuiz 的终局问题以独立键由最后汇总合并
+        // （writeQuiz/quizPlan 失败已改为重试后上抛，不再走到这里）
         update.put("quizIssue", issue);
     }
 }

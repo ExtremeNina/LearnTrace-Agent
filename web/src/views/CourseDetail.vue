@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   Download, ArrowLeft, CircleCheck, History, LoaderCircle, Pencil, Save, Send, X,
@@ -370,10 +370,44 @@ function formatSize(bytes: number | null | undefined): string {
   return Math.round(bytes / 1024 / 1024) + 'MB'
 }
 
-/** 笔记渲染：与笔记整理页同一管线（归一化 → Markdown → [mm:ss] 时间戳胶囊） */
-const noteHtml = computed(() => {
+/** 笔记分页：按顶级标题（## 段）切页（生成侧按章节分页产出，展示侧同构切分），每页独立走渲染管线 */
+const notePages = computed(() => {
   const note = data.value?.note
-  return note ? renderNoteHtml(note.content) : ''
+  if (!note?.content) {
+    return [] as { label: string; markdown: string }[]
+  }
+  const lines = note.content.split('\n')
+  const pages: { label: string; markdown: string }[] = []
+  let current: string[] = []
+  for (const line of lines) {
+    if (/^## /.test(line) && current.some((l) => l.trim())) {
+      pages.push({ label: current[0].replace(/^#\s*/, '').trim(), markdown: current.join('\n') })
+      current = []
+    }
+    current.push(line)
+  }
+  if (current.some((l) => l.trim())) {
+    pages.push({ label: current[0].replace(/^#\s*/, '').trim(), markdown: current.join('\n') })
+  }
+  return pages.map((page) => ({
+    label: page.label.replace(/^##\s*/, '') || '正文',
+    markdown: page.markdown,
+  }))
+})
+
+const notePageIndex = ref(0)
+
+watch(
+  () => data.value?.note?.content,
+  () => {
+    notePageIndex.value = 0
+  }
+)
+
+/** 当前页渲染：与笔记整理页同一管线（归一化 → Markdown → [mm:ss] 时间戳胶囊） */
+const noteHtml = computed(() => {
+  const page = notePages.value[notePageIndex.value]
+  return page ? renderNoteHtml(page.markdown) : ''
 })
 
 function onNoteClick(e: MouseEvent) {
@@ -918,6 +952,23 @@ const timelineTicks = computed(() => {
                   </MdSourceEditor>
                 </div>
                 <template v-else>
+                  <div
+                    v-if="notePages.length > 1"
+                    class="mb-3 flex flex-wrap items-center gap-1.5"
+                  >
+                    <button
+                      v-for="(page, idx) in notePages"
+                      :key="page.label"
+                      type="button"
+                      class="rounded-full border px-2.5 py-1 text-[12px] transition-all"
+                      :class="idx === notePageIndex
+                        ? 'border-primary bg-primary-soft font-medium text-primary'
+                        : 'border-gray-200 text-gray-600 hover:border-blue-300 hover:bg-blue-50'"
+                      @click="notePageIndex = idx"
+                    >
+                      第 {{ idx + 1 }} 页 · {{ page.label }}
+                    </button>
+                  </div>
                   <div class="note-view text-[14px] leading-7 text-ink" v-html="noteHtml" @click="onNoteClick"></div>
                   <p v-if="!data.note" class="rounded-xl border border-dashed border-line py-8 text-center text-[13px] text-ink-2">
                     AI 笔记生成中，完成后展示在这里
