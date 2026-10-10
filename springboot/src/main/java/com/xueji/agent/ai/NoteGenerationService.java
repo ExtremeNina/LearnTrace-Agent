@@ -108,13 +108,15 @@ public class NoteGenerationService {
                                                                 List<CourseTranscriptSegment> transcript,
                                                                 List<CourseFrame> frames, int durationSec,
                                                                 List<String> reviewFeedback) {
-        String markdown = normalizeTimestamps(renderNotePaged(course, document, sections, knowledgePoints,
-                transcript, durationSec, reviewFeedback));
+        String markdown = NoteTimestampCalibrator.calibrate(
+                normalizeTimestamps(renderNotePaged(course, document, sections, knowledgePoints,
+                        transcript, durationSec, reviewFeedback)), transcript);
         List<String> defects = NoteQualityChecker.check(markdown, transcript, durationSec);
         if (!defects.isEmpty()) {
             log.warn("AI 笔记质检未通过，带缺陷重生成一次, courseId={}, defects={}", course.getId(), defects);
-            markdown = normalizeTimestamps(generateFromDocument(course, document, sections, knowledgePoints,
-                    transcript, frames, durationSec, defects));
+            markdown = NoteTimestampCalibrator.calibrate(
+                    normalizeTimestamps(generateFromDocument(course, document, sections, knowledgePoints,
+                            transcript, frames, durationSec, defects)), transcript);
             defects = NoteQualityChecker.check(markdown, transcript, durationSec);
             if (!defects.isEmpty()) {
                 log.warn("AI 笔记重生成后质检仍未通过，降级入库, courseId={}, defects={}", course.getId(), defects);
