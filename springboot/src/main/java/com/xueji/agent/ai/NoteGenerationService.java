@@ -472,9 +472,9 @@ public class NoteGenerationService {
         return sb.toString();
     }
 
-    /** 时间戳归一化：秒数形式 [320s] / [320 秒] 与时分秒形式 [1:15:30]（B26 反馈 bug 修复） */
+    /** 时间戳归一化：秒数形式 [320s] / [320 秒] / 区间 [1120-1400s]（取起点）与时分秒形式 [1:15:30]（B26 反馈 bug 修复） */
     private static final java.util.regex.Pattern SECONDS_TS =
-            java.util.regex.Pattern.compile("\\[(\\d{1,5})\\s*(?:s|S|秒)\\]");
+            java.util.regex.Pattern.compile("\\[(\\d{1,5})(?:\\s*[-~—]\\s*\\d{1,5})?\\s*(?:s|S|秒)\\]");
     private static final java.util.regex.Pattern HMS_TS =
             java.util.regex.Pattern.compile("\\[(\\d{1,2}):(\\d{1,2}):(\\d{1,2})\\]");
     /** 同一段落内紧邻的相同 [mm:ss]（中间仅空白/分隔符）——转写粒度坍缩时渲染 LLM 会成片复制同一时间戳 */

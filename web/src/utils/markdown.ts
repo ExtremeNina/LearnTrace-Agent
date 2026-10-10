@@ -57,10 +57,43 @@ export function renderNoteHtml(md: string): string {
     .replace(/\r\n/g, '\n')
     .replace(/(?<=\S)\n(#{1,6} )/g, '\n\n$1')
     .replace(/(?<=\S)\n(- )/g, '\n\n$1')
-  return normalized
+  return escapeBareTildes(normalizeSecondTimestamps(normalized))
     .split(/\n{2,}/)
     .map((block) => renderNoteBlock(block.trim()))
     .join('\n')
+}
+
+/** 秒数转 mm:ss / h:mm:ss（与 CourseDetail 的 formatTs 同规则） */
+function formatSeconds(total: number): string {
+  const h = Math.floor(total / 3600)
+  const m = Math.floor((total % 3600) / 60)
+  const s = Math.floor(total % 60)
+  const mm = String(m).padStart(2, '0')
+  const ss = String(s).padStart(2, '0')
+  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`
+}
+
+/**
+ * 秒数时间戳归一化：存量笔记中 LLM 偶发输出 [320s]、[1120-1400s] 这类秒数（含区间）写法，
+ * 后端归一化正则未覆盖导致无法转胶囊跳转；此处兜底转为 [mm:ss]（区间取起点），复用现有胶囊替换管线
+ */
+function normalizeSecondTimestamps(md: string): string {
+  return md.replace(
+    /\[(\d{1,5})(?:\s*[-~—]\s*\d{1,5})?\s*(?:s|S|秒)\]/g,
+    (_, sec: string) => `[${formatSeconds(Number(sec))}]`
+  )
+}
+
+/**
+ * 裸 ~ 转全角 ～：LLM 常用 ~ 表示数值/地址区间（如 0000~07FF），
+ * 成对出现会被 marked 的 GFM 规则误渲染为删除线；AI 笔记语义下不应有删除线，统一转义。
+ * 跳过行内代码与代码块，避免改写代码内容
+ */
+function escapeBareTildes(md: string): string {
+  return md
+    .split(/(```[\s\S]*?(?:```|$)|`[^`\n]*`)/g)
+    .map((seg, i) => (i % 2 === 1 ? seg : seg.replace(/~/g, '～')))
+    .join('')
 }
 
 /** 单块渲染：表格块跳过防粘连规则，其余块走 renderMarkdown；时间戳统一转可点击胶囊 */

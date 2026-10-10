@@ -3,7 +3,7 @@ import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from
 import { useRoute, useRouter } from 'vue-router'
 import {
   Download, ArrowLeft, CircleCheck, History, LoaderCircle, Pencil, Save, Send, X,
-  Bold, Italic, Underline, Clock,
+  Bold, Italic, Underline, Clock, ChevronDown,
 } from 'lucide-vue-next'
 import { appendCourseQuiz, getCourseDetail, quizToQuestions, quizToReview, regenerateCourseContent, updateCourse, reportCourseProgress } from '../api/course'
 import { useToastStore } from '../stores/toast'
@@ -396,6 +396,19 @@ const notePages = computed(() => {
 })
 
 const notePageIndex = ref(0)
+
+/** 知识点折叠面板展开态（默认收起，避免标签过多挤压正文） */
+const knowledgeExpanded = ref(false)
+/** 笔记滚动容器：切页后滚回顶部 */
+const noteScrollRef = ref<HTMLElement | null>(null)
+
+/** 切页后滚回顶部：切页属定位跳转，非连续阅读 */
+function goNotePage(idx: number) {
+  notePageIndex.value = idx
+  nextTick(() => {
+    noteScrollRef.value?.scrollTo({ top: 0 })
+  })
+}
 
 watch(
   () => data.value?.note?.content,
@@ -892,7 +905,7 @@ const timelineTicks = computed(() => {
               </div>
             </div>
 
-            <div v-else class="min-h-0 flex-1 overflow-y-auto p-3">
+            <div v-else ref="noteScrollRef" class="min-h-0 flex-1 overflow-y-auto p-3">
               <!-- AI 笔记 -->
               <template v-if="activeTab === 'note'">
                 <!-- B26 阶段 2：内容结构（章节导航 + 知识点） -->
@@ -918,16 +931,31 @@ const timelineTicks = computed(() => {
                     <span class="truncate">{{ s.title }}</span>
                   </button>
                 </div>
-                <div v-if="data.knowledgePoints?.length" class="mb-3 flex flex-wrap gap-1.5">
+                <!-- 知识点折叠面板：默认收起，展开后内容过多时内部滚动，避免挤压正文 -->
+                <div v-if="data.knowledgePoints?.length" class="mb-3 rounded-xl bg-panel px-3 py-2.5">
                   <button
-                    v-for="p in data.knowledgePoints"
-                    :key="p.id"
-                    class="rounded-full bg-panel px-2.5 py-1 text-[11px] text-ink-2 transition-colors hover:text-primary"
-                    :title="p.detail || ''"
-                    @click="p.timeSec != null && seekTo(p.timeSec)"
+                    type="button"
+                    class="flex w-full items-center justify-between text-left"
+                    @click="knowledgeExpanded = !knowledgeExpanded"
                   >
-                    {{ p.name }}<span v-if="p.important === 1" class="text-amber-500"> · 重点</span><span v-if="p.errorProne === 1" class="text-red-400"> · 易错</span>
+                    <span class="text-[12px] font-semibold text-ink">重点知识点（{{ data.knowledgePoints.length }} 个）</span>
+                    <ChevronDown
+                      :size="14"
+                      class="shrink-0 text-ink-2 transition-transform"
+                      :class="knowledgeExpanded ? '' : '-rotate-90'"
+                    />
                   </button>
+                  <div v-show="knowledgeExpanded" class="mt-2 flex max-h-48 flex-wrap gap-1.5 overflow-y-auto">
+                    <button
+                      v-for="p in data.knowledgePoints"
+                      :key="p.id"
+                      class="rounded-full bg-surface px-2.5 py-1 text-[11px] text-ink-2 transition-colors hover:text-primary"
+                      :title="p.detail || ''"
+                      @click="p.timeSec != null && seekTo(p.timeSec)"
+                    >
+                      {{ p.name }}<span v-if="p.important === 1" class="text-amber-500"> · 重点</span><span v-if="p.errorProne === 1" class="text-red-400"> · 易错</span>
+                    </button>
+                  </div>
                 </div>
                 <div v-if="noteEditing" class="px-1 pb-3">
                   <p v-if="noteError" class="mb-2 text-[12px] text-red-600">{{ noteError }}</p>
@@ -952,22 +980,27 @@ const timelineTicks = computed(() => {
                   </MdSourceEditor>
                 </div>
                 <template v-else>
-                  <div
-                    v-if="notePages.length > 1"
-                    class="mb-3 flex flex-wrap items-center gap-1.5"
-                  >
-                    <button
-                      v-for="(page, idx) in notePages"
-                      :key="page.label"
-                      type="button"
-                      class="rounded-full border px-2.5 py-1 text-[12px] transition-all"
-                      :class="idx === notePageIndex
-                        ? 'border-primary bg-primary-soft font-medium text-primary'
-                        : 'border-gray-200 text-gray-600 hover:border-blue-300 hover:bg-blue-50'"
-                      @click="notePageIndex = idx"
-                    >
-                      第 {{ idx + 1 }} 页 · {{ page.label }}
-                    </button>
+                  <!-- 分页：切换式（第 X / N 页 + 上一页/下一页），每次只显示当前页 -->
+                  <div v-if="notePages.length > 1" class="mb-3 flex items-center gap-3 text-[13px] text-ink-2">
+                    <span class="truncate">第 {{ notePageIndex + 1 }} / {{ notePages.length }} 页 · {{ notePages[notePageIndex].label }}</span>
+                    <div class="flex shrink-0 items-center gap-2">
+                      <button
+                        type="button"
+                        class="rounded-lg border border-line px-3 py-1.5 text-[12px] transition-colors hover:bg-line/60 disabled:opacity-40"
+                        :disabled="notePageIndex <= 0"
+                        @click="goNotePage(notePageIndex - 1)"
+                      >
+                        上一页
+                      </button>
+                      <button
+                        type="button"
+                        class="rounded-lg border border-line px-3 py-1.5 text-[12px] transition-colors hover:bg-line/60 disabled:opacity-40"
+                        :disabled="notePageIndex >= notePages.length - 1"
+                        @click="goNotePage(notePageIndex + 1)"
+                      >
+                        下一页
+                      </button>
+                    </div>
                   </div>
                   <div class="note-view text-[14px] leading-7 text-ink" v-html="noteHtml" @click="onNoteClick"></div>
                   <p v-if="!data.note" class="rounded-xl border border-dashed border-line py-8 text-center text-[13px] text-ink-2">
