@@ -127,7 +127,7 @@ LJ-Agent/
 ## 测试
 
 ```bash
-cd springboot && mvn test   # 265 个单元测试（41 个测试类，含 FFmpeg 真实调用用例）
+cd springboot && mvn test   # 310 个单元测试（50 个测试类，含 FFmpeg 真实调用用例）
 cd web && npm run build     # 前端类型检查（vue-tsc）与构建
 node web/test-profile-smoke.mjs        # 个人页面端到端冒烟（需后端已启动）
 node web/test-ws.mjs                   # WebSocket 对话冒烟
