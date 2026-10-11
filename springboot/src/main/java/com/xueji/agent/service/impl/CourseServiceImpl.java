@@ -75,6 +75,9 @@ public class CourseServiceImpl implements CourseService {
     private com.xueji.agent.ai.NotePipelineGraphRunner notePipelineGraphRunner;
 
     @Resource
+    private com.xueji.agent.ai.NoteGenerationService noteGenerationService;
+
+    @Resource
     private com.xueji.agent.service.CourseQuizService courseQuizService;
 
     @Resource
@@ -119,7 +122,7 @@ public class CourseServiceImpl implements CourseService {
             throw new BusinessException("视频保存失败，请重试");
         }
 
-        Course course = uploadFromLocal(userId, temp, derivedTitle, expectations);
+        Course course = uploadFromLocal(userId, temp, derivedTitle, expectations, null, null, null);
         // 页面上传路径回填学科与笔记模型（对话路径两者走默认）
         course.setSubject(subject == null || subject.isBlank() ? null : subject.trim())
                 .setModelConfigId(modelConfigId);
@@ -128,11 +131,15 @@ public class CourseServiceImpl implements CourseService {
     }
 
     @Override
-    public Course uploadFromLocal(Long userId, Path temp, String title, String expectations) {
+    public Course uploadFromLocal(Long userId, Path temp, String title, String expectations,
+                                  String noteStyle, String learnerGoal, String learnerLevel) {
         Course course = new Course()
                 .setUserId(userId)
                 .setTitle(title)
                 .setExpectations(expectations == null || expectations.isBlank() ? null : expectations.trim())
+                .setNoteStyle(noteStyle == null || noteStyle.isBlank() ? null : noteStyle.trim())
+                .setLearnerGoal(learnerGoal == null || learnerGoal.isBlank() ? null : learnerGoal.trim())
+                .setLearnerLevel(learnerLevel == null || learnerLevel.isBlank() ? null : learnerLevel.trim())
                 .setStatus(CourseStatus.PENDING)
                 .setCreatedAt(LocalDateTime.now())
                 .setUpdatedAt(LocalDateTime.now());
@@ -230,6 +237,45 @@ public class CourseServiceImpl implements CourseService {
                                 .setUpdatedAt(LocalDateTime.now()));
                     } catch (Exception ex) {
                         log.warn("重生成失败原因写回课程失败, courseId={}", courseId, ex);
+                    }
+                }
+            }
+        });
+    }
+
+    @Override
+    public void renderNoteOnly(Long userId, Long courseId) {
+        Course course = checkOwnership(userId, courseId);
+        if (!CourseStatus.SUCCESS.equals(course.getStatus())) {
+            throw new BusinessException("网课处理完成后才能重新生成笔记");
+        }
+        ContentDocument document = contentDocumentService.findByCourse(courseId);
+        if (document == null) {
+            throw new BusinessException("该课程还没有内容理解结果，请先重新生成内容");
+        }
+        List<ContentSection> sections = contentDocumentService.listSections(document.getId());
+        List<ContentKnowledgePoint> points = contentDocumentService.listKnowledgePoints(document.getId());
+        List<CourseTranscriptSegment> transcript = transcriptMapper.selectList(
+                new QueryWrapper<CourseTranscriptSegment>().eq("course_id", courseId).orderByAsc("sort"));
+        List<CourseFrame> frames = frameMapper.selectList(
+                new QueryWrapper<CourseFrame>().eq("course_id", courseId).orderByAsc("time_sec"));
+        int durationSec = course.getDuration() == null ? 0 : course.getDuration();
+        final Course courseRef = course;
+        courseExecutor.execute(() -> {
+            try {
+                // 只跑渲染与质检（笔记风格 / 学习者画像 / 特别要求随 course 生效），理解结构与课后习题不动
+                noteGenerationService.generateAndSaveNoteFromDocument(courseRef, document, sections, points,
+                        transcript, frames, durationSec, List.of());
+                log.info("课程笔记已重新渲染, courseId={}", courseId);
+            } catch (Exception e) {
+                log.warn("课程笔记重渲染失败, courseId={}", courseId, e);
+                // 余额不足等模型服务故障：原因写回课程 error_msg（异步执行，状态语义不变，仅通知）
+                if (ModelServiceErrors.isBalanceInsufficient(e)) {
+                    try {
+                        courseMapper.updateById(courseRef.setErrorMsg(ModelServiceErrors.BALANCE_MESSAGE)
+                                .setUpdatedAt(LocalDateTime.now()));
+                    } catch (Exception ex) {
+                        log.warn("重渲染失败原因写回课程失败, courseId={}", courseId, ex);
                     }
                 }
             }

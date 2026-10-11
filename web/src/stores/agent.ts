@@ -123,15 +123,16 @@ export const useAgentStore = defineStore('agent', () => {
           link: typeof payload.link === 'string' ? payload.link : undefined,
         }
       }
-      // 意图确认大卡片（B27）：历史渲染（实时经 COMPLETE.payload 透出，同构）
-      if (payload?.intentCard && typeof payload.intentCard === 'object') {
-        const card = payload.intentCard as { message?: string; questions?: unknown }
-        if (Array.isArray(card.questions)) {
+      // 意图确认大卡片（B27 / 2026-10-11 固定卡）：后端 payload 为扁平 {message, questions} 结构（与实时 COMPLETE 一致）
+      if (Array.isArray(payload?.questions)) {
+        const card = payload as { message?: unknown; questions: { title?: string; options?: string[] }[] }
+        const questions = card.questions
+          .filter((q) => q && typeof q.title === 'string' && Array.isArray(q.options))
+          .map((q) => ({ title: q.title!, options: q.options! }))
+        if (questions.length > 0) {
           item.intentCard = {
             message: typeof card.message === 'string' ? card.message : '',
-            questions: (card.questions as { title?: string; options?: string[] }[])
-              .filter((q) => q && typeof q.title === 'string' && Array.isArray(q.options))
-              .map((q) => ({ title: q.title!, options: q.options! })),
+            questions,
           }
         }
       }

@@ -13,7 +13,12 @@ WS 流式对话（DeepSeek 流式 + 工具调用）、回合互斥、消息双�
 **视频上传分流（B11，2026-10-05 统一入口；B27 意图 Agent 接管）**
 - AI 对话是唯一视频上传入口（视频管理页仅管理：列表 / 进度 / 播放 / 删除 / 重试）
 - LLM 按 VIDEO_PROMPT 意图分流：≤30min 默认调 `TranscribeVideoTool` 轻量转写（话术明示默认方针）；「做成课程 / 系统学习」或 >30min 调 `CreateCourseFromVideoTool` → `CourseService.uploadFromLocal` 建课走完整流水线
-- **意图确认 Agent（B27，2026-10-08）**：上传视频后的回合由 `IntentAgentService` 接管——LLM 按用户输入定制提问（学段 / 目标 / 偏好画像落档 user_profile，pending 存 Redis），意图明确时不再出流程选择卡直接触发转写或建课；提问以 `intentCard` 大卡片结构随 `COMPLETE.payload` 透出（ChatPanel / 首页 AI 面板渲染，历史消息同构），选项点选即发送；两级降级：提问失败用模板卡、解析失败按时长默认意图；WS 断线重连后复位 streaming 并重新拉取会话消息
+- **意图确认 Agent（B27 立项 / 2026-10-11 固定卡改造）**：上传视频后的回合由 `IntentAgentService` 接管——LLM 只判意图不出卡（`INTENT_JUDGE_PROMPT`，理解「转写成课程」类混合表述），按判定结果出对应的**静态卡**（题目与选项为代码固定常量）：
+  - `TRANSCRIBE`（明确轻量转写）→ 直接 `transcriptionService.submit`，不出卡、不写 pending；
+  - `COURSE`（明确做成课程 / >30min）→ **三问卡**（学习目的：期末备考/系统学习/查漏补缺/兴趣了解；知识水平：零基础入门/有一定基础/进阶提升；讲解形式：**跟学型/考点速查型**），pending `stage=PROFILE`；
+  - `UNCLEAR` → 单题**处理方式卡**（轻量转写 / 做成课程），pending `stage=ROUTE`；
+  - 回合2 `resolveAndExecute` 按 stage 分派：ROUTE 确定性关键词分派（含「课程」→ 三问卡、含「转写/提问/总结」→ 转写、两可按时长默认）；PROFILE LLM 解析一次（`INTENT_RESOLVE_PROMPT` 固定三问口径，兼容自定义补充）→ 画像落档（goal→goal、水平→**profile.level（列已存在首次接线）**、学段从自由文本抽取）→ `createCourse`（**风格 + 目的/水平随课程落库** note_style/learner_goal/learner_level）。
+  - 每题支持**自定义回答**：IntentCard 选项下方输入框，作答规则「选项、文本二选一或并存」，确认拼接 `题目：选项（补充：文本）`；卡片以 `intentCard` 结构随 `COMPLETE.payload` 透出（扁平 `{message, questions}`，历史渲染同构——历史分支已修复为扁平解析）；降级链：判定失败按时长默认（>30min 三问卡 / 否则处理方式卡）、三问解析失败默认跟学型照常建课、LLM 余额不足统一充值文案；WS 断线重连后复位 streaming 并重新拉取会话消息
 - 标题提取：上传临时文件名（`xj-chat-video-<时间戳>-` / UUID 前缀 / 尾部时间戳序号）剥离，course.title 兜底取原始文件名基名（IntentAgentService 与 CreateCourseFromVideoTool 各一份同规则实现，均有单测）
 - 课程流水线进度回流：`CreateCourseFromVideoTool` 创建 `course_task` 占位消息（message.course_id 关联），CoursePipelineService 各阶段更新 payload 并推 `ChatEvent.COURSE` 事件，完成附 `/courses/{id}` 链接（页面路径上传无占位消息，自动跳过推送）
 - 循环依赖：createCourseFromVideoTool 的 CourseService 参数标 `@Lazy`（chatClient → 工具 → CourseService → AiModelService → chatClient）
@@ -49,6 +54,6 @@ WS 流式对话（DeepSeek 流式 + 工具调用）、回合互斥、消息双�
 
 ## 测试方法
 - 单元（Mockito）：ConversationServiceImplTest——默认标题 / 保留给定标题 / 越权 404 / 消息列表归属 / 删除连带清理消息与记忆 / 30 天清理只删过期 / 轮次计数越权
-- 单元：RedisChatMemoryRepositoryTest（JSON 互转 / 键约定 / 缓存缺失自 MySQL 重建并回填 / 末尾未配对用户消息不进记忆 / 非数字会话 ID 跳过重建 / 重建失败降级 / 查询条件断言）、ChatEventTest（事件结构）、IntentAgentServiceTest（意图解析 JSON 容错：剥围栏 / 找大括号 / 大小写归一 / 非法输出；标题提取剥离规则）
+- 单元：RedisChatMemoryRepositoryTest（JSON 互转 / 键约定 / 缓存缺失自 MySQL 重建并回填 / 末尾未配对用户消息不进记忆 / 非数字会话 ID 跳过重建 / 重建失败降级 / 查询条件断言）、ChatEventTest（事件结构）、IntentAgentServiceTest（意图判定解析三态与容错 / 三问解析与空输出拒绝 / 风格归一 mapStyle / 静态卡结构 / ROUTE 确定性分派与两可按时长默认 / PROFILE 解析失败默认跟学型建课；标题提取剥离规则）
 - 手动全链路：web/test-ws.mjs（WS 连接、发送、断线重连）；页面实测错误事件展示（CONVERSATION_LIMIT 文案）
 - 启动冒烟：登录 + /courses + /notes/tree

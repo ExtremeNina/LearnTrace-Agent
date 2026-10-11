@@ -92,6 +92,14 @@ public class CourseController {
         return Result.ok("已开始重新生成内容，稍后刷新查看");
     }
 
+    /** 只重新渲染 AI 笔记（理解结构 / 出题不动，笔记风格与学习者画像随课程生效；2026-10-11，异步） */
+    @PostMapping("/{id}/note")
+    public Result<Void> renderNote(@PathVariable Long id) {
+        Long userId = UserUtils.getCurrentLoginId();
+        courseService.renderNoteOnly(userId, id);
+        return Result.ok("已开始重新生成笔记，稍后刷新查看");
+    }
+
     /** 追加课后习题（B26 习题产物化，异步，带已有题防重复） */
     @PostMapping("/{id}/quiz")
     public Result<Void> appendQuiz(@PathVariable Long id,

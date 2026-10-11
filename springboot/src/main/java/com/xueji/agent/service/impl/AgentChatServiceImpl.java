@@ -110,18 +110,19 @@ public class AgentChatServiceImpl implements AgentChatService {
             // 会话仍是默认标题时，用首条用户消息生成可区分的标题（重名自动加序号）
             conversationService.applyTitleFromFirstMessage(userId, conversationId, content);
 
-            // 意图 Agent 分流（B27，独立于主 LLM）：
-            // ① 带视频回合 → askIntent 按用户输入定制提问 + 意图选项卡片，不走主 LLM 工具链
-            // ② 文本回合且有 pending 意图 → resolveAndExecute 解析回答、画像落档并直接触发转写/建课
+            // 意图 Agent 分流（B27 / 2026-10-11 固定卡改造）：
+            // ① 带视频回合 → askIntent LLM 判定意图，直接转写或出对应卡片，不走主 LLM 工具链
+            // ② 文本回合且有 pending 意图 → resolveAndExecute 按 stage 分派（处理方式卡分派 / 三问解析落档建课）
             if (hasVideo) {
                 com.xueji.agent.ai.IntentAgentService.AskResult ask =
                         intentAgentService.askIntent(userId, conversationId, content, videoTempPath, videoDurationSec);
                 return staticReply(turnId, conversationId, ask.text(), ask.intentCardJson());
             }
             if (!hasImage && StringUtils.hasText(content) && intentAgentService.hasPending(conversationId)) {
-                String reply = intentAgentService.resolveAndExecute(userId, conversationId, content);
+                com.xueji.agent.ai.IntentAgentService.AskResult reply =
+                        intentAgentService.resolveAndExecute(userId, conversationId, content);
                 if (reply != null) {
-                    return staticReply(turnId, conversationId, reply);
+                    return staticReply(turnId, conversationId, reply.text(), reply.intentCardJson());
                 }
             }
 

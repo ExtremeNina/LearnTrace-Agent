@@ -25,9 +25,11 @@ public interface CourseService {
     /**
      * 从本地临时视频文件创建课程（B11 对话上传分流）：
      * 文件已由 /upload/chat-video 暂存（对话路径），直接建课（PENDING）并投递 MQ。
-     * title 缺省从文件名推导，expectations 可空，笔记模型走系统默认
+     * title 缺省从文件名推导，expectations 可空，笔记模型走系统默认；
+     * noteStyle/learnerGoal/learnerLevel 为意图三问卡采集的笔记风格与学习者画像（可空，FOLLOW/EXAM_SPRINT）
      */
-    Course uploadFromLocal(Long userId, java.nio.file.Path temp, String title, String expectations);
+    Course uploadFromLocal(Long userId, java.nio.file.Path temp, String title, String expectations,
+                           String noteStyle, String learnerGoal, String learnerLevel);
 
     /**
      * 用户的网课列表（按创建时间倒序）
@@ -53,6 +55,12 @@ public interface CourseService {
      * 重新生成内容理解（ContentDocument）与 AI 笔记（B26 阶段 2）：异步执行，仅处理完成的课程可触发
      */
     void regenerateContent(Long userId, Long courseId);
+
+    /**
+     * 只重新渲染 AI 笔记（2026-10-11：理解结构 / 转写 / 出题不动，笔记风格与学习者画像随课程生效）：
+     * 异步执行，仅处理完成且已有内容理解结果的课程可触发
+     */
+    void renderNoteOnly(Long userId, Long courseId);
 
     /**
      * 上报播放进度（播放器定时调用）：记录上次播放位置 / 百分比 / 最近学习时间，

@@ -27,17 +27,21 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 /**
- * 意图 Agent（B27，独立于主对话 LLM）：接管视频回合的两步流程——
+ * 意图 Agent（B27 立项 / 2026-10-11 固定卡改造）：接管视频回合——
  *
  * <pre>
- * 回合1（带视频）askIntent：用户文本 + 时长 + 现有画像 → 按输入定制提问 + 意图选项卡片（[chip:] 标记，前端渲染可点击）；
- *                          并把视频参数写入 Redis pending（xj_intent_pending:{conversationId}，TTL 1h）
- * 回合2（用户回答）resolveAndExecute：解析回答 → {意图, 学段, 目标, 偏好} → 画像补全落档（后续课程流水线 graph
- *                          读到的即本次画像）→ 直接触发转写 / 建课（视频取 pending，无需重传）→ 确认话术
+ * 回合1（带视频）askIntent：LLM 只判意图不出卡（INTENT_JUDGE_PROMPT，理解「转写成课程」类混合表述）——
+ *   TRANSCRIBE → 直接提交轻量转写（不出卡、不写 pending）；
+ *   COURSE → 静态三问卡（学习目的 / 知识水平 / 讲解形式，前端每题可自定义回答），pending.stage=PROFILE；
+ *   UNCLEAR → 静态单题处理方式卡（轻量转写 / 做成课程），pending.stage=ROUTE。
+ *   视频参数写 Redis pending（xj_intent_pending:{conversationId}，TTL 1h）
+ * 回合2（用户回答）resolveAndExecute 按 stage 分派：
+ *   ROUTE：确定性分派——「做成课程」→ 出三问卡（stage=PROFILE）；「转写」→ 直接转写；分派不了按时长默认
+ *   PROFILE：LLM 解析三问回答 → 画像落档（goal/level，学段从自由文本抽取）→ 建课（风格/目的/水平随课程落库）
  * </pre>
  *
- * LLM 调用失败两级降级：提问降级为模板确认卡；解析失败按视频时长给默认意图（≤30min 转写 / 否则建课）。
- * 前端零改动：[chip:] 渲染与点击、转写进度、课程任务卡均复用现有链路。
+ * 降级：判定 LLM 失败按时长默认（>30min 三问卡建课路径 / 否则处理方式卡）；
+ * 三问解析失败默认跟学型照常建课；LLM 调用遇余额不足统一返回充值文案。
  */
 @Slf4j
 @Service
@@ -46,6 +50,13 @@ public class IntentAgentService {
     private static final String PENDING_KEY_PREFIX = "xj_intent_pending:";
     private static final long PENDING_TTL_SEC = 3600;
     private static final int MAX_TRANSCRIBE_SEC = TranscriptionService.MAX_TRANSCRIBE_SEC;
+
+    /** 笔记风格常量（course.note_style 落库值，与 NoteGenerationService 渲染变体对应；唯一定义在 AgentPrompts） */
+    public static final String STYLE_FOLLOW = AgentPrompts.NOTE_STYLE_FOLLOW;
+    public static final String STYLE_EXAM_SPRINT = AgentPrompts.NOTE_STYLE_EXAM_SPRINT;
+
+    private static final String STAGE_ROUTE = "ROUTE";
+    private static final String STAGE_PROFILE = "PROFILE";
 
     @Resource
     private ChatClient generationChatClient;
@@ -68,148 +79,186 @@ public class IntentAgentService {
     @Resource
     private RedisUtils redisUtils;
 
-    /** 待确认意图的视频参数 */
-    public record PendingVideo(String videoTempPath, Integer durationSec) {
+    /** 待确认意图的视频参数（stage：ROUTE=处理方式卡已出 / PROFILE=三问卡已出） */
+    public record PendingVideo(String videoTempPath, Integer durationSec, String stage) {
     }
 
-    /** 意图解析结果（字段包级访问，同包单测可读） */
-    public static class IntentResult {
-        String intent;
-        String gradeLevel;
-        String goal;
-        String note;
-        String reply;
+    /** 三问解析结果（公开静态便于单测） */
+    public record ProfileAnswer(String goal, String level, String style, String gradeLevel, String reply) {
     }
+
+    /** 大卡片问题项（title 与 options 为前后端约定的固定文案） */
+    public record CardQuestion(String title, List<String> options) {
+    }
+
+    /** 三问卡题目与选项（讲解形式对应笔记风格渲染变体） */
+    public static final List<CardQuestion> PROFILE_QUESTIONS = List.of(
+            new CardQuestion("学习目的", List.of("期末备考", "系统学习", "查漏补缺", "兴趣了解")),
+            new CardQuestion("知识水平", List.of("零基础入门", "有一定基础", "进阶提升")),
+            new CardQuestion("讲解形式", List.of("跟学型", "考点速查型")));
 
     /** 是否存在待确认意图（AgentChatServiceImpl 回合分流的判定依据） */
     public boolean hasPending(Long conversationId) {
         return Boolean.TRUE.equals(redisUtils.doesItExist(PENDING_KEY_PREFIX + conversationId));
     }
 
-    /** 回合1 产出：text = 确认话术；intentCardJson = 大卡片结构（前端消息 payload 渲染，历史可见） */
+    /** 回合产出：text = 确认话术；intentCardJson = 大卡片结构（前端消息 payload 渲染，历史可见） */
     public record AskResult(String text, String intentCardJson) {
     }
 
-    /** 大卡片问题项 */
-    public record CardQuestion(String title, java.util.List<String> options) {
-    }
-
     /**
-     * 回合1：按用户输入定制提问 + 意图确认大卡片；成功/降级都写入 pending。
+     * 回合1：LLM 判定意图 → 直接转写 / 三问卡 / 处理方式卡。
      */
     public AskResult askIntent(Long userId, Long conversationId, String userText, String videoTempPath, Integer durationSec) {
-        AskResult result;
+        int duration = durationSec == null ? 0 : durationSec;
+        String intent;
         try {
-            UserProfile profile = profileService.getByUser(userId);
             String text = generationChatClient.prompt()
-                    .system(AgentPrompts.INTENT_ASK_PROMPT)
-                    .user(buildAskPrompt(userText, durationSec, profile))
+                    .system(AgentPrompts.INTENT_JUDGE_PROMPT)
+                    .user(buildJudgePrompt(userText, duration))
                     .call()
                     .content();
-            result = parseAskCard(text);
-            if (result == null) {
-                throw new IllegalStateException("意图确认卡片输出异常");
-            }
+            intent = parseJudgeIntent(text);
         } catch (Exception e) {
-            // 余额不足：不用模板卡（模板会引导用户继续走必然失败的流程），直接告知充值
+            // 余额不足：写 pending（stage=ROUTE，充值后用户回复可继续），返回充值文案
             if (ModelServiceErrors.isBalanceInsufficient(e)) {
-                log.warn("意图 Agent 提问遇到模型服务余额不足, conversationId={}", conversationId);
-                rememberPending(conversationId, videoTempPath, durationSec);
+                log.warn("意图判定遇到模型服务余额不足, conversationId={}", conversationId);
+                rememberPending(conversationId, videoTempPath, durationSec, STAGE_ROUTE);
                 return new AskResult(ModelServiceErrors.BALANCE_MESSAGE, null);
             }
-            log.warn("意图 Agent 提问失败，降级模板确认卡, conversationId={}", conversationId, e);
-            result = fallbackAsk(durationSec);
+            log.warn("意图判定失败，按时长降级, conversationId={}", conversationId, e);
+            intent = null;
         }
-        rememberPending(conversationId, videoTempPath, durationSec);
-        return result;
+        if (intent == null || intent.isBlank()) {
+            // 判定缺失降级：>30min 只能走建课路径，否则出处理方式卡问一轮
+            intent = duration > MAX_TRANSCRIBE_SEC ? "COURSE" : "UNCLEAR";
+        }
+        return switch (intent.trim().toUpperCase()) {
+            case "TRANSCRIBE" -> startTranscription(userId, conversationId, videoTempPath, duration);
+            case "COURSE" -> {
+                rememberPending(conversationId, videoTempPath, durationSec, STAGE_PROFILE);
+                yield profileCard(duration);
+            }
+            default -> {
+                rememberPending(conversationId, videoTempPath, durationSec, STAGE_ROUTE);
+                yield routeCard(duration);
+            }
+        };
     }
 
     /**
-     * 回合2：解析用户回答 → 画像落档 → 按意图执行。无 pending 时返回 null（交回主对话流程）。
-     * 返回 assistant 回复文本
+     * 回合2：按 pending.stage 分派。无 pending 时返回 null（交回主对话流程）。
      */
-    public String resolveAndExecute(Long userId, Long conversationId, String userText) {
+    public AskResult resolveAndExecute(Long userId, Long conversationId, String userText) {
         PendingVideo pending = readPending(conversationId);
         if (pending == null) {
             return null;
         }
         clearPending(conversationId);
         int durationSec = pending.durationSec() == null ? 0 : pending.durationSec();
+        if (STAGE_ROUTE.equals(pending.stage())) {
+            return resolveRoute(userId, conversationId, userText, pending, durationSec);
+        }
+        return resolveProfile(userId, conversationId, userText, pending, durationSec);
+    }
+
+    // ---- ROUTE 阶段：处理方式卡确定性分派 ----
+
+    /** 处理方式卡回答分派：含「课程」走三问卡、含「转写/提问/总结」直接转写、两可按时长默认（公开静态便于单测） */
+    public AskResult resolveRoute(Long userId, Long conversationId, String userText, PendingVideo pending, int durationSec) {
+        String text = userText == null ? "" : userText;
+        boolean course = text.contains("课程");
+        boolean transcribe = text.contains("转写") || text.contains("提问") || text.contains("总结");
+        if (course == transcribe) {
+            // 都命中或都没命中（含「转写成课程」类混合表述落在自定义文本里）：按时长默认
+            course = durationSec > MAX_TRANSCRIBE_SEC;
+        }
+        if (!course) {
+            return startTranscription(userId, conversationId, pending.videoTempPath(), durationSec);
+        }
+        rememberPending(conversationId, pending.videoTempPath(), pending.durationSec(), STAGE_PROFILE);
+        return profileCard(durationSec);
+    }
+
+    // ---- PROFILE 阶段：三问解析 → 画像落档 → 建课 ----
+
+    /** 包级可见：PROFILE 阶段分派（同包单测直接调用） */
+    AskResult resolveProfile(Long userId, Long conversationId, String userText,
+                             PendingVideo pending, int durationSec) {
+        String style = STYLE_FOLLOW;
+        String goal = null;
+        String level = null;
+        String gradeLevel = null;
+        String reply = null;
         try {
             UserProfile profile = profileService.getByUser(userId);
             String text = generationChatClient.prompt()
                     .system(AgentPrompts.INTENT_RESOLVE_PROMPT)
-                    .user(buildResolvePrompt(userText, durationSec, profile))
+                    .user(buildResolvePrompt(userText))
                     .call()
                     .content();
-            IntentResult result = parseIntent(text);
-            if (result == null) {
-                throw new IllegalStateException("意图解析输出异常");
+            ProfileAnswer answer = parseProfileAnswer(text);
+            if (answer == null) {
+                throw new IllegalStateException("三问解析输出异常");
             }
-            saveProfilePatch(userId, profile, result);
-            return executeIntent(userId, conversationId, userText, result, pending, durationSec);
+            goal = answer.goal();
+            level = answer.level();
+            style = mapStyle(answer.style());
+            gradeLevel = answer.gradeLevel();
+            reply = answer.reply();
         } catch (Exception e) {
-            // 余额不足：不执行默认意图（建课流水线会因同样原因失败），直接告知充值
+            // 余额不足：不执行建课（流水线会因同样原因失败），告知充值
             if (ModelServiceErrors.isBalanceInsufficient(e)) {
-                log.warn("意图解析遇到模型服务余额不足, conversationId={}", conversationId);
-                return ModelServiceErrors.BALANCE_MESSAGE;
+                log.warn("三问解析遇到模型服务余额不足, conversationId={}", conversationId);
+                return new AskResult(ModelServiceErrors.BALANCE_MESSAGE, null);
             }
-            log.warn("意图解析失败，按视频时长默认意图执行, conversationId={}", conversationId, e);
-            IntentResult fallback = new IntentResult();
-            fallback.intent = durationSec > MAX_TRANSCRIBE_SEC ? "COURSE" : "TRANSCRIBE";
-            fallback.reply = durationSec > MAX_TRANSCRIBE_SEC
-                    ? "收到！这就把视频按完整网课处理（画面识别 + AI 笔记 + 课后习题）。"
-                    : "收到！这就为你提交转写。";
-            return executeIntent(userId, conversationId, userText, fallback, pending, durationSec);
+            log.warn("三问解析失败，按默认跟学型建课, conversationId={}", conversationId, e);
         }
+        saveProfilePatch(userId, goal, level, gradeLevel);
+        return createCourse(userId, conversationId, pending.videoTempPath(), style, goal, level, reply);
+    }
+
+    /** 风格答案归一：FOLLOW/EXAM_SPRINT 直收，中文「考点速查」类说法映射 EXAM_SPRINT，其余默认 FOLLOW（公开静态便于单测） */
+    public static String mapStyle(String style) {
+        if (style == null || style.isBlank()) {
+            return STYLE_FOLLOW;
+        }
+        return switch (style.trim().toUpperCase()) {
+            case "EXAM_SPRINT", "考点速查型", "考点速查", "考点" -> STYLE_EXAM_SPRINT;
+            default -> STYLE_FOLLOW;
+        };
     }
 
     // ---- 意图执行 ----
 
-    private String executeIntent(Long userId, Long conversationId, String userText,
-                                 IntentResult result, PendingVideo pending, int durationSec) {
-        String intent = result.intent == null ? "" : result.intent.trim().toUpperCase();
-        String tempPath = pending.videoTempPath();
-        if (tempPath == null || !Files.exists(Path.of(tempPath))) {
-            return "视频临时文件已被清理，麻烦重新上传一次，马上为你处理。";
-        }
-        // >30 分钟强制建课（轻量转写不适用）
-        if ("TRANSCRIBE".equals(intent) && durationSec > MAX_TRANSCRIBE_SEC) {
-            intent = "COURSE";
-        }
+    /** 轻量转写直接提交（不出卡）：文件校验 + 余额/失败文案 */
+    private AskResult startTranscription(Long userId, Long conversationId, String videoTempPath, int durationSec) {
         try {
-            switch (intent) {
-                case "COURSE" -> {
-                    return createCourse(userId, conversationId, tempPath, userText);
-                }
-                case "QUESTION" -> {
-                    // 提问内容同样依赖转写全文（完成后全文进对话，用户即可继续提问）
-                    transcriptionService.submit(userId, conversationId, tempPath, durationSec);
-                    return (StringUtils.hasText(result.reply) ? result.reply + "\n\n" : "")
-                            + "已开始转写语音（预计 2~5 分钟），完成后全文会自动发到这里，到时你可以直接针对内容提问。";
-                }
-                default -> {
-                    transcriptionService.submit(userId, conversationId, tempPath, durationSec);
-                    return (StringUtils.hasText(result.reply) ? result.reply + "\n\n" : "")
-                            + "已开始转写语音（预计 2~5 分钟），完成后全文会自动发到这里。";
-                }
+            if (videoTempPath == null || !Files.exists(Path.of(videoTempPath))) {
+                return new AskResult("视频临时文件已被清理，麻烦重新上传一次，马上为你处理。", null);
             }
+            transcriptionService.submit(userId, conversationId, videoTempPath, durationSec);
+            return new AskResult("已开始转写语音（预计 2~5 分钟），完成后全文会自动发到这里。", null);
         } catch (Exception e) {
-            // 余额不足：任务停止（转写已提交的除外，ASR 为独立计费不受影响），告知充值
             if (ModelServiceErrors.isBalanceInsufficient(e)) {
-                log.warn("意图执行遇到模型服务余额不足, userId={}, conversationId={}, intent={}", userId, conversationId, intent);
-                return ModelServiceErrors.BALANCE_MESSAGE;
+                log.warn("轻量转写遇到模型服务余额不足, conversationId={}", conversationId);
+                return new AskResult(ModelServiceErrors.BALANCE_MESSAGE, null);
             }
-            log.error("意图执行失败, userId={}, conversationId={}, intent={}", userId, conversationId, intent, e);
-            return "处理失败了（" + e.getMessage() + "），请回复「重试」再试一次。";
+            log.error("轻量转写提交失败, userId={}, conversationId={}", userId, conversationId, e);
+            return new AskResult("处理失败了（" + e.getMessage() + "），请重新上传视频再试一次。", null);
         }
     }
 
-    /** 建课三步（与 CreateCourseFromVideoTool 一致）：标题兜底 → uploadFromLocal → course_task 占位消息 */
-    private String createCourse(Long userId, Long conversationId, String tempPath, String userText) {
+    /** 建课三步（与 CreateCourseFromVideoTool 一致）：标题兜底 → uploadFromLocal（带风格与画像）→ course_task 占位消息 */
+    private AskResult createCourse(Long userId, Long conversationId, String tempPath,
+                                   String noteStyle, String learnerGoal, String learnerLevel, String reply) {
         Path video = Path.of(tempPath);
+        if (!Files.exists(video)) {
+            return new AskResult("视频临时文件已被清理，麻烦重新上传一次，马上为你处理。", null);
+        }
         // course.title 非空约束：用户没指定标题时回退视频文件名（去 UUID 前缀）
-        Course course = courseService.uploadFromLocal(userId, video, titleFromFileName(video), null);
+        Course course = courseService.uploadFromLocal(userId, video, titleFromFileName(video), null,
+                noteStyle, learnerGoal, learnerLevel);
         String title = course.getTitle();
         Message placeholder = new Message()
                 .setConversationId(conversationId)
@@ -226,74 +275,63 @@ public class IntentAgentService {
                 .setCreatedAt(LocalDateTime.now());
         messageMapper.insert(placeholder);
         pushService.pushToUser(userId, ChatEvent.course(placeholder.getId(), "PENDING", null, null));
-        log.info("意图 Agent 建课完成, userId={}, conversationId={}, courseId={}", userId, conversationId, course.getId());
-        return "课程《" + title + "》已开始处理（预计几分钟），画面识别、AI 笔记与课后习题的进度会实时显示在对话中，"
+        log.info("意图 Agent 建课完成, userId={}, conversationId={}, courseId={}, style={}, goal={}, level={}",
+                userId, conversationId, course.getId(), noteStyle, learnerGoal, learnerLevel);
+        String confirm = "课程《" + title + "》已开始处理（预计几分钟），画面识别、AI 笔记与课后习题的进度会实时显示在对话中，"
                 + "完成后会出现课程链接。";
+        return new AskResult((StringUtils.hasText(reply) ? reply + "\n\n" : "") + confirm, null);
     }
 
     // ---- 画像落档 ----
 
-    /** 解析出的画像字段非空才覆盖（避免清掉用户已有画像） */
-    private void saveProfilePatch(Long userId, UserProfile existing, IntentResult result) {
+    /** 解析出的画像字段非空才覆盖（避免清掉用户已有画像）；落档失败不阻塞建课 */
+    private void saveProfilePatch(Long userId, String goal, String level, String gradeLevel) {
         try {
-            UserProfile profile = existing == null ? new UserProfile() : existing;
+            UserProfile profile = profileService.getByUser(userId);
+            UserProfile target = profile == null ? new UserProfile() : profile;
             boolean changed = false;
-            if (StringUtils.hasText(result.gradeLevel) && !result.gradeLevel.equals(profile.getGradeLevel())) {
-                profile.setGradeLevel(result.gradeLevel.trim());
+            if (StringUtils.hasText(gradeLevel) && !gradeLevel.equals(target.getGradeLevel())) {
+                target.setGradeLevel(gradeLevel.trim());
                 changed = true;
             }
-            if (StringUtils.hasText(result.goal) && !result.goal.equals(profile.getGoal())) {
-                profile.setGoal(result.goal.trim());
+            if (StringUtils.hasText(goal) && !goal.equals(target.getGoal())) {
+                target.setGoal(goal.trim());
                 changed = true;
             }
-            if (StringUtils.hasText(result.note) && !result.note.equals(profile.getNote())) {
-                profile.setNote(result.note.trim());
+            if (StringUtils.hasText(level) && !level.equals(target.getLevel())) {
+                target.setLevel(level.trim());
                 changed = true;
             }
             if (changed) {
-                profileService.save(userId, profile);
+                profileService.save(userId, target);
                 log.info("意图 Agent 画像已更新, userId={}", userId);
             }
         } catch (Exception e) {
-            // 画像落档失败不阻塞意图执行
             log.warn("画像落档失败, userId={}", userId, e);
         }
     }
 
     // ---- prompt 组装 ----
 
-    private String buildAskPrompt(String userText, Integer durationSec, UserProfile profile) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("[用户消息]\n").append(userText == null || userText.isBlank() ? "（用户仅上传了视频，未输入文字）" : userText).append('\n');
-        sb.append("\n[视频时长]\n").append(formatDuration(durationSec)).append('\n');
-        if (profile != null) {
-            String profileText = ContentReviewService.profileText(profile);
-            if (!profileText.contains("未提供")) {
-                sb.append("\n[已有学习者画像]\n").append(profileText).append('\n');
-            }
-        }
-        return sb.toString();
+    private String buildJudgePrompt(String userText, int durationSec) {
+        return "[用户消息]\n" + (userText == null || userText.isBlank() ? "（用户仅上传了视频，未输入文字）" : userText)
+                + "\n\n[视频时长]\n" + formatDuration(durationSec);
     }
 
-    private String buildResolvePrompt(String userText, int durationSec, UserProfile profile) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("[用户回答]\n").append(userText == null || userText.isBlank() ? "（用户点了选项卡片，未输入文字）" : userText).append('\n');
-        sb.append("\n[视频时长]\n").append(formatDuration(durationSec)).append('\n');
-        if (profile != null) {
-            String profileText = ContentReviewService.profileText(profile);
-            if (!profileText.contains("未提供")) {
-                sb.append("\n[已有学习者画像]\n").append(profileText).append('\n');
-            }
-        }
-        return sb.toString();
+    private String buildResolvePrompt(String userText) {
+        return "[用户回答]\n" + (userText == null || userText.isBlank() ? "（用户仅点选了选项，未补充文字）" : userText);
     }
 
     // ---- pending 状态（Redis） ----
 
-    private void rememberPending(Long conversationId, String videoTempPath, Integer durationSec) {
+    private void rememberPending(Long conversationId, String videoTempPath, Integer durationSec, String stage) {
         try {
             redisUtils.setValueTimeout(PENDING_KEY_PREFIX + conversationId,
-                    new JSONObject().set("videoTempPath", videoTempPath).set("durationSec", durationSec).toString(),
+                    new JSONObject()
+                            .set("videoTempPath", videoTempPath)
+                            .set("durationSec", durationSec)
+                            .set("stage", stage)
+                            .toString(),
                     PENDING_TTL_SEC);
         } catch (Exception e) {
             log.warn("意图 pending 写入失败, conversationId={}", conversationId, e);
@@ -312,7 +350,8 @@ public class IntentAgentService {
             if (tempPath == null || durationSec == null) {
                 return null;
             }
-            return new PendingVideo(tempPath, durationSec);
+            // 旧格式无 stage 字段（升级过渡期残留）：按 ROUTE 处理，确定性分派可安全兜底
+            return new PendingVideo(tempPath, durationSec, obj.getStr("stage", STAGE_ROUTE));
         } catch (Exception e) {
             log.warn("意图 pending 读取失败, conversationId={}", conversationId, e);
             return null;
@@ -328,8 +367,8 @@ public class IntentAgentService {
 
     // ---- 解析与工具 ----
 
-    /** 解析意图 Agent 的 JSON 输出（容错：剥围栏、找首尾大括号；公开静态便于单测） */
-    public static IntentResult parseIntent(String text) {
+    /** 解析意图判定输出（TRANSCRIBE / COURSE / UNCLEAR；容错剥围栏取大括号；公开静态便于单测） */
+    public static String parseJudgeIntent(String text) {
         if (text == null || text.isBlank()) {
             return null;
         }
@@ -340,25 +379,21 @@ public class IntentAgentService {
             if (start < 0 || end <= start) {
                 return null;
             }
-            JSONObject obj = JSONUtil.parseObj(cleaned.substring(start, end + 1));
-            String intent = obj.getStr("intent", null);
+            String intent = JSONUtil.parseObj(cleaned.substring(start, end + 1)).getStr("intent", null);
             if (intent == null || intent.isBlank()) {
                 return null;
             }
-            IntentResult result = new IntentResult();
-            result.intent = intent.trim().toUpperCase();
-            result.gradeLevel = obj.getStr("gradeLevel", null);
-            result.goal = obj.getStr("goal", null);
-            result.note = obj.getStr("note", null);
-            result.reply = obj.getStr("reply", null);
-            return result;
+            return switch (intent.trim().toUpperCase()) {
+                case "TRANSCRIBE", "COURSE", "UNCLEAR" -> intent.trim().toUpperCase();
+                default -> null;
+            };
         } catch (Exception e) {
             return null;
         }
     }
 
-    /** 解析提问卡片 JSON（容错：剥围栏、找首尾大括号、questions 逐项校验；公开静态便于单测） */
-    public static AskResult parseAskCard(String text) {
+    /** 解析三问回答的 JSON 输出（容错剥围栏；至少一个业务字段非空才算有效；公开静态便于单测） */
+    public static ProfileAnswer parseProfileAnswer(String text) {
         if (text == null || text.isBlank()) {
             return null;
         }
@@ -370,57 +405,42 @@ public class IntentAgentService {
                 return null;
             }
             JSONObject obj = JSONUtil.parseObj(cleaned.substring(start, end + 1));
-            String message = obj.getStr("message", null);
-            if (message == null || message.isBlank()) {
-                return null;
-            }
-            JSONArray array = obj.getJSONArray("questions");
-            java.util.List<CardQuestion> questions = new java.util.ArrayList<>();
-            if (array != null) {
-                for (Object item : array) {
-                    try {
-                        JSONObject o = (JSONObject) item;
-                        String title = o.getStr("title", null);
-                        JSONArray opts = o.getJSONArray("options");
-                        if (title == null || title.isBlank() || opts == null || opts.isEmpty()) {
-                            continue;
-                        }
-                        questions.add(new CardQuestion(title.trim(),
-                                opts.stream().map(String::valueOf).map(String::trim).toList()));
-                    } catch (Exception ignored) {
-                        // 单项解析失败跳过
-                    }
-                }
-            }
-            // hutool 不识别 record 访问器（非 bean 形式），questions 手动构建 JSONArray
-            JSONArray questionArr = new JSONArray();
-            for (CardQuestion q : questions) {
-                JSONArray opts = new JSONArray();
-                q.options().forEach(opts::add);
-                questionArr.add(new JSONObject().set("title", q.title()).set("options", opts));
-            }
-            String cardJson = new JSONObject()
-                    .set("message", message.trim())
-                    .set("questions", questionArr)
-                    .toString();
-            return new AskResult(message.trim(), cardJson);
+            ProfileAnswer answer = new ProfileAnswer(
+                    obj.getStr("goal", null),
+                    obj.getStr("level", null),
+                    obj.getStr("style", null),
+                    obj.getStr("gradeLevel", null),
+                    obj.getStr("reply", null));
+            boolean hasAny = StringUtils.hasText(answer.goal()) || StringUtils.hasText(answer.level())
+                    || StringUtils.hasText(answer.style()) || StringUtils.hasText(answer.gradeLevel());
+            return hasAny ? answer : null;
         } catch (Exception e) {
             return null;
         }
     }
 
-    /** 降级模板确认卡（意图不明 → 处理方式问题；公开静态便于单测） */
-    public static AskResult fallbackAsk(int durationSec) {
-        boolean tooLong = durationSec > MAX_TRANSCRIBE_SEC;
-        String message = "视频已收到（时长 " + formatDuration(durationSec) + "）。"
-                + (tooLong
-                ? "视频超过 30 分钟，将按完整网课处理：画面识别 + AI 笔记 + 课后习题。"
-                : "请选择处理方式：≤30 分钟默认推荐「转写语音」；想要画面识别、AI 笔记和学习进度选「做成课程」。");
-        JSONArray opts = new JSONArray();
-        (tooLong ? List.of("做成课程") : List.of("转写语音", "做成课程", "提问内容")).forEach(opts::add);
-        String cardJson = new JSONObject().set("message", message)
-                .set("questions", new JSONArray().add(new JSONObject().set("title", "处理方式").set("options", opts)))
-                .toString();
+    /** 静态三问卡（建课路径）：目的 / 水平 / 讲解形式 */
+    private AskResult profileCard(int durationSec) {
+        return cardResult("视频已收到（时长 " + formatDuration(durationSec) + "）。为了让 AI 笔记更贴合你的情况，"
+                + "请确认下面三个问题，也可以在每题下方的输入框里用自己的话回答：", PROFILE_QUESTIONS);
+    }
+
+    /** 静态处理方式卡（意图不明）：轻量转写 / 做成课程 */
+    private AskResult routeCard(int durationSec) {
+        return cardResult("视频已收到（时长 " + formatDuration(durationSec) + "）。请选择处理方式："
+                + "「轻量转写」快速把语音转成文字稿；「做成课程」则包含画面识别、AI 笔记与课后习题。",
+                List.of(new CardQuestion("处理方式", List.of("轻量转写", "做成课程"))));
+    }
+
+    /** 卡片 JSON 组装（hutool 不识别 record 访问器，questions 手动构建） */
+    private static AskResult cardResult(String message, List<CardQuestion> questions) {
+        JSONArray questionArr = new JSONArray();
+        for (CardQuestion q : questions) {
+            JSONArray opts = new JSONArray();
+            q.options().forEach(opts::add);
+            questionArr.add(new JSONObject().set("title", q.title()).set("options", opts));
+        }
+        String cardJson = new JSONObject().set("message", message).set("questions", questionArr).toString();
         return new AskResult(message, cardJson);
     }
 

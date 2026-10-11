@@ -141,7 +141,12 @@ export function getCourseDetail(id: number): Promise<CourseDetailData> {
   return request<CourseDetailData>({ method: 'GET', url: `/courses/${id}` })
 }
 
-/** 重新生成内容理解（ContentDocument）与 AI 笔记（异步，B26 阶段 2） */
+/** 只重新渲染 AI 笔记（理解结构 / 出题不动，笔记风格与学习者画像随课程生效；2026-10-11，异步） */
+export function renderCourseNote(id: number): Promise<void> {
+  return request<void>({ method: 'POST', url: `/courses/${id}/note` })
+}
+
+/** 重新生成内容理解（ContentDocument）与 AI 笔记（全 Graph，异步，B26 阶段 2） */
 export function regenerateCourseContent(id: number): Promise<void> {
   return request<void>({ method: 'POST', url: `/courses/${id}/understand` })
 }

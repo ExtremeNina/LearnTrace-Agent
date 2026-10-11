@@ -3,9 +3,9 @@ import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from
 import { useRoute, useRouter } from 'vue-router'
 import {
   Download, ArrowLeft, CircleCheck, History, LoaderCircle, Pencil, Save, Send, X,
-  Bold, Italic, Underline, Clock, ChevronDown, Check,
+  Bold, Italic, Underline, Clock, ChevronDown, Check, RefreshCw,
 } from 'lucide-vue-next'
-import { appendCourseQuiz, getCourseDetail, quizToQuestions, quizToReview, regenerateCourseContent, updateCourse, reportCourseProgress } from '../api/course'
+import { appendCourseQuiz, getCourseDetail, quizToQuestions, quizToReview, renderCourseNote, updateCourse, reportCourseProgress } from '../api/course'
 import { useToastStore } from '../stores/toast'
 import type { CourseDetailData } from '../api/course'
 import { updateNoteContent } from '../api/note'
@@ -245,7 +245,7 @@ async function pickAskConversation(id: number) {
   await agent.openConversation(id)
 }
 
-// ---- 内容重生成（B26 阶段 2）：触发后轮询刷新章节与知识点 ----
+// ---- 笔记重渲染（2026-10-11：只重跑渲染与质检，理解结构 / 出题不动；风格与画像随课程生效） ----
 const regenerating = ref(false)
 
 async function onRegenerate() {
@@ -254,8 +254,8 @@ async function onRegenerate() {
   }
   regenerating.value = true
   try {
-    await regenerateCourseContent(courseId)
-    // 轮询 3 次（内容理解 + 笔记渲染需数分钟），期间页面可正常使用；末次检查失败原因（如余额不足）
+    await renderCourseNote(courseId)
+    // 轮询 3 次（渲染含质检重试需 1~2 分钟），期间页面可正常使用；末次检查失败原因（如余额不足）
     for (let i = 0; i < 3; i++) {
       setTimeout(() => {
         reload().then(() => {
@@ -705,6 +705,15 @@ const timelineTicks = computed(() => {
               <CircleCheck :size="15" />
               AI 润色
             </button>
+            <button
+              class="flex items-center gap-1.5 rounded-xl border border-line px-3 py-1.5 text-[13px] text-ink hover:bg-panel disabled:cursor-not-allowed disabled:opacity-50"
+              :disabled="regenerating || !data.note"
+              :title="data.note ? '只重新渲染 AI 笔记（理解结构与出题不动）' : 'AI 笔记生成后可重新生成'"
+              @click="onRegenerate"
+            >
+              <RefreshCw :size="15" :class="regenerating ? 'animate-spin' : ''" />
+              {{ regenerating ? '生成中…' : '重新生成' }}
+            </button>
             <div class="relative">
               <button
                 class="flex items-center gap-1.5 rounded-xl border border-line px-3 py-1.5 text-[13px] text-ink hover:bg-panel disabled:cursor-not-allowed disabled:opacity-50"
@@ -955,30 +964,7 @@ const timelineTicks = computed(() => {
             <div v-else ref="noteScrollRef" class="min-h-0 flex-1 overflow-y-auto p-3">
               <!-- AI 笔记 -->
               <template v-if="activeTab === 'note'">
-                <!-- B26 阶段 2：内容结构（章节导航 + 知识点） -->
-                <div v-if="data.sections?.length" class="mb-3 rounded-xl bg-panel px-3 py-2.5">
-                  <div class="flex items-center justify-between">
-                    <p class="text-[12px] font-semibold text-ink">内容结构</p>
-                    <button
-                      class="text-[11px] text-ink-2 transition-colors hover:text-primary disabled:opacity-50"
-                      :disabled="regenerating"
-                      @click="onRegenerate"
-                    >
-                      {{ regenerating ? '重新生成中…' : '重新生成' }}
-                    </button>
-                  </div>
-                  <button
-                    v-for="s in data.sections"
-                    :key="s.id"
-                    class="mt-1.5 flex w-full items-center gap-2 text-left text-[12px] text-ink-2 transition-colors hover:text-primary"
-                    :title="s.summary || ''"
-                    @click="seekTo(s.startSec)"
-                  >
-                    <span class="shrink-0 font-medium text-primary">{{ formatTs(s.startSec) }}</span>
-                    <span class="truncate">{{ s.title }}</span>
-                  </button>
-                </div>
-                <!-- 知识点折叠面板：默认收起，展开后内容过多时内部滚动，避免挤压正文 -->
+                <!-- 知识点折叠面板：默认收起，展开后内容过多时内部滚动，避免挤压正文（章节导航由时间线表格与底栏页码承担） -->
                 <div v-if="data.knowledgePoints?.length" class="mb-3 rounded-xl bg-panel px-3 py-2.5">
                   <button
                     type="button"

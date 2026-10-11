@@ -130,7 +130,8 @@ public class NoteGenerationService {
      * 代码拼接，LLM 只产出知识点小节）→ 总结页 → markdown 拼接整体落库（存储/质检/导出零适配）。
      * 每页输出 1~3 千字符远低于 8192 token 上限，截断在结构上不可能发生；
      * 页间连贯性：章节页 prompt 注入全局摘要 + 前页结尾 200 字；顺序生成（前页结尾依赖）。
-     * 时间戳方案 B：LLM 全程不打点，标题级 [mm:ss] 由 NoteTimestampCalibrator.assignHeadingTimestamps 统一赋值
+     * 时间戳方案 B：LLM 全程不打点，标题级 [mm:ss] 由 NoteTimestampCalibrator.assignHeadingTimestamps 统一赋值；
+     * 笔记风格（跟学型/考点速查型）与学习者画像（目的/水平/特别要求）由意图三问卡采集随课程落库，在此注入渲染
      */
     private String renderNotePaged(Course course, ContentDocument document, List<ContentSection> sections,
                                    List<ContentKnowledgePoint> knowledgePoints,
@@ -138,16 +139,21 @@ public class NoteGenerationService {
                                    List<String> qualityDefects) {
         String title = document.getTitle() == null || document.getTitle().isBlank()
                 ? course.getTitle() : document.getTitle();
+        String noteStyle = course.getNoteStyle();
+        String learnerContext = learnerContextBlock(course);
         StringBuilder sb = new StringBuilder("# ").append(title).append(" — 课程笔记\n\n");
         ChatClient chatClient = aiModelService.resolveGenerationForCourse(course.getUserId(), course.getModelConfigId());
 
         // 页 1：课程概览（LLM）+ 章节时间线（代码拼接，与章节页标题同源于 content_section 起止秒）
         String overview = callLlm(chatClient, AgentPrompts.DOCUMENT_NOTE_SKELETON_PROMPT,
-                buildSkeletonUserContent(document, sections, durationSec, qualityDefects));
+                buildSkeletonUserContent(document, sections, durationSec, qualityDefects) + learnerContext);
         sb.append(overview.trim()).append("\n\n");
         sb.append(timelineTable(sections));
 
         // 页 2~N+1：每章一页——章节标题行由代码拼接（时间戳后处理统一赋值），页间连贯注入
+        String chapterPrompt = AgentPrompts.NOTE_STYLE_EXAM_SPRINT.equals(noteStyle)
+                ? AgentPrompts.DOCUMENT_NOTE_CHAPTER_PROMPT_EXAM_SPRINT
+                : AgentPrompts.DOCUMENT_NOTE_CHAPTER_PROMPT_FOLLOW;
         String prevTail = null;
         for (int i = 0; i < sections.size(); i++) {
             ContentSection section = sections.get(i);
@@ -155,17 +161,34 @@ public class NoteGenerationService {
             if (chapterPoints.isEmpty()) {
                 continue;
             }
-            String chapterMd = callLlm(chatClient, AgentPrompts.DOCUMENT_NOTE_CHAPTER_PROMPT,
-                    buildChapterNoteUserContent(document, section, chapterPoints, transcript, prevTail, durationSec));
+            String chapterMd = callLlm(chatClient, chapterPrompt,
+                    buildChapterNoteUserContent(document, section, chapterPoints, transcript, prevTail, durationSec)
+                            + learnerContext);
             sb.append("## ").append(section.getTitle()).append("\n\n");
             sb.append(chapterMd.trim()).append("\n\n");
             prevTail = chapterMd.length() > 200 ? chapterMd.substring(chapterMd.length() - 200) : chapterMd;
         }
 
-        // 末页：总结
-        String summaryMd = callLlm(chatClient, AgentPrompts.DOCUMENT_NOTE_SUMMARY_PROMPT,
-                buildSummaryUserContent(document, sections, knowledgePoints));
+        // 末页：总结（按风格附加输出形态指令）
+        String summaryMd = callLlm(chatClient, AgentPrompts.DOCUMENT_NOTE_SUMMARY_PROMPT
+                        + AgentPrompts.summaryStyleDirective(noteStyle),
+                buildSummaryUserContent(document, sections, knowledgePoints) + learnerContext);
         sb.append(summaryMd.trim());
+        return sb.toString();
+    }
+
+    /** 学习者上下文块（三问卡画像 + 特别要求；均空返回空串，非空各占一段） */
+    static String learnerContextBlock(Course course) {
+        StringBuilder sb = new StringBuilder();
+        if (StringUtils.hasText(course.getLearnerGoal())) {
+            sb.append("\n[学习者目标]\n").append(course.getLearnerGoal().trim()).append('\n');
+        }
+        if (StringUtils.hasText(course.getLearnerLevel())) {
+            sb.append("\n[知识水平]\n").append(course.getLearnerLevel().trim()).append('\n');
+        }
+        if (StringUtils.hasText(course.getExpectations())) {
+            sb.append("\n[用户的特别要求]\n").append(course.getExpectations().trim()).append('\n');
+        }
         return sb.toString();
     }
 

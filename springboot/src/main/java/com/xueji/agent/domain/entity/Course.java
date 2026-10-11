@@ -30,6 +30,15 @@ public class Course implements UserOwned {
     /** 用户期望（上传时填写，注入笔记生成提示词） */
     private String expectations;
 
+    /** 笔记风格：FOLLOW=跟学型 / EXAM_SPRINT=考点速查型（NULL=默认跟学型；意图三问卡采集） */
+    private String noteStyle;
+
+    /** 学习目的（意图三问卡采集，注入笔记渲染提示词） */
+    private String learnerGoal;
+
+    /** 知识水平（意图三问卡采集，注入笔记渲染提示词） */
+    private String learnerLevel;
+
     /** 笔记生成使用的模型配置（上传时选择，NULL = 系统默认） */
     private Long modelConfigId;
 

@@ -28,6 +28,7 @@ LJ-Agent/
 - 今日简报归属升级（2026-10-08）：简报移入对话气泡——按（用户 × 会话 × 日期）后端持久化归属（daily_briefing 加 conversation_id，唯一键改三元组，含 ALTER 迁移），简报气泡按生成时间插入会话消息流、同一会话跨天每天一条；同日跨会话复用内容不重复调 LLM；未绑定旧数据首次访问自动补绑定；前端简报标记按用户 ID 隔离（多账号共用浏览器互不污染）。落位时间取 createdAt（updatedAt 随补绑定/刷新变化会导致跳位）。
 - AI 笔记阅读与时间戳校准（2026-10-11）：详情页 AI 笔记改为切换式分页（第 X / N 页 + 上一页/下一页，概览/章节时间线并入首页减少翻页），知识点标签云改折叠面板（默认收起、展开内部滚动）；时间戳后处理管线升级——秒数区间 [1120-1400s] 归一化 + 生成后确定性回填（NoteTimestampCalibrator：句级转写 bigram 匹配校准 [mm:ss]，单调钳制防回退，无佐证 00:00 移除/非 0 保留）+ 裸 `~` 转义防 GFM 误删划线；ASR 伪句级展开（端点把整 280s 分片打包为单句且带真实起止时间时也按句末标点切分，治全部课程转写粗粒度 270s/段的顽疾）+ 校准器粗粒度大段（>300 字）拒判防误回填连坐。
 - 时间戳方案 B + 底栏常驻（2026-10-11）：笔记生成改为「LLM 全程不打点、代码确定性推导」——结构升级为每章一页（`## 章节标题` 代码拼接，时间 = section.startSec；`### 知识点标题` 以标题+首段在所属章节秒窗口内 bigram 匹配、兜底 timeSec、均无则不加，正文违规时间戳剥除，全篇单调），章节时间线表格改代码拼接与标题同源；正文不再有逐句时间戳胶囊（存量课程不受影响，重新生成后生效）；质检重试路径统一到分页渲染并删除旧一次性渲染死代码；首页「本课重点」解析改为优先取 `### ` 知识点标题。前端分页栏为 tab 栏同款结构性底栏（固定右面板底部、不参与滚动）+ 键盘 ←/→ 翻页 + 页码标签剥行尾时间戳——翻页即切章节模块。
+- 意图固定卡 + 笔记风格（2026-10-11）：上传视频回合改为 **LLM 只判意图**（INTENT_JUDGE_PROMPT，理解「转写成课程」类混合表述）——明确转写直接提交不出卡；明确建课出**三问卡**（学习目的 / 知识水平 / 讲解形式：跟学型/考点速查型）；判断不了先出单题处理方式卡。IntentCard 每题支持**自定义回答**（选项、文本二选一或并存），历史消息卡片渲染修复为扁平 payload 解析。三问答案落库：目的/水平进 user_profile（level 列首次接线）、讲解形式映射课程 `note_style`（FOLLOW/EXAM_SPRINT）+ 目的/水平随课程落库；渲染端章节页提示词两套风格变体（跟学型"引入→讲解→例子" / 考点速查型"结论→易错→典型例"）+ 总结风格指令，`course.expectations` 特别要求首次注入分页渲染。课程详情页删「内容结构」面板（章节导航由时间线表格 + 底栏页码下拉承担），「重新生成」挪到顶部按钮行并改为**只重渲染笔记**（新端点 `POST /courses/{id}/note`，理解结构/出题不动，耗时大幅缩短）。
 - 已知遗留：Redis db1 与其他项目共用且 sa-token 键前缀相同（`sa-token:`），他项目 token 可通过本系统鉴权——B06 搁置期间接受，公开部署前改 `token-name` 隔离；对话图片上传的 OSS 配置走 git 忽略的本地配置文件方案（endpoint=武汉 lr 区）；`uploadChatImage` 只捕获 IOException、前端 Agent.vue 未渲染上传失败提示（早期记录，未复核）；存量课程转写仍为粗粒度（约 270s/段），需重新上传才获得句级粒度，粗粒度下时间戳仅能校准到分片边界。
 
 ## 后端模块索引（springboot/src/main/java/com/xueji/agent/）
@@ -66,7 +67,7 @@ LJ-Agent/
 | conversation / message | 会话与消息 | 物理删除（会话属临时数据，30 天定时清理） |
 | question_record | 拍照题目（image_oss_key NOT NULL） | 逻辑删除（deleted） |
 | similar_question | AI 相似题（source_question_id 可空、subject、conversation_id 溯源；is_correct 二期） | 逻辑删除（deleted） |
-| course | 网课（model_config_id = 上传时选择的笔记生成模型，NULL = 系统默认；last_position_sec / progress_pct / last_studied_at = 播放进度打点，播放器定时上报） | 逻辑删除（deleted；删除连带 AI 笔记 / 知识联系 / 向量 / OSS 清理） |
+| course | 网课（model_config_id = 上传时选择的笔记生成模型，NULL = 系统默认；note_style = 笔记风格 FOLLOW/EXAM_SPRINT、learner_goal / learner_level = 意图三问卡采集的学习者画像，注入笔记渲染；last_position_sec / progress_pct / last_studied_at = 播放进度打点，播放器定时上报） | 逻辑删除（deleted；删除连带 AI 笔记 / 知识联系 / 向量 / OSS 清理） |
 | course_transcript_segment / course_frame | 转写分段 / 关键帧 | 随重试清理重建；随网课删除移出向量库 |
 | note / note_link | 笔记树与知识联系（save_status：0=网课 AI 笔记未保存（树不展示，B28） / 1=已保存；流水线生成置 0、重生成继承、save_course_note 工具置 1） | 笔记逻辑删除；note_link 物理删除（分组级联时双向清理） |
 | user | 用户（bio / theme / notify_task_enabled / deleted） | 注销为逻辑删除（deleted），登录拦截 |

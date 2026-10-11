@@ -71,7 +71,8 @@ public class CreateCourseFromVideoTool {
                 return "CREATE_FAILED: 视频临时文件已丢失（可能已被转写流程清理），请让用户重新上传";
             }
             String courseTitle = isMeaningfulTitle(title) ? title.trim() : titleFromFileName(video);
-            Course course = courseService.uploadFromLocal(userId, video, courseTitle, expectations);
+            // 主 LLM 降级路径：风格与画像未采集，传 null 走默认跟学型（正常路径由意图三问卡采集）
+            Course course = courseService.uploadFromLocal(userId, video, courseTitle, expectations, null, null, null);
 
             // 课程任务占位消息：流水线各阶段按 message.courseId 定位并更新进度（事实源先落库）
             Message placeholder = new Message()

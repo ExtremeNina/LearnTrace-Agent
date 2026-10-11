@@ -3,9 +3,9 @@ import { computed, reactive } from 'vue'
 import { ListChecks, Send } from 'lucide-vue-next'
 
 /**
- * 意图确认大卡片（B27，plan 模式风格）：意图 Agent 的结构化提问——
- * 每个问题一张卡（选项块点选高亮），全部选完后出现「确认开始」按钮，
- * 确认时把选择拼接为「标题：选项；…」文本交回父级发送（意图 Agent 解析消费）
+ * 意图确认大卡片（B27 立项 / 2026-10-11 固定题改造）：意图 Agent 的结构化提问——
+ * 每个问题一张卡（选项块点选高亮 + 下方自定义文本框），每题选项、文本二选一或并存，
+ * 全部作答后「确认开始」可点，确认时拼接为「标题：选项（补充：文本）；…」交回父级发送（意图 Agent 解析消费）
  */
 export interface IntentCardData {
   message: string
@@ -17,13 +17,19 @@ const props = defineProps<{ card: IntentCardData }>()
 const emit = defineEmits<{ confirm: [text: string] }>()
 
 const selections = reactive<Record<string, string>>({})
+const customs = reactive<Record<string, string>>({})
+
+/** 单题已作答：选中选项或填写自定义文本任一 */
+function answered(title: string): boolean {
+  return Boolean(selections[title]) || Boolean(customs[title]?.trim())
+}
 
 const allAnswered = computed(
-  () => props.card.questions.length > 0 && props.card.questions.every((q) => selections[q.title])
+  () => props.card.questions.length > 0 && props.card.questions.every((q) => answered(q.title))
 )
 
 function pick(title: string, option: string) {
-  selections[title] = option
+  selections[title] = selections[title] === option ? '' : option
 }
 
 function confirm() {
@@ -31,7 +37,14 @@ function confirm() {
     return
   }
   const text = props.card.questions
-    .map((q) => `${q.title}：${selections[q.title]}`)
+    .map((q) => {
+      const extra = customs[q.title]?.trim()
+      const choice = selections[q.title]
+      if (choice && extra) {
+        return `${q.title}：${choice}（补充：${extra}）`
+      }
+      return `${q.title}：${choice || extra}`
+    })
     .join('；')
   emit('confirm', text)
 }
@@ -61,6 +74,13 @@ function confirm() {
         >
           {{ opt }}
         </button>
+        <input
+          v-model="customs[q.title]"
+          type="text"
+          class="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-1.5 text-[13px] text-gray-700 outline-none transition-colors placeholder:text-gray-400 focus:border-blue-300 focus:bg-white"
+          placeholder="或输入自定义回答…"
+          @click.stop
+        />
       </div>
     </div>
     <button
@@ -71,7 +91,7 @@ function confirm() {
       @click="confirm"
     >
       <Send :size="13" />
-      {{ allAnswered ? '确认开始' : '选完上面的选项后确认' }}
+      {{ allAnswered ? '确认开始' : '每题选择选项或输入自定义回答后确认' }}
     </button>
   </div>
 </template>

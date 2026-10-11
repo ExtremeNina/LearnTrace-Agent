@@ -47,7 +47,7 @@ class CreateCourseFromVideoToolTest {
     void shouldCreateCourseAndPlaceholderMessage(@org.junit.jupiter.api.io.TempDir Path dir) throws Exception {
         Path video = Files.createTempFile(dir, "uuid1234-video5_", ".mp4");
         Files.writeString(video, "fake");
-        when(courseService.uploadFromLocal(eq(5L), any(Path.class), anyString(), isNull()))
+        when(courseService.uploadFromLocal(eq(5L), any(Path.class), anyString(), isNull(), isNull(), isNull(), isNull()))
                 .thenReturn(new Course().setId(66L).setTitle("video5_如果全球冰封").setUserId(5L));
 
         String result = tool.createCourseFromVideo(null, null, context(video.toString()));
@@ -72,7 +72,7 @@ class CreateCourseFromVideoToolTest {
     @Test
     void shouldUseLlmTitleWhenProvided(@org.junit.jupiter.api.io.TempDir Path dir) throws Exception {
         Path video = Files.createTempFile(dir, "v_", ".mp4");
-        when(courseService.uploadFromLocal(eq(5L), any(Path.class), eq("如果全球冰封"), eq("重点讲原理")))
+        when(courseService.uploadFromLocal(eq(5L), any(Path.class), eq("如果全球冰封"), eq("重点讲原理"), isNull(), isNull(), isNull()))
                 .thenReturn(new Course().setId(67L).setTitle("如果全球冰封").setUserId(5L));
 
         String result = tool.createCourseFromVideo("如果全球冰封", "重点讲原理", context(video.toString()));
