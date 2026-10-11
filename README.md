@@ -23,6 +23,8 @@ AI 个人学习工作台：学习资产（视频 / 题目 / 笔记）+ 知识点
 | ![首页](docs/images/demo-home.jpg) | ![视频页面](docs/images/demo-video.jpg) |
 | **笔记页面** | **题目页面** |
 | ![笔记页面](docs/images/demo-notes.jpg) | ![题目页面](docs/images/demo-question.jpg) |
+| **视频 · 课后习题** | **题目 · 详情** |
+| ![课后习题](docs/images/demo-quiz.jpg) | ![题目详情](docs/images/demo-question-detail.jpg) |
 
 ## 技术栈
 
