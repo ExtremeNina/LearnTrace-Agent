@@ -18,11 +18,11 @@ AI 个人学习工作台：学习资产（视频 / 题目 / 笔记）+ 知识点
 
 ## 界面预览
 
-| Agent 对话 | 笔记整理 |
+| 首页 | 视频页面 |
 | --- | --- |
-| ![Agent 对话](docs/images/demo-agent.jpg) | ![笔记整理](docs/images/demo-notes.jpg) |
-| **视频记录** | **视频详情 · AI 笔记** |
-| ![视频记录](docs/images/demo-courses.jpg) | ![视频详情](docs/images/demo-course-detail.jpg) |
+| ![首页](docs/images/demo-home.jpg) | ![视频页面](docs/images/demo-video.jpg) |
+| **笔记页面** | **题目页面** |
+| ![笔记页面](docs/images/demo-notes.jpg) | ![题目页面](docs/images/demo-question.jpg) |
 
 ## 技术栈
 
