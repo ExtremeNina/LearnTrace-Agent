@@ -98,9 +98,9 @@ public class NoteGenerationService {
     }
 
     /**
-     * 从 ContentDocument 渲染笔记（B26 阶段 2 Renderer 起步：Markdown 一个）。
-     * 输入 = 内容文档（章节/知识点）+ 转写原文（补充细节与时间戳校准）+ 评审反馈（阶段 3 L2 定向重生成），
-     * 输出保持四段结构以兼容质检与前端
+     * 从 ContentDocument 渲染笔记并入库（B26 阶段 2 Renderer + 时间戳方案 B）。
+     * 输入 = 内容文档（章节/知识点）+ 转写原文 + 评审反馈（阶段 3 L2 定向重生成）；
+     * LLM 全程不打时间戳，标题级 [mm:ss] 由 assignHeadingTimestamps 生成后从转写确定性推导（详见校准器）。
      */
     public NoteGenerationResult generateAndSaveNoteFromDocument(Course course, ContentDocument document,
                                                                 List<ContentSection> sections,
@@ -108,15 +108,15 @@ public class NoteGenerationService {
                                                                 List<CourseTranscriptSegment> transcript,
                                                                 List<CourseFrame> frames, int durationSec,
                                                                 List<String> reviewFeedback) {
-        String markdown = NoteTimestampCalibrator.calibrate(
+        String markdown = NoteTimestampCalibrator.assignHeadingTimestamps(
                 normalizeTimestamps(renderNotePaged(course, document, sections, knowledgePoints,
-                        transcript, durationSec, reviewFeedback)), transcript);
+                        transcript, durationSec, reviewFeedback)), sections, knowledgePoints, transcript);
         List<String> defects = NoteQualityChecker.check(markdown, transcript, durationSec);
         if (!defects.isEmpty()) {
             log.warn("AI 笔记质检未通过，带缺陷重生成一次, courseId={}, defects={}", course.getId(), defects);
-            markdown = NoteTimestampCalibrator.calibrate(
-                    normalizeTimestamps(generateFromDocument(course, document, sections, knowledgePoints,
-                            transcript, frames, durationSec, defects)), transcript);
+            markdown = NoteTimestampCalibrator.assignHeadingTimestamps(
+                    normalizeTimestamps(renderNotePaged(course, document, sections, knowledgePoints,
+                            transcript, durationSec, defects)), sections, knowledgePoints, transcript);
             defects = NoteQualityChecker.check(markdown, transcript, durationSec);
             if (!defects.isEmpty()) {
                 log.warn("AI 笔记重生成后质检仍未通过，降级入库, courseId={}, defects={}", course.getId(), defects);
@@ -126,10 +126,11 @@ public class NoteGenerationService {
     }
 
     /**
-     * 分页渲染（长笔记输出 token 上限的根治）：骨架页（概览+章节时间线）→ 每章一页（知识点结合转写展开，
-     * detail 完整质量不瘦身）→ 总结页 → markdown 拼接整体落库（存储/质检/导出零适配）。
+     * 分页渲染（长笔记输出 token 上限的根治）：首页（概览 LLM + 章节时间线代码拼接）→ 每章一页（章节标题行
+     * 代码拼接，LLM 只产出知识点小节）→ 总结页 → markdown 拼接整体落库（存储/质检/导出零适配）。
      * 每页输出 1~3 千字符远低于 8192 token 上限，截断在结构上不可能发生；
-     * 页间连贯性：章节页 prompt 注入全局摘要 + 前页结尾 200 字；顺序生成（前页结尾依赖）
+     * 页间连贯性：章节页 prompt 注入全局摘要 + 前页结尾 200 字；顺序生成（前页结尾依赖）。
+     * 时间戳方案 B：LLM 全程不打点，标题级 [mm:ss] 由 NoteTimestampCalibrator.assignHeadingTimestamps 统一赋值
      */
     private String renderNotePaged(Course course, ContentDocument document, List<ContentSection> sections,
                                    List<ContentKnowledgePoint> knowledgePoints,
@@ -140,13 +141,13 @@ public class NoteGenerationService {
         StringBuilder sb = new StringBuilder("# ").append(title).append(" — 课程笔记\n\n");
         ChatClient chatClient = aiModelService.resolveGenerationForCourse(course.getUserId(), course.getModelConfigId());
 
-        // 页 1：骨架（概览 + 章节时间线）
-        String skeleton = callLlm(chatClient, AgentPrompts.DOCUMENT_NOTE_SKELETON_PROMPT,
+        // 页 1：课程概览（LLM）+ 章节时间线（代码拼接，与章节页标题同源于 content_section 起止秒）
+        String overview = callLlm(chatClient, AgentPrompts.DOCUMENT_NOTE_SKELETON_PROMPT,
                 buildSkeletonUserContent(document, sections, durationSec, qualityDefects));
-        sb.append(skeleton.trim()).append("\n\n");
+        sb.append(overview.trim()).append("\n\n");
+        sb.append(timelineTable(sections));
 
-        // 页 2~N+1：每章一页（知识点展开，页间连贯注入）
-        sb.append("## 知识点\n\n");
+        // 页 2~N+1：每章一页——章节标题行由代码拼接（时间戳后处理统一赋值），页间连贯注入
         String prevTail = null;
         for (int i = 0; i < sections.size(); i++) {
             ContentSection section = sections.get(i);
@@ -156,6 +157,7 @@ public class NoteGenerationService {
             }
             String chapterMd = callLlm(chatClient, AgentPrompts.DOCUMENT_NOTE_CHAPTER_PROMPT,
                     buildChapterNoteUserContent(document, section, chapterPoints, transcript, prevTail, durationSec));
+            sb.append("## ").append(section.getTitle()).append("\n\n");
             sb.append(chapterMd.trim()).append("\n\n");
             prevTail = chapterMd.length() > 200 ? chapterMd.substring(chapterMd.length() - 200) : chapterMd;
         }
@@ -165,6 +167,17 @@ public class NoteGenerationService {
                 buildSummaryUserContent(document, sections, knowledgePoints));
         sb.append(summaryMd.trim());
         return sb.toString();
+    }
+
+    /** 章节时间线表格（代码拼接）：时间与章节页标题同源（content_section 起止秒），格式一律 [mm:ss] 供胶囊跳转与质检 */
+    private static String timelineTable(List<ContentSection> sections) {
+        StringBuilder sb = new StringBuilder("## 章节时间线\n\n| 章节 | 起止时间 |\n| --- | --- |\n");
+        for (ContentSection section : sections) {
+            String start = section.getStartSec() == null ? "--:--" : fmtTs(section.getStartSec());
+            String end = section.getEndSec() == null ? "--:--" : fmtTs(section.getEndSec());
+            sb.append("| ").append(section.getTitle()).append(" | ").append(start).append(" - ").append(end).append(" |\n");
+        }
+        return sb.append('\n').toString();
     }
 
     /** 某一章节的知识点（sectionSort = 章节下标） */
@@ -320,29 +333,6 @@ public class NoteGenerationService {
     }
 
     /**
-     * 从 ContentDocument 调 LLM 渲染笔记 Markdown（qualityDefects 非空时为带质检反馈的重生成）。
-     * 【已被分页渲染 renderNotePaged 取代（2026-10-10）】当前无生产调用方（保留待清理）
-     */
-    public String generateFromDocument(Course course, ContentDocument document,
-                                       List<ContentSection> sections, List<ContentKnowledgePoint> knowledgePoints,
-                                       List<CourseTranscriptSegment> transcript,
-                                       List<CourseFrame> frames, int durationSec, List<String> qualityDefects) {
-        String userContent = buildDocumentUserContent(document, sections, knowledgePoints,
-                transcript, frames, durationSec, qualityDefects);
-        ChatClient chatClient = aiModelService.resolveGenerationForCourse(course.getUserId(), course.getModelConfigId());
-        String markdown = chatClient.prompt()
-                .system(AgentPrompts.DOCUMENT_NOTE_PROMPT)
-                .user(userContent)
-                .call()
-                .content();
-        if (markdown == null || markdown.isBlank()) {
-            throw new IllegalStateException("LLM 未返回笔记内容");
-        }
-        log.info("AI 笔记渲染完成（基于内容文档）, courseId={}, 字数={}", course.getId(), markdown.length());
-        return markdown;
-    }
-
-    /**
      * 调 LLM 生成笔记 Markdown（qualityDefects 非空时为带质检反馈的重生成）
      */
     public String generate(Course course, List<CourseTranscriptSegment> transcript,
@@ -382,59 +372,6 @@ public class NoteGenerationService {
             sb.append("\n[用户的特别要求]\n").append(expectations.trim()).append("\n");
             sb.append("生成笔记时优先满足以上要求；若要求与视频内容无关，请自然忽略，不要虚构内容。\n");
         }
-        sb.append(qualityFeedback(qualityDefects));
-        return sb.toString();
-    }
-
-    /**
-     * 组装 Renderer 用户消息：内容文档（章节 + 知识点）+ 转写原文（补充细节与时间戳校准）+ 质检反馈。
-     * 公开静态方法，便于单元测试
-     */
-    public static String buildDocumentUserContent(ContentDocument document,
-                                                  List<ContentSection> sections,
-                                                  List<ContentKnowledgePoint> knowledgePoints,
-                                                  List<CourseTranscriptSegment> transcript,
-                                                  List<CourseFrame> frames, int durationSec,
-                                                  List<String> qualityDefects) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("视频时长：").append(durationSec).append(" 秒。\n\n");
-
-        sb.append("[内容文档 · 全局摘要]\n").append(document.getSummary() == null ? "" : document.getSummary()).append("\n\n");
-
-        sb.append("[内容文档 · 章节]\n");
-        for (ContentSection section : sections) {
-            sb.append("- ").append(section.getTitle())
-                    .append(" [").append(section.getStartSec()).append("-").append(section.getEndSec()).append("s]");
-            if (section.getSummary() != null && !section.getSummary().isBlank()) {
-                sb.append("：").append(section.getSummary());
-            }
-            sb.append('\n');
-        }
-
-        sb.append("\n[内容文档 · 知识点]\n");
-        if (knowledgePoints == null || knowledgePoints.isEmpty()) {
-            sb.append("（无）\n");
-        } else {
-            for (ContentKnowledgePoint point : knowledgePoints) {
-                sb.append("- ").append(point.getName());
-                if (point.getTimeSec() != null) {
-                    sb.append(" [").append(point.getTimeSec()).append("s]");
-                }
-                if (point.getDetail() != null && !point.getDetail().isBlank()) {
-                    sb.append("：").append(point.getDetail());
-                }
-                if (Integer.valueOf(1).equals(point.getImportant())) {
-                    sb.append("（重点）");
-                }
-                if (Integer.valueOf(1).equals(point.getErrorProne())) {
-                    sb.append("（易错点）");
-                }
-                sb.append('\n');
-            }
-        }
-
-        sb.append('\n').append(transcriptSection(transcript));
-        sb.append(framesSection(frames));
         sb.append(qualityFeedback(qualityDefects));
         return sb.toString();
     }

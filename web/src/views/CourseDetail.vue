@@ -3,7 +3,7 @@ import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from
 import { useRoute, useRouter } from 'vue-router'
 import {
   Download, ArrowLeft, CircleCheck, History, LoaderCircle, Pencil, Save, Send, X,
-  Bold, Italic, Underline, Clock, ChevronDown,
+  Bold, Italic, Underline, Clock, ChevronDown, Check,
 } from 'lucide-vue-next'
 import { appendCourseQuiz, getCourseDetail, quizToQuestions, quizToReview, regenerateCourseContent, updateCourse, reportCourseProgress } from '../api/course'
 import { useToastStore } from '../stores/toast'
@@ -297,10 +297,16 @@ onMounted(async () => {
 window.addEventListener('pagehide', reportProgressNow)
 // 导出菜单点击外部关闭
 document.addEventListener('click', closeExportMenu)
+// 页码跳转下拉点击外部关闭
+document.addEventListener('click', closePageNav)
+// AI 笔记键盘翻页
+window.addEventListener('keydown', onNoteKeydown)
 
 onUnmounted(() => {
   window.removeEventListener('pagehide', reportProgressNow)
   document.removeEventListener('click', closeExportMenu)
+  document.removeEventListener('click', closePageNav)
+  window.removeEventListener('keydown', onNoteKeydown)
   reportProgressNow()
 })
 
@@ -400,7 +406,8 @@ const notePages = computed(() => {
     }
   }
   return merged.map((page) => ({
-    label: page.label.replace(/^##\s*/, '') || '正文',
+    // 页标题行尾的时间戳（方案 B：章节标题自带 [mm:ss]）不进页码标签
+    label: page.label.replace(/^##\s*/, '').replace(/\s*\[\d{1,3}:[0-5]\d]\s*$/, '').trim() || '正文',
     markdown: page.markdown,
   }))
 })
@@ -420,12 +427,41 @@ function goNotePage(idx: number) {
   })
 }
 
+/** 键盘 ←/→ 翻页（AI 笔记阅读态，常驻底栏配套）：输入控件聚焦时让路，编辑态不响应 */
+function onNoteKeydown(e: KeyboardEvent) {
+  if (activeTab.value !== 'note' || noteEditing.value || notePages.value.length <= 1) return
+  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+  if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return
+  const target = e.target as HTMLElement | null
+  if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return
+  if (e.key === 'ArrowLeft' && notePageIndex.value > 0) {
+    e.preventDefault()
+    goNotePage(notePageIndex.value - 1)
+  } else if (e.key === 'ArrowRight' && notePageIndex.value < notePages.value.length - 1) {
+    e.preventDefault()
+    goNotePage(notePageIndex.value + 1)
+  }
+}
+
 watch(
   () => data.value?.note?.content,
   () => {
     notePageIndex.value = 0
+    pageNavOpen.value = false
   }
 )
+
+/** 页码跳转下拉：底栏页码可点，向上展开「页码 + 章节名」列表直达任意页（导出菜单同款外部点击关闭） */
+const pageNavOpen = ref(false)
+
+function closePageNav() {
+  pageNavOpen.value = false
+}
+
+function jumpToNotePage(idx: number) {
+  goNotePage(idx)
+  pageNavOpen.value = false
+}
 
 /** 当前页渲染：与笔记整理页同一管线（归一化 → Markdown → [mm:ss] 时间戳胶囊） */
 const noteHtml = computed(() => {
@@ -442,6 +478,7 @@ function onNoteClick(e: MouseEvent) {
 
 function onTabChange(tab: 'note' | 'transcript' | 'ask' | 'quiz') {
   activeTab.value = tab
+  pageNavOpen.value = false
 }
 
 // ---- AI 问答（与 /chat 共享会话与流式状态；随消息透传当前播放位置） ----
@@ -995,28 +1032,6 @@ const timelineTicks = computed(() => {
                     AI 笔记生成中，完成后展示在这里
                   </p>
                   <p class="mt-2 text-[11px] text-ink-2">AI 笔记由转写与画面识别生成，点击时间戳可跳回原片段核对。</p>
-                  <!-- 分页：切换式（第 X / N 页 + 上一页/下一页），置于笔记底部 -->
-                  <div v-if="notePages.length > 1" class="mb-1 mt-3 flex items-center gap-3 text-[13px] text-ink-2">
-                    <span class="truncate">第 {{ notePageIndex + 1 }} / {{ notePages.length }} 页 · {{ notePages[notePageIndex].label }}</span>
-                    <div class="flex shrink-0 items-center gap-2">
-                      <button
-                        type="button"
-                        class="rounded-lg border border-line px-3 py-1.5 text-[12px] transition-colors hover:bg-line/60 disabled:opacity-40"
-                        :disabled="notePageIndex <= 0"
-                        @click="goNotePage(notePageIndex - 1)"
-                      >
-                        上一页
-                      </button>
-                      <button
-                        type="button"
-                        class="rounded-lg border border-line px-3 py-1.5 text-[12px] transition-colors hover:bg-line/60 disabled:opacity-40"
-                        :disabled="notePageIndex >= notePages.length - 1"
-                        @click="goNotePage(notePageIndex + 1)"
-                      >
-                        下一页
-                      </button>
-                    </div>
-                  </div>
                 </template>
               </template>
 
@@ -1090,6 +1105,60 @@ const timelineTicks = computed(() => {
                   </p>
                 </div>
               </template>
+            </div>
+
+            <!-- 分页：结构性底栏（tab 栏同款，固定在面板底部、不参与滚动），仅 AI 笔记阅读态且多页时显示；页码可点开下拉直达任意页 -->
+            <div
+              v-if="activeTab === 'note' && !noteEditing && notePages.length > 1"
+              class="flex shrink-0 items-center justify-between gap-3 border-t border-line bg-panel px-3 py-2 text-[13px] text-ink-2"
+            >
+              <div class="relative min-w-0">
+                <button
+                  type="button"
+                  class="flex max-w-full items-center gap-1 rounded-lg px-2 py-1 transition-colors hover:bg-line/60"
+                  title="点击展开页面列表，选择章节直达"
+                  @click.stop="pageNavOpen = !pageNavOpen"
+                >
+                  <span class="truncate">第 {{ notePageIndex + 1 }} / {{ notePages.length }} 页 · {{ notePages[notePageIndex].label }}</span>
+                  <ChevronDown :size="13" class="shrink-0 transition-transform" :class="pageNavOpen ? '' : '-rotate-90'" />
+                </button>
+                <div
+                  v-if="pageNavOpen"
+                  class="absolute bottom-full left-0 z-30 mb-2 max-h-64 w-72 overflow-y-auto rounded-xl border border-line bg-surface py-1.5 shadow-lg"
+                  @click.stop
+                >
+                  <button
+                    v-for="(page, i) in notePages"
+                    :key="i"
+                    class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] transition-colors hover:bg-panel"
+                    :class="i === notePageIndex ? 'bg-panel font-medium text-primary' : 'text-ink'"
+                    :title="page.label"
+                    @click="jumpToNotePage(i)"
+                  >
+                    <span class="w-5 shrink-0 text-right text-[11px] text-ink-2">{{ i + 1 }}</span>
+                    <span class="truncate">{{ page.label }}</span>
+                    <Check v-if="i === notePageIndex" :size="13" class="ml-auto shrink-0 text-primary" />
+                  </button>
+                </div>
+              </div>
+              <div class="flex shrink-0 items-center gap-2">
+                <button
+                  type="button"
+                  class="rounded-lg border border-line bg-surface px-3 py-1.5 text-[12px] transition-colors hover:bg-line/60 disabled:opacity-40"
+                  :disabled="notePageIndex <= 0"
+                  @click="goNotePage(notePageIndex - 1)"
+                >
+                  上一页
+                </button>
+                <button
+                  type="button"
+                  class="rounded-lg border border-line bg-surface px-3 py-1.5 text-[12px] transition-colors hover:bg-line/60 disabled:opacity-40"
+                  :disabled="notePageIndex >= notePages.length - 1"
+                  @click="goNotePage(notePageIndex + 1)"
+                >
+                  下一页
+                </button>
+              </div>
             </div>
           </div>
         </div>

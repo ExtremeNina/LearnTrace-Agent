@@ -9,17 +9,20 @@ import java.util.regex.Pattern;
 
 /**
  * AI 笔记产物质量校验（B26 阶段 1，零成本第一道闸）：
- * 代码级检查生成笔记的结构与可信性——四段标题齐全、章节时间线时间戳合法、知识点非空、
+ * 代码级检查生成笔记的结构与可信性——结构标题齐全、章节内容页非空、章节时间线时间戳合法、
  * 正文与转写字数比合理。纯函数便于单测；不合格由调用方带缺陷清单重生成（详见 B26）。
  * 网课流水线与 B11 对话转写共用。
  */
 public final class NoteQualityChecker {
 
-    /** COURSE_TRANSCRIPT_PROMPT 约定的四个二级标题 */
-    private static final String[] REQUIRED_SECTIONS = {"课程概览", "章节时间线", "知识点", "总结"};
+    /** 结构约定的二级标题（三段；章节内容页为每章一个 ## 标题——时间戳方案 B 起由代码拼接，旧结构为「知识点」伞标题） */
+    private static final String[] REQUIRED_SECTIONS = {"课程概览", "章节时间线", "总结"};
 
     /** 章节时间线时间戳引用：[mm:ss] 或 [h:mm:ss] */
     private static final Pattern TIMESTAMP = Pattern.compile("\\[(\\d{1,2}:[0-5]\\d(?::[0-5]\\d)?)\\]");
+
+    /** 标题行尾的时间戳（章节页标题自带，判结构性标题时需剥除） */
+    private static final Pattern TRAILING_TS = Pattern.compile("\\s*\\[\\d{1,3}:[0-5]\\d(?::[0-5]\\d)?]\\s*$");
 
     /** 正文与转写的最小字数比（低于判定为偷工减料） */
     private static final double MIN_RATIO = 0.1;
@@ -74,10 +77,27 @@ public final class NoteQualityChecker {
             }
         }
 
-        // 3. 知识点非空
-        String knowledge = extractSection(noteMarkdown, "知识点");
-        if (knowledge == null || knowledge.replace("###", "").replace("#", "").isBlank()) {
-            defects.add("知识点一节内容为空");
+        // 3. 章节内容页非空：结构三段之外至少一个 ## 标题（新结构 = 每章一页；旧结构 = 「知识点」伞标题）
+        int chapterPages = 0;
+        for (String line : noteMarkdown.split("\n")) {
+            String trimmed = line.trim();
+            if (!trimmed.startsWith("## ")) {
+                continue;
+            }
+            String name = TRAILING_TS.matcher(trimmed.substring(3).trim()).replaceFirst("").trim();
+            boolean structural = false;
+            for (String section : REQUIRED_SECTIONS) {
+                if (section.equals(name)) {
+                    structural = true;
+                    break;
+                }
+            }
+            if (!structural) {
+                chapterPages++;
+            }
+        }
+        if (chapterPages == 0) {
+            defects.add("缺少章节内容页");
         }
 
         // 4. 正文与转写字数比

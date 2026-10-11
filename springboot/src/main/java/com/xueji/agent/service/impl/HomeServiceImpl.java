@@ -254,15 +254,33 @@ public class HomeServiceImpl implements HomeService {
     }
 
     /**
-     * 从 AI 笔记 Markdown 抽「知识点」小节的条目（公开静态纯函数，配套单测，先例同 NoteGenerationService.buildUserContent）：
-     * 取「知识点」标题行之后、下一个 # 标题之前的列表项（- / * / 数字. 开头），
-     * 去掉加粗与行内代码标记并截断；无该小节时回退为全文前几条列表项
+     * 从 AI 笔记 Markdown 抽「本课重点」条目（公开静态纯函数，配套单测）：
+     * 优先取 ### 知识点小节标题（时间戳方案 B 结构：标题即知识点名，剥行尾时间戳）；
+     * 无小节标题时回退为「知识点」标题行之后的列表项（旧结构），再退为全文前几条列表项；
+     * 统一去掉加粗与行内代码标记并截断
      */
     public static List<String> parseKnowledgePoints(String markdown, int limit) {
-        List<String> fallback = new ArrayList<>();
         if (markdown == null || markdown.isBlank()) {
             return List.of();
         }
+        List<String> headings = new ArrayList<>();
+        for (String rawLine : markdown.split("\n")) {
+            String line = rawLine.trim();
+            if (!line.startsWith("### ")) {
+                continue;
+            }
+            String item = stripTrailingTimestamp(line.substring(4).trim());
+            if (!item.isEmpty()) {
+                headings.add(item);
+                if (headings.size() >= limit) {
+                    return headings;
+                }
+            }
+        }
+        if (!headings.isEmpty()) {
+            return headings;
+        }
+        List<String> fallback = new ArrayList<>();
         boolean inSection = false;
         List<String> points = new ArrayList<>();
         for (String rawLine : markdown.split("\n")) {
@@ -288,6 +306,11 @@ public class HomeServiceImpl implements HomeService {
             }
         }
         return points.isEmpty() ? fallback : points;
+    }
+
+    /** 剥标题行尾的时间戳（方案 B 章节页/知识点标题自带 [mm:ss]） */
+    private static String stripTrailingTimestamp(String text) {
+        return text.replaceAll("\\s*\\[\\d{1,3}:[0-5]\\d]\\s*$", "").trim();
     }
 
     /** 识别列表项并清洗标记（- * • 数字. 开头；去 ** 加粗与 ` 行内代码），非列表项返回 null */

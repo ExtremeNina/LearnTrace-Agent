@@ -205,4 +205,15 @@ class HomeServiceImplTest {
         assertEquals(List.of("甲", "乙"), HomeServiceImpl.parseKnowledgePoints("## 概览\n- 甲\n1. 乙", 4));
         assertEquals(List.of("丙"), HomeServiceImpl.parseKnowledgePoints("## 知识点\n- **丙**\n", 4));
     }
+
+    @Test
+    void parseKnowledgePointsShouldPreferHeadingTitles() {
+        // 方案 B 结构：优先取 ### 小节标题并剥行尾时间戳；列表项不再参与
+        assertEquals(List.of("洛必达法则", "齐次方程"),
+                HomeServiceImpl.parseKnowledgePoints("## 第一章 [03:10]\n### 洛必达法则 [46:05]\n正文\n### 齐次方程 [51:20]\n正文", 4));
+        // 超出 limit 截断
+        assertEquals(List.of("甲"), HomeServiceImpl.parseKnowledgePoints("### 甲 [00:10]\n### 乙 [00:20]", 1));
+        // 无小节标题时回退列表项（旧结构不受影响）
+        assertEquals(List.of("甲", "乙"), HomeServiceImpl.parseKnowledgePoints("## 知识点\n- 甲\n- 乙", 4));
+    }
 }
