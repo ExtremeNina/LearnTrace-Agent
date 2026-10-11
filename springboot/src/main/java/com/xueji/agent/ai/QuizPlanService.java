@@ -5,6 +5,7 @@ import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import com.xueji.agent.ai.prompt.AgentPrompts;
 import com.xueji.agent.ai.QuizAgentService.QuizQuestion;
+import com.xueji.agent.common.ModelServiceErrors;
 import com.xueji.agent.domain.entity.CourseTranscriptSegment;
 import com.xueji.agent.domain.entity.UserProfile;
 import com.xueji.agent.exception.BusinessException;
@@ -145,15 +146,54 @@ public class QuizPlanService {
     /** 写题样本上限 */
     private static final int WRITE_TRANSCRIPT_CHARS = 12000;
 
+    /** 写题分批大小（2026-10-11 根治大课单次全量输出被截断：单批 6 题的 JSON 远小于模型输出上限） */
+    static final int WRITE_BATCH_SIZE = 6;
+
     /**
-     * 写题 Agent（三 Agent 协作第二步）：按命题规划逐题实现（单次 LLM 调用输出全部题）。
-     * judgeFeedback 非空时为判题反馈轮（按不合格清单重写）
+     * 写题 Agent（三 Agent 协作第二步）：按命题规划**分批**实现——每批 WRITE_BATCH_SIZE 题一次小调用，
+     * 代码按序拼接；批内调用失败重试一次（余额不足除外），最终仍失败抛 BusinessException 快速失败。
+     * judgeFeedback 非空时为判题反馈轮（按不合格清单重写，各批都会带上反馈）
      */
     public List<QuizQuestion> writeQuiz(List<PlanItem> plan, List<CourseTranscriptSegment> transcript,
                                         UserProfile profile, List<String> judgeFeedback) {
+        List<QuizQuestion> questions = new ArrayList<>();
+        for (int from = 0; from < plan.size(); from += WRITE_BATCH_SIZE) {
+            List<PlanItem> batch = plan.subList(from, Math.min(plan.size(), from + WRITE_BATCH_SIZE));
+            questions.addAll(writeBatchWithRetry(batch, transcript, profile, judgeFeedback));
+        }
+        if (questions.isEmpty()) {
+            throw new BusinessException("写题结果为空，请稍后重试");
+        }
+        return questions;
+    }
+
+    /** 单批写题 + 失败重试一次（语义对齐 callWithRetry：余额不足不重试直接透出充值文案） */
+    private List<QuizQuestion> writeBatchWithRetry(List<PlanItem> batch, List<CourseTranscriptSegment> transcript,
+                                                   UserProfile profile, List<String> judgeFeedback) {
+        try {
+            return writeBatch(batch, transcript, profile, judgeFeedback);
+        } catch (Exception first) {
+            if (ModelServiceErrors.isBalanceInsufficient(first)) {
+                throw new BusinessException(ModelServiceErrors.BALANCE_MESSAGE);
+            }
+            log.warn("写题批次（{} 个规划项）失败，重试一次, 错误={}", batch.size(), first.getMessage());
+            try {
+                return writeBatch(batch, transcript, profile, judgeFeedback);
+            } catch (Exception second) {
+                if (ModelServiceErrors.isBalanceInsufficient(second)) {
+                    throw new BusinessException(ModelServiceErrors.BALANCE_MESSAGE);
+                }
+                throw new BusinessException("写题失败：" + second.getMessage());
+            }
+        }
+    }
+
+    /** 单批写题调用：解析为空视为失败（上抛后走批内重试） */
+    private List<QuizQuestion> writeBatch(List<PlanItem> batch, List<CourseTranscriptSegment> transcript,
+                                          UserProfile profile, List<String> judgeFeedback) {
         String text = generationChatClient.prompt()
                 .system(AgentPrompts.QUIZ_WRITE_PROMPT)
-                .user(buildWritePrompt(plan, transcript, profile, judgeFeedback))
+                .user(buildWritePrompt(batch, transcript, profile, judgeFeedback))
                 .call()
                 .content();
         List<QuizQuestion> questions = QuizAgentService.parseQuestions(text);
@@ -200,7 +240,7 @@ public class QuizPlanService {
             }
         }
         if (judgeFeedback != null && !judgeFeedback.isEmpty()) {
-            sb.append("\n[判题反馈] 上一版题目存在以下问题，请按规划重新输出全部题目：\n");
+            sb.append("\n[判题反馈] 上一版题目存在以下问题，请按本批规划重新输出对应题目：\n");
             for (String item : judgeFeedback) {
                 sb.append("- ").append(item).append('\n');
             }

@@ -317,7 +317,7 @@ public class NotePipelineGraphRunner {
         return update;
     }
 
-    /** 写题 Agent 节点：按命题规划逐题实现（判题反馈轮带不合格清单重写）；调用失败重试一次后上抛 */
+    /** 写题 Agent 节点：按命题规划**分批**实现（批内自带失败重试一次，最终失败上抛快速失败）；判题反馈轮带不合格清单重写 */
     private Map<String, Object> writeQuizNode(OverAllState state, Course course,
                                               List<CourseTranscriptSegment> transcript, UserProfile profile,
                                               StageListener listener) throws Exception {
@@ -331,8 +331,8 @@ public class NotePipelineGraphRunner {
             return update;
         }
         List<String> judgeFeedback = state.<List<String>>value("judgeFeedback").orElse(List.of());
-        List<QuizQuestion> draft = callWithRetry("写题",
-                () -> quizPlanService.writeQuiz(plan, transcript, profile, judgeFeedback));
+        // writeQuiz 内部按批切分调用（单批输出远小于模型上限，根治大课全量输出截断），批内重试一次
+        List<QuizQuestion> draft = quizPlanService.writeQuiz(plan, transcript, profile, judgeFeedback);
         update.put("quizDraft", draft);
         return update;
     }
