@@ -14,7 +14,7 @@ LJ-Agent/
 └── web/                  # 前端 Vue 3 + Vite（端口 5173）
 ```
 
-## 当前状态（2026-10-03）
+## 当前状态（2026-10-11）
 
 - 切片一（会话骨架）**完成**：多轮流式对话、自动标题、100 轮上限、30 天清理、Redis 记忆 + MySQL 重建兜底。
 - 切片二（题目记录）**完成**：OCR 前置流水线（弹性线程执行，默认 45s 超时降级）、保存（AI 分类学科）、合并列表（拍照题 + AI 相似题）、相似题全流程（题目详情页生成入口 → 对话生成 → 确认保存入 similar_question 表）。
@@ -26,7 +26,8 @@ LJ-Agent/
 - 意图确认 Agent（2026-10-08）：上传视频后的对话回合由独立 IntentAgentService 接管——LLM 按用户输入定制提问（学段/目标/偏好画像落档 user_profile），意图明确时不再出流程选择卡直接触发转写/建课；提问以 IntentCard 大卡片确认（历史消息渲染同构）；两级降级（提问失败模板卡、解析失败按时长默认意图）。
 - 首页学习仪表盘（2026-10-08）：问候 banner + 继续学习（本课重点）/ 今日复习（薄弱卡队列）/ 最近学习；AI 助手面板与 /chat 共享会话状态（流式同步），全断点锁定高度内滚、输入框固定可见，长对话不撑长页面；上传资料整合进输入框加号。
 - 今日简报归属升级（2026-10-08）：简报移入对话气泡——按（用户 × 会话 × 日期）后端持久化归属（daily_briefing 加 conversation_id，唯一键改三元组，含 ALTER 迁移），简报气泡按生成时间插入会话消息流、同一会话跨天每天一条；同日跨会话复用内容不重复调 LLM；未绑定旧数据首次访问自动补绑定；前端简报标记按用户 ID 隔离（多账号共用浏览器互不污染）。落位时间取 createdAt（updatedAt 随补绑定/刷新变化会导致跳位）。
-- 已知遗留：Redis db1 与其他项目共用且 sa-token 键前缀相同（`sa-token:`），他项目 token 可通过本系统鉴权——B06 搁置期间接受，公开部署前改 `token-name` 隔离；对话图片上传的 OSS 配置走 git 忽略的本地配置文件方案（endpoint=武汉 lr 区）；`uploadChatImage` 只捕获 IOException、前端 Agent.vue 未渲染上传失败提示（早期记录，未复核）。
+- AI 笔记阅读与时间戳校准（2026-10-11）：详情页 AI 笔记改为切换式分页（第 X / N 页 + 上一页/下一页，分页栏在内容底部，概览/章节时间线并入首页减少翻页），知识点标签云改折叠面板（默认收起、展开内部滚动）；时间戳后处理管线升级——秒数区间 [1120-1400s] 归一化 + 生成后确定性回填（NoteTimestampCalibrator：句级转写 bigram 匹配校准 [mm:ss]，单调钳制防回退，无佐证 00:00 移除/非 0 保留）+ 裸 `~` 转义防 GFM 误删划线；ASR 伪句级展开（端点把整 280s 分片打包为单句且带真实起止时间时也按句末标点切分，治全部课程转写粗粒度 270s/段的顽疾）+ 校准器粗粒度大段（>300 字）拒判防误回填连坐。
+- 已知遗留：Redis db1 与其他项目共用且 sa-token 键前缀相同（`sa-token:`），他项目 token 可通过本系统鉴权——B06 搁置期间接受，公开部署前改 `token-name` 隔离；对话图片上传的 OSS 配置走 git 忽略的本地配置文件方案（endpoint=武汉 lr 区）；`uploadChatImage` 只捕获 IOException、前端 Agent.vue 未渲染上传失败提示（早期记录，未复核）；存量课程转写仍为粗粒度（约 270s/段），需重新上传才获得句级粒度，粗粒度下时间戳仅能校准到分片边界。
 
 ## 后端模块索引（springboot/src/main/java/com/xueji/agent/）
 
@@ -34,7 +35,7 @@ LJ-Agent/
 | --- | --- | --- | --- |
 | 会话与 Agent 对话 | ws/AgentWebSocketHandler、service/impl/AgentChatServiceImpl、ai/IntentAgentService、ai/memory/*、ConversationServiceImpl | WS 流式对话（outbox 离线暂存）、回合互斥、消息双写、视频回合意图确认（定制提问/画像落档/大卡片透出）、会话 CRUD/自动标题/100 轮上限/30 天清理、Redis 会话记忆 + MySQL 重建兜底 | docs/modules/agent-chat.md |
 | 题目记录与相似题 RAG | QuestionController/ServiceImpl、ai/tool/QuestionSaveTool、RagSearchTool、impl/QuestionVectorStoreService、ai/RagIngestService | 拍照题与相似题双表存储（question_record + similar_question）、合并列表、生成相似题入口、统一向量化（q:/sq: 前缀）、rag_search 来源标记召回 | docs/modules/questions-rag.md |
-| 视频转写流水线 | CourseController/ServiceImpl、impl/CoursePipelineService、mq/CourseProcessConsumer、ai/tool/QwenAsrTool、PaddleOcrTool、ai/NoteGenerationService | 上传→MQ→FFmpeg→ASR→帧 OCR→LLM 笔记；失败重试；删除（批量）与连带清理；处理超时自愈；标题/学科/学习笔记编辑 | docs/modules/video-pipeline.md |
+| 视频转写流水线 | CourseController/ServiceImpl、impl/CoursePipelineService、mq/CourseProcessConsumer、ai/tool/QwenAsrTool、PaddleOcrTool、ai/NoteGenerationService、ai/NoteTimestampCalibrator | 上传→MQ→FFmpeg→ASR→帧 OCR→LLM 笔记（含生成后时间戳确定性回填）；失败重试；删除（批量）与连带清理；处理超时自愈；标题/学科/学习笔记编辑 | docs/modules/video-pipeline.md |
 | 笔记整理与知识联系 | NoteController/ServiceImpl | 5 层分组树、双轨编辑（AI=md / 手动=HTML）、知识联系挂链与说明、级联删除、笔记向量化钩子 | docs/modules/notes-wiki.md |
 | 复习系统与每日简报 | ReviewController/ServiceImpl、ReviewScheduler（SM-2 简化版纯函数）、BriefingController/ServiceImpl、LearningStatsService、HomeController/ServiceImpl、task/CourseWatchScheduler | 统一复习队列（题目/相似题/笔记）：加卡（单条/批量）、今日队列、三档评分调度、统计；来源删除级联移出；每日简报（惰性 LLM 生成，按 用户×会话×日期 归属：补绑定/按会话查询）与学习状态快照（Agent 工具 get_learning_status）；首页仪表盘聚合（继续学习/今日复习/最近学习）与学习时长心跳；处理超时自愈 | docs/modules/review.md |
 | 练习 / 测验模式 | QuizController/ServiceImpl | 从题库（question_record + similar_question）按学科/时间段/来源随机抽题组卷（无状态，不建会话表）；错题经批量加卡沉淀进复习队列 | docs/modules/quiz.md |
@@ -52,7 +53,7 @@ LJ-Agent/
 | 接口层 | api/*.ts | 后端接口封装（统一 Result 解包、sa-token 注入） |
 | 状态 | stores/agent.ts、auth.ts、user.ts、toast.ts、ui.ts | 对话流式状态与种子消息、简报按会话×日期恢复落位（标记按用户隔离）/ 登录态 / 资料与主题 / 轻提示与任务通知轮询 / 侧栏模式与收缩 |
 | 组件 | components/ProfileModal.vue、ToastHost.vue、chat/*（ChatPanel、IntentCard、ModelPicker）、layout/*、notes/* | 个人页面弹窗、全局轻提示、对话面板与意图确认大卡片与模型切换器、可收缩双模式侧栏（对话 / 学习资产）、笔记树与编辑器、知识联系面板 |
-| 渲染 | utils/markdown.ts | Markdown+KaTeX 渲染、[mm:ss] 时间戳胶囊（DOMPurify 消毒） |
+| 渲染 | utils/markdown.ts | Markdown+KaTeX 渲染、[mm:ss] 时间戳胶囊（DOMPurify 消毒）、秒数/区间时间戳兜底归一化、裸 `~` 转义防误删划线 |
 | 通信 | ws/agentSocket.ts | WebSocket 封装（指数退避重连 + 离线 outbox 暂存冲刷） |
 | 主题 | style.css | Tailwind v4 @theme 语义令牌；html.dark 翻转变量实现深色主题 |
 | 常量 | constants/subjects.ts | 学科预置列表（表单 / 筛选 / AI 分类共用） |
@@ -90,7 +91,7 @@ LJ-Agent/
 * Redis 向量库容器 `redis-vector`（6380，redis-stack）：RAG 索引 `xueji-rag-idx`（JSON 存储，prefix `rag:question:`，TAG 字段 userId/subject/type）；改索引 schema 需 `docker exec redis-vector redis-cli -p 6379 FT.DROPINDEX xueji-rag-idx`，应用启动自动重建
 * MySQL `xueji` 库：25 张表 + 种子/测试数据（笔记分层树、3 个课程的完整流水线数据）
 * 用户级环境变量（setx）：OSS_ACCESS_KEY / OSS_SECRET_KEY / OSS_BUCKET / OSS_ENDPOINT / RABBITMQ_USER / RABBITMQ_PASS（本地开发已不依赖，走本地配置文件）
-* 新会话热身三步：`mvn test`（255 个）→ `npm run build`（web）→ 后端启动冒烟（登录 + /courses + /notes/tree）
+* 新会话热身三步：`mvn test`（310 个）→ `npm run build`（web）→ 后端启动冒烟（登录 + /courses + /notes/tree）
 
 ## 冒烟脚本（需后端已启动）
 
@@ -112,4 +113,4 @@ LJ-Agent/
 
 ## 测试
 
-后端 255 个单元测试（40 个测试类：Mockito 单测 + FFmpeg 真实调用用例）；前端 `npm run build` 类型检查；Node 冒烟脚本五条（见上）。全链路人工验证：网课流水线 3 个真实视频、WS 对话（web/test-ws.mjs）、RAG 相似题闭环、个人页面全生命周期（web/test-profile-smoke.mjs）。各模块使用的测试方法详见 docs/modules/。
+后端 310 个单元测试（50 个测试类：Mockito 单测 + FFmpeg 真实调用用例）；前端 `npm run build` 类型检查；Node 冒烟脚本五条（见上）。全链路人工验证：网课流水线 3 个真实视频、WS 对话（web/test-ws.mjs）、RAG 相似题闭环、个人页面全生命周期（web/test-profile-smoke.mjs）。各模块使用的测试方法详见 docs/modules/。

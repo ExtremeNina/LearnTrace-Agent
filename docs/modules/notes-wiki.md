@@ -18,7 +18,7 @@ OneNote 式分层笔记：分组树（最多 5 层）+ 笔记叶子；双轨编�
 
 **依赖**
 - 无外部服务；仅 MySQL（note / note_link）+ RagIngestService（向量库，见 M2）
-- 前端渲染管线 utils/markdown.ts（renderNoteHtml：归一化 → Markdown+KaTeX → 时间戳胶囊）
+- 前端渲染管线 utils/markdown.ts（renderNoteHtml：归一化 → 秒数/区间时间戳兜底归一化 + 裸 `~` 转义 → Markdown+KaTeX → 时间戳胶囊）
 
 **不做（边界外）**
 - 知识树 / AI 提取树（PRD 后期，parent_id 已预留）
