@@ -28,4 +28,6 @@ export interface ServerMessage {
   total?: number
   /** 仅 COMPLETE：消息 payload JSON（意图确认大卡片等结构化扩展） */
   payload?: string
+  /** 仅 COURSE：课程 ID（failed 卡片重试用） */
+  courseId?: number
 }

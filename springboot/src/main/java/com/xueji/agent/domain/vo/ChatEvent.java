@@ -24,6 +24,8 @@ public class ChatEvent {
     private final Integer total;
     /** 仅 COMPLETE：消息 payload JSON（意图确认大卡片等结构化扩展随消息透传） */
     private final String payload;
+    /** 仅 COURSE：课程 ID（failed 卡片重试用） */
+    private final Long courseId;
 
     private ChatEvent(String type, String turnId, String text, Long messageId, String code, String message,
                       String status, Integer done, Integer total) {
@@ -32,6 +34,11 @@ public class ChatEvent {
 
     private ChatEvent(String type, String turnId, String text, Long messageId, String code, String message,
                       String status, Integer done, Integer total, String payload) {
+        this(type, turnId, text, messageId, code, message, status, done, total, payload, null);
+    }
+
+    private ChatEvent(String type, String turnId, String text, Long messageId, String code, String message,
+                      String status, Integer done, Integer total, String payload, Long courseId) {
         this.type = type;
         this.turnId = turnId;
         this.text = text;
@@ -42,6 +49,7 @@ public class ChatEvent {
         this.done = done;
         this.total = total;
         this.payload = payload;
+        this.courseId = courseId;
     }
 
     private ChatEvent(String type, String turnId, String text, Long messageId, String code, String message) {
@@ -74,8 +82,8 @@ public class ChatEvent {
         return new ChatEvent("TRANSCRIBE", null, text, messageId, null, errorMessage, status, done, total);
     }
 
-    /** 课程流水线阶段进度事件（B11 分流，后台推送；message = 完成时的课程链接路径 / 失败原因） */
-    public static ChatEvent course(Long messageId, String stage, String text, String extra) {
-        return new ChatEvent("COURSE", null, text, messageId, null, extra, stage, null, null);
+    /** 课程流水线阶段进度事件（B11 分流，后台推送；message = 完成时的课程链接路径；courseId 供 failed 卡片重试） */
+    public static ChatEvent course(Long messageId, String stage, String text, String extra, Long courseId) {
+        return new ChatEvent("COURSE", null, text, messageId, null, extra, stage, null, null, null, courseId);
     }
 }

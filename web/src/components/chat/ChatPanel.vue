@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { nextTick, reactive, ref, watch } from 'vue'
 import {
-  Check, Copy, Film, LoaderCircle, MonitorPlay, RefreshCw, Share2, Sparkles, ThumbsDown, ThumbsUp, Volume2,
+  AlertCircle, Check, Copy, Film, LoaderCircle, MonitorPlay, RefreshCw, RotateCcw, Share2, Sparkles,
+  ThumbsDown, ThumbsUp, Volume2,
 } from 'lucide-vue-next'
 import { useAgentStore } from '../../stores/agent'
 import { renderIntentChips, renderMarkdown } from '../../utils/markdown'
+import { retryCourse } from '../../api/course'
 import IntentCard from './IntentCard.vue'
 
 /**
@@ -25,6 +27,23 @@ const agent = useAgentStore()
 const scrollBox = ref<HTMLElement | null>(null)
 const copiedIndex = ref<number | null>(null)
 const expandedTranscripts = reactive(new Set<number>())
+/** 重试提交中的课程 ID（防重复点击；成功后卡片状态由 COURSE 事件切回 processing） */
+const retryingCourseId = ref<number | null>(null)
+
+/** failed 课程任务卡片：重新提交处理（与视频管理页同一条重试链路） */
+async function retryFailedCourse(courseId: number) {
+  if (retryingCourseId.value !== null) {
+    return
+  }
+  retryingCourseId.value = courseId
+  try {
+    await retryCourse(courseId)
+  } catch {
+    // 失败提示由全局请求层/轮询状态体现，这里保持卡片 failed 态可再次重试
+  } finally {
+    retryingCourseId.value = null
+  }
+}
 
 watch(
   () => agent.messages.map((m) => m.content).join('|'),
@@ -218,6 +237,23 @@ function onPanelClick(e: MouseEvent) {
                 <MonitorPlay :size="14" />
                 查看课程与 AI 笔记
               </RouterLink>
+            </template>
+            <!-- 失败卡片：错误文案 + 重试（与视频管理页共用 retry 接口；重试成功后 COURSE 事件切回 processing） -->
+            <template v-else-if="msg.courseTask?.status === 'failed'">
+              <div class="flex items-start gap-1.5 text-[14px] leading-6 text-red-500">
+                <AlertCircle :size="15" class="mt-0.5 shrink-0" />
+                <span>{{ msg.courseTask.text || msg.content }}</span>
+              </div>
+              <button
+                v-if="msg.courseTask.courseId"
+                type="button"
+                class="mt-2 inline-flex items-center gap-1.5 rounded-full border border-line px-3.5 py-1.5 text-[13px] text-ink-2 transition-colors hover:border-primary hover:text-primary disabled:opacity-50"
+                :disabled="retryingCourseId !== null"
+                @click="retryFailedCourse(msg.courseTask.courseId)"
+              >
+                <RotateCcw :size="14" />
+                {{ retryingCourseId === msg.courseTask.courseId ? '已重新提交处理…' : '重试' }}
+              </button>
             </template>
             <!-- B27 意图确认大卡片：结构化提问 + 选项组 + 确认按钮（点击回发拼接文本） -->
             <template v-else-if="msg.intentCard">

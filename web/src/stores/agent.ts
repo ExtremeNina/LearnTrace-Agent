@@ -24,8 +24,8 @@ export interface ChatMsg {
   video?: { durationSec?: number }
   /** 视频转写状态（assistant 的 video_transcript 消息） */
   transcribe?: { status: 'processing' | 'done' | 'failed'; done: number; total: number }
-  /** 课程流水线任务状态（assistant 的 course_task 消息，B11 分流） */
-  courseTask?: { status: 'processing' | 'done' | 'failed'; stage: string; text?: string; link?: string }
+  /** 课程流水线任务状态（assistant 的 course_task 消息，B11 分流；courseId 供 failed 重试） */
+  courseTask?: { status: 'processing' | 'done' | 'failed'; stage: string; text?: string; link?: string; courseId?: number }
   /** 意图确认大卡片（B27：视频回合意图 Agent 的结构化提问，payload 随消息透出） */
   intentCard?: { message: string; questions: { title: string; options: string[] }[] }
   /** 今日简报气泡（本地消息，不落库；按后端「会话×日期」标记恢复与落位） */
@@ -121,6 +121,7 @@ export const useAgentStore = defineStore('agent', () => {
           status: payload.status as 'processing' | 'done' | 'failed',
           stage: typeof payload.stage === 'string' ? payload.stage : 'PENDING',
           link: typeof payload.link === 'string' ? payload.link : undefined,
+          courseId: typeof payload.courseId === 'number' ? payload.courseId : undefined,
         }
       }
       // 意图确认大卡片（B27 / 2026-10-11 固定卡）：后端 payload 为扁平 {message, questions} 结构（与实时 COMPLETE 一致）
@@ -576,6 +577,7 @@ export const useAgentStore = defineStore('agent', () => {
           stage,
           text: msg.text,
           link: done ? msg.message : undefined,
+          courseId: typeof msg.courseId === 'number' ? msg.courseId : undefined,
         }
         if (done && msg.text) {
           target.content = msg.text + (msg.message ? `。点击链接查看课程与 AI 笔记：${msg.message}` : '')

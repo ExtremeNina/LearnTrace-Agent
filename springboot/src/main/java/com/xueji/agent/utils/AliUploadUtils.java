@@ -140,6 +140,47 @@ public class AliUploadUtils {
         }
     }
 
+    /**
+     * 从 OSS 下载对象到本地文件（流式写盘，重试回源视频用）：
+     * ossUrl 为 buildPublicUrl 产物（完整访问 URL），内部还原对象 key；
+     * 失败时清理半成品并抛 UploadException（调用方决定降级文案）
+     */
+    public void downloadTo(String ossUrl, java.nio.file.Path target) {
+        OSS ossClient = new OSSClientBuilder().build(endpoint, accessKey, secretKey);
+        try (com.aliyun.oss.model.OSSObject object = ossClient.getObject(bucketName, objectKeyOf(ossUrl));
+             InputStream in = object.getObjectContent();
+             java.io.OutputStream out = java.nio.file.Files.newOutputStream(target)) {
+            in.transferTo(out);
+        } catch (Exception e) {
+            cleanupQuietly(target);
+            log.error("OSS 对象下载失败: {} -> {}", ossUrl, target, e);
+            throw new UploadException();
+        } finally {
+            ossClient.shutdown();
+        }
+    }
+
+    /** buildPublicUrl 产物还原对象 key；非本桶前缀的 URL 取路径部分兜底 */
+    private String objectKeyOf(String ossUrl) {
+        String host = endpoint.replaceAll("^https?://", "");
+        String prefix = "https://" + bucketName + "." + host + "/";
+        if (ossUrl.startsWith(prefix)) {
+            return ossUrl.substring(prefix.length());
+        }
+        int schemeEnd = ossUrl.indexOf("://");
+        int pathStart = schemeEnd >= 0 ? ossUrl.indexOf('/', schemeEnd + 3) : -1;
+        return pathStart >= 0 ? ossUrl.substring(pathStart + 1) : ossUrl;
+    }
+
+    private void cleanupQuietly(java.nio.file.Path file) {
+        if (file != null) {
+            try {
+                java.nio.file.Files.deleteIfExists(file);
+            } catch (IOException ignored) {
+            }
+        }
+    }
+
 
     /**
      * 对话图片上传：校验格式，按真实类型设置 Content-Type，返回完整访问 URL

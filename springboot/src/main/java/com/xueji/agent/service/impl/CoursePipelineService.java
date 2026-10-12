@@ -122,9 +122,8 @@ public class CoursePipelineService {
                 .orderByDesc("id")
                 .last("LIMIT 1"));
 
-        Path video = Path.of(tempPath == null ? "" : tempPath);
-        if (!Files.exists(video)) {
-            markFailed(course, "本地上传文件已丢失，请删除后重新上传该网课", taskMessage);
+        Path video = resolveVideo(course, tempPath, taskMessage);
+        if (video == null) {
             return;
         }
 
@@ -430,6 +429,38 @@ public class CoursePipelineService {
 
     // ---- 工具 ----
 
+    /**
+     * 视频来源解析（2026-10-12 重试回源修复）：
+     * 优先本地临时文件（首次上传路径零感知）；重试时本地文件已被首次处理的 finally 清理（tempPath 为空），
+     * 若 OSS 已有首次上传的视频（video_oss_key 非空）则下载回临时目录继续全流程；两者皆无才引导重新上传。
+     * 陷阱规避：Files.exists(Path.of("")) 恒为 true（空路径指向当前工作目录），空白 tempPath 必须先显式判空
+     *
+     * @return 视频本地路径；守卫失败（已 markFailed）返回 null
+     */
+    Path resolveVideo(Course course, String tempPath, Message taskMessage) {
+        if (tempPath != null && !tempPath.isBlank()) {
+            Path local = Path.of(tempPath);
+            if (Files.exists(local)) {
+                return local;
+            }
+        }
+        String ossKey = course.getVideoOssKey();
+        if (ossKey != null && !ossKey.isBlank()) {
+            Path retryVideo = Path.of(System.getProperty("java.io.tmpdir"), "xueji-upload",
+                    "retry-" + course.getId() + "." + extOf(ossKey));
+            try {
+                aliUploadUtils.downloadTo(ossKey, retryVideo);
+                return retryVideo;
+            } catch (Exception e) {
+                log.error("重试回源视频下载失败, courseId={}", course.getId(), e);
+                markFailed(course, "重试回源视频下载失败，请稍后重试或删除后重新上传该网课", taskMessage);
+                return null;
+            }
+        }
+        markFailed(course, "本地上传文件已丢失，请删除后重新上传该网课", taskMessage);
+        return null;
+    }
+
     private void updateStatus(Course course, String status, String errorMsg) {
         // 截断收口：error_msg 列 varchar(2000)，调用方可自由拼接前缀，超长在此统一截断（B28 修复）
         course.setStatus(status).setErrorMsg(truncate(errorMsg)).setUpdatedAt(LocalDateTime.now());
@@ -474,6 +505,7 @@ public class CoursePipelineService {
             boolean failed = "FAILED".equals(stage);
             payload.set("status", done ? "done" : failed ? "failed" : "processing");
             payload.set("stage", stage);
+            payload.set("courseId", course.getId());
             if (extra != null) {
                 payload.set("link", extra);
             }
@@ -484,7 +516,7 @@ public class CoursePipelineService {
                 taskMessage.setContent(text);
             }
             messageMapper.updateById(taskMessage);
-            pushService.pushToUser(course.getUserId(), ChatEvent.course(taskMessage.getId(), stage, text, extra));
+            pushService.pushToUser(course.getUserId(), ChatEvent.course(taskMessage.getId(), stage, text, extra, course.getId()));
         } catch (Exception e) {
             // 进度推送失败不影响流水线主流程
             log.warn("课程任务进度推送失败, courseId={}, stage={}", course.getId(), stage, e);
