@@ -26,8 +26,8 @@ export interface ChatMsg {
   transcribe?: { status: 'processing' | 'done' | 'failed'; done: number; total: number }
   /** 课程流水线任务状态（assistant 的 course_task 消息，B11 分流；courseId 供 failed 重试） */
   courseTask?: { status: 'processing' | 'done' | 'failed'; stage: string; text?: string; link?: string; courseId?: number }
-  /** 意图确认大卡片（B27：视频回合意图 Agent 的结构化提问，payload 随消息透出；confirmed=已确认折叠态） */
-  intentCard?: { message: string; questions: { title: string; options: string[] }[]; confirmed?: boolean }
+  /** 意图确认大卡片（B27：视频回合意图 Agent 的结构化提问，payload 随消息透出；confirmed=已确认折叠态，answers=回显答案） */
+  intentCard?: { message: string; questions: { title: string; options: string[] }[]; confirmed?: boolean; answers?: Record<string, string> }
   /** 今日简报气泡（本地消息，不落库；按后端「会话×日期」标记恢复与落位） */
   briefing?: boolean
   /** 消息创建时间（服务端时间），用于把简报按生成时间插到最后一条更早的消息之后 */
@@ -147,18 +147,20 @@ export const useAgentStore = defineStore('agent', () => {
       return item
     })
     // 意图卡已确认态恢复（启发式）：卡片之后存在以首题标题开头的用户消息（确认回答拼接格式）→ 已确认折叠，
-    // 解决转写/处理过程中切页回来历史重载后卡片平铺为未答态的观感问题（2026-10-12）
+    // 并解析「标题：值（补充：x）」回填各题答案供锁定态高亮回显（2026-10-12）
     messages.value.forEach((m, idx) => {
       if (!m.intentCard?.questions.length) {
         return
       }
       const firstTitle = m.intentCard.questions[0].title
-      const confirmed = messages.value
+      const answerMsg = messages.value
         .slice(idx + 1)
-        .some((later) => later.role === 'user' && later.content.trim().startsWith(firstTitle + '：'))
-      if (confirmed) {
-        m.intentCard.confirmed = true
+        .find((later) => later.role === 'user' && later.content.trim().startsWith(firstTitle + '：'))
+      if (!answerMsg) {
+        return
       }
+      m.intentCard.confirmed = true
+      m.intentCard.answers = parseConfirmAnswers(answerMsg.content, m.intentCard.questions)
     })
     // 简报按后端「会话×日期」标记恢复：拉取该会话全部简报，按生成时间插入消息流（跨天多条各自落位）
     await syncConversationBriefings(id)
@@ -667,3 +669,23 @@ export const useAgentStore = defineStore('agent', () => {
     ensureSocketConnected,
   }
 })
+
+/**
+ * 解析意图卡确认回答（「标题：值（补充：x）；标题2：值2」）为 标题→值 映射：
+ * 值保留原文（含补充段），由 IntentCard 拆分主体/补充回显；至少命中一个题目标题才视为确认回答
+ */
+function parseConfirmAnswers(
+  content: string,
+  questions: { title: string; options: string[] }[]
+): Record<string, string> | undefined {
+  const map: Record<string, string> = {}
+  for (const part of content.split('；')) {
+    const idx = part.indexOf('：')
+    if (idx <= 0) {
+      continue
+    }
+    map[part.slice(0, idx).trim()] = part.slice(idx + 1).trim()
+  }
+  const hit = questions.some((q) => map[q.title] !== undefined)
+  return hit ? map : undefined
+}

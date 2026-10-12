@@ -12,6 +12,8 @@ import { ChevronDown, ListChecks, Send } from 'lucide-vue-next'
 export interface IntentCardData {
   message: string
   questions: { title: string; options: string[] }[]
+  /** 已确认态回显：标题 → 用户回答主体值（含（补充：x）时拆入自定义输入框） */
+  answers?: Record<string, string>
 }
 
 const props = defineProps<{ card: IntentCardData; confirmed?: boolean }>()
@@ -22,6 +24,9 @@ const selections = reactive<Record<string, string>>({})
 const customs = reactive<Record<string, string>>({})
 /** 用户手动切换的折叠态（null = 跟随 confirmed 自动） */
 const userCollapsed = ref<boolean | null>(null)
+/** 锁定：已确认（历史回显或实时确认后）选项不可再改 */
+const confirmedLocal = ref(false)
+const locked = computed(() => Boolean(props.confirmed) || confirmedLocal.value)
 
 const collapsed = computed(() => userCollapsed.value !== null ? userCollapsed.value : Boolean(props.confirmed))
 
@@ -48,6 +53,9 @@ const allAnswered = computed(
 )
 
 function pick(title: string, option: string) {
+  if (locked.value) {
+    return
+  }
   selections[title] = selections[title] === option ? '' : option
 }
 
@@ -66,7 +74,26 @@ function confirm() {
     })
     .join('；')
   userCollapsed.value = true
+  confirmedLocal.value = true
   emit('confirm', text)
+}
+
+// 已确认回显：从确认回答解析的 answers 回填——选项命中的高亮，其余（含补充文本）入自定义输入框
+if (props.card.answers) {
+  for (const [title, raw] of Object.entries(props.card.answers)) {
+    const match = raw.match(/^(.*?)（补充：(.*)）$/)
+    const main = match ? match[1] : raw
+    const extra = match ? match[2] : ''
+    const option = props.card.questions.find((q) => q.title === title)?.options.includes(main)
+    if (main && option) {
+      selections[title] = main
+    } else if (main) {
+      customs[title] = main
+    }
+    if (extra) {
+      customs[title] = extra
+    }
+  }
 }
 </script>
 
@@ -105,6 +132,7 @@ function confirm() {
             :class="selections[q.title] === opt
               ? 'border-primary bg-primary-soft font-medium text-primary ring-1 ring-primary/30'
               : 'border-gray-200 text-gray-600 hover:border-blue-300 hover:bg-blue-50'"
+            :disabled="locked"
             @click="pick(q.title, opt)"
           >
             {{ opt }}
@@ -112,13 +140,15 @@ function confirm() {
           <input
             v-model="customs[q.title]"
             type="text"
-            class="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-1.5 text-[13px] text-gray-700 outline-none transition-colors placeholder:text-gray-400 focus:border-blue-300 focus:bg-white"
+            class="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-1.5 text-[13px] text-gray-700 outline-none transition-colors placeholder:text-gray-400 focus:border-blue-300 focus:bg-white disabled:opacity-70"
             placeholder="或输入自定义回答…"
+            :disabled="locked"
             @click.stop
           />
         </div>
       </div>
       <button
+        v-if="!locked"
         type="button"
         class="flex w-full items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 px-3 py-2 text-[13px] font-medium text-white transition-opacity"
         :class="allAnswered ? 'hover:opacity-90' : 'cursor-not-allowed opacity-40'"

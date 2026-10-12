@@ -72,6 +72,71 @@ const savedToReview = reactive(new Set<number>())
 
 const quizQuestions = computed(() => data.value?.quizQuestions ?? [])
 
+interface ParsedQuizQuestion {
+  stem: string
+  options: string[]
+  subQuestions: string[]
+}
+
+/**
+ * 题面结构化解析（启发式）：把「题干 A. xx B. xx C. xx D. xx」拆为选项行、「（1）…（2）…」拆为小问行；
+ * 找不到 A-D 连续序列或（N）小问时回退原样整段渲染（stem 即全文）。题干中的代码/括号说明不误切
+ */
+function parseQuestionText(text: string): ParsedQuizQuestion {
+  const t = text.trim()
+  // 选项序列：空格/行首 + 字母 A-D + [.、．:：]，须构成 A,B,C,… 连续序列（≥2 个）才认定
+  const markerRegex = /(?:^|[\s　])([A-D])[.、．:：]\s*/g
+  const marks: { letter: string; start: number; end: number }[] = []
+  let m: RegExpExecArray | null
+  while ((m = markerRegex.exec(t)) !== null) {
+    marks.push({ letter: m[1], start: m.index, end: m.index + m[0].length })
+  }
+  let optionsStart = -1
+  for (let i = 0; i < marks.length; i++) {
+    if (marks[i].letter !== 'A') {
+      continue
+    }
+    let code = 66
+    let j = i + 1
+    while (j < marks.length && marks[j].letter.charCodeAt(0) === code) {
+      code++
+      j++
+    }
+    if (j - i >= 2) {
+      optionsStart = i
+      break
+    }
+  }
+  if (optionsStart >= 0) {
+    const stem = t.slice(0, marks[optionsStart].start).trim()
+    const options: string[] = []
+    for (let i = optionsStart; i < marks.length; i++) {
+      const end = i + 1 < marks.length ? marks[i + 1].start : t.length
+      options.push(t.slice(marks[i].start, end).trim())
+    }
+    return { stem, options, subQuestions: [] }
+  }
+  // 小问拆分：（1）（2）… 或 (1)(2)…，≥2 个才认定；排除代码内括号（括号内非纯数字不命中）
+  const subRegex = /(?:^|[\s　])[(（](\d{1,2})[)）]/g
+  const subs: number[] = []
+  let s: RegExpExecArray | null
+  while ((s = subRegex.exec(t)) !== null) {
+    subs.push(s.index)
+  }
+  if (subs.length >= 2) {
+    const stem = t.slice(0, subs[0]).trim()
+    const subQuestions: string[] = []
+    for (let i = 0; i < subs.length; i++) {
+      const end = i + 1 < subs.length ? subs[i + 1] : t.length
+      subQuestions.push(t.slice(subs[i], end).trim())
+    }
+    return { stem, options: [], subQuestions }
+  }
+  return { stem: t, options: [], subQuestions: [] }
+}
+
+const parsedQuizQuestions = computed(() => quizQuestions.value.map((q) => parseQuestionText(q.questionText)))
+
 // ---- 导出（AI 笔记 / 课后习题：Markdown 与 Word；打印 / 存为 PDF 走浏览器兜底）----
 const showExportMenu = ref(false)
 const exporting = ref(false)
@@ -916,13 +981,24 @@ const timelineTicks = computed(() => {
                     class="rounded-xl bg-panel px-3 py-2.5"
                   >
                     <p class="text-[14px] font-medium leading-6 text-ink">
-                      {{ qi + 1 }}. {{ q.questionText }}
-                      <button
-                        v-if="q.sourceSec != null"
-                        class="ts-chip ml-1"
-                        :data-ts="formatTs(q.sourceSec)"
-                      >{{ formatTs(q.sourceSec) }}</button>
+                      {{ qi + 1 }}. {{ parsedQuizQuestions[qi]?.stem ?? q.questionText }}
                     </p>
+                    <div
+                      v-if="parsedQuizQuestions[qi]?.options.length"
+                      class="mt-1.5 flex flex-col gap-1 pl-4"
+                    >
+                      <p v-for="opt in parsedQuizQuestions[qi]!.options" :key="opt" class="text-[13.5px] leading-6 text-ink">
+                        {{ opt }}
+                      </p>
+                    </div>
+                    <div
+                      v-else-if="parsedQuizQuestions[qi]?.subQuestions.length"
+                      class="mt-1.5 flex flex-col gap-1 pl-4"
+                    >
+                      <p v-for="sub in parsedQuizQuestions[qi]!.subQuestions" :key="sub" class="text-[13.5px] leading-6 text-ink">
+                        {{ sub }}
+                      </p>
+                    </div>
                     <div
                       v-if="showAllAnswers || expandedAnswers.has(q.id)"
                       class="mt-2 rounded-lg bg-surface px-3 py-2 text-[13px] leading-6"
@@ -955,6 +1031,11 @@ const timelineTicks = computed(() => {
                       >
                         {{ savedToReview.has(q.id) ? '已入复习计划' : '加入复习计划' }}
                       </button>
+                      <button
+                        v-if="q.sourceSec != null"
+                        class="ts-chip ml-auto"
+                        :data-ts="formatTs(q.sourceSec)"
+                      >{{ formatTs(q.sourceSec) }}</button>
                     </div>
                   </div>
                 </div>
