@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { nextTick, onMounted, ref } from 'vue'
 import { ArrowUp, ChevronsRight, Film, History, Plus, Square, X } from 'lucide-vue-next'
 import { useAgentStore } from '../stores/agent'
 import ModelPicker from '../components/chat/ModelPicker.vue'
@@ -15,6 +15,7 @@ const agent = useAgentStore()
 const chatNavOpen = ref(true)
 const chatDrawerOpen = ref(false)
 const draft = ref('')
+const chatInputRef = ref<HTMLTextAreaElement | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
 const videoInput = ref<HTMLInputElement | null>(null)
 const showAttachMenu = ref(false)
@@ -74,7 +75,18 @@ function onSend() {
   }
   const content = text || (agent.pendingVideo ? '请转写这个视频' : '请看这张图片')
   draft.value = ''
+  nextTick(autoGrowInput)
   agent.send(content)
+}
+
+/** 输入框自增高：内容多时长高到上限后内部滚动（Enter 发送 / Shift+Enter 换行） */
+function autoGrowInput() {
+  const el = chatInputRef.value
+  if (!el) {
+    return
+  }
+  el.style.height = 'auto'
+  el.style.height = Math.min(el.scrollHeight, 160) + 'px'
 }
 
 /** 意图确认选项卡片点击：选项文本直接作为用户消息发送（视频经工具回查拿到，无需重传） */
@@ -156,11 +168,13 @@ function onIntentChip(text: string) {
           </p>
 
           <textarea
+            ref="chatInputRef"
             v-model="draft"
             rows="2"
-            class="w-full resize-none bg-transparent text-[16px] leading-7 outline-none"
+            class="max-h-40 w-full resize-none overflow-y-auto bg-transparent text-[16px] leading-7 outline-none"
             placeholder="给学迹发送消息…"
             @keydown.enter.exact.prevent="onSend"
+            @input="autoGrowInput"
           />
           <div class="flex items-center justify-between pt-2">
             <div class="flex items-center gap-3">
@@ -196,7 +210,7 @@ function onIntentChip(text: string) {
               </div>
               <div v-if="showAttachMenu" class="fixed inset-0 z-40" @click="showAttachMenu = false"></div>
             </div>
-            <span class="text-[13px] text-ink-2">Enter 发送</span>
+            <span class="text-[13px] text-ink-2">Enter 发送 · Shift+Enter 换行</span>
           </div>
             <button
               v-if="!agent.streaming"

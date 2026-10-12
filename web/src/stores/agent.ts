@@ -26,8 +26,8 @@ export interface ChatMsg {
   transcribe?: { status: 'processing' | 'done' | 'failed'; done: number; total: number }
   /** 课程流水线任务状态（assistant 的 course_task 消息，B11 分流；courseId 供 failed 重试） */
   courseTask?: { status: 'processing' | 'done' | 'failed'; stage: string; text?: string; link?: string; courseId?: number }
-  /** 意图确认大卡片（B27：视频回合意图 Agent 的结构化提问，payload 随消息透出） */
-  intentCard?: { message: string; questions: { title: string; options: string[] }[] }
+  /** 意图确认大卡片（B27：视频回合意图 Agent 的结构化提问，payload 随消息透出；confirmed=已确认折叠态） */
+  intentCard?: { message: string; questions: { title: string; options: string[] }[]; confirmed?: boolean }
   /** 今日简报气泡（本地消息，不落库；按后端「会话×日期」标记恢复与落位） */
   briefing?: boolean
   /** 消息创建时间（服务端时间），用于把简报按生成时间插到最后一条更早的消息之后 */
@@ -145,6 +145,20 @@ export const useAgentStore = defineStore('agent', () => {
         prevImageUrl = undefined
       }
       return item
+    })
+    // 意图卡已确认态恢复（启发式）：卡片之后存在以首题标题开头的用户消息（确认回答拼接格式）→ 已确认折叠，
+    // 解决转写/处理过程中切页回来历史重载后卡片平铺为未答态的观感问题（2026-10-12）
+    messages.value.forEach((m, idx) => {
+      if (!m.intentCard?.questions.length) {
+        return
+      }
+      const firstTitle = m.intentCard.questions[0].title
+      const confirmed = messages.value
+        .slice(idx + 1)
+        .some((later) => later.role === 'user' && later.content.trim().startsWith(firstTitle + '：'))
+      if (confirmed) {
+        m.intentCard.confirmed = true
+      }
     })
     // 简报按后端「会话×日期」标记恢复：拉取该会话全部简报，按生成时间插入消息流（跨天多条各自落位）
     await syncConversationBriefings(id)

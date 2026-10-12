@@ -97,8 +97,9 @@ public class YtDlpClient {
                 cleanupDir(dir);
                 throw new BusinessException("视频过大（" + size / 1024 / 1024 + "MB），超出 1GB 处理限制");
             }
-            // 移出临时目录为标准命名临时文件（流水线 finally 按文件清理；空目录一并删除）
-            Path moved = Files.createTempFile("xj-bili-", ".mp4");
+            // 以净化后的视频标题命名临时文件：建课标题兜底取文件名（titleFromFileName），
+            // 课程列表/详情由此可区分不同视频（2026-10-12 反馈：xj-bili 无法区分）
+            Path moved = Files.createTempFile(sanitizeTitle(title) + "-", ".mp4");
             Files.move(product, moved, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
             cleanupDir(dir);
             log.info("B 站视频下载完成: url={}, title={}, size={}B", validated, title, size);
@@ -187,6 +188,15 @@ public class YtDlpClient {
     private static String bvOf(String url) {
         Matcher matcher = BILIBILI_VIDEO.matcher(url.trim());
         return matcher.matches() ? matcher.group(2) : "video";
+    }
+
+    /** 标题清洗为安全文件名前缀：非法路径字符与空白替换为下划线（与 ChatVideoServiceImpl.baseName 同规则），空回退默认 */
+    static String sanitizeTitle(String title) {
+        if (title == null || title.isBlank()) {
+            return "xj-bili";
+        }
+        String name = title.replaceAll("[\\\\/:*?\"<>|\\s]", "_").trim();
+        return name.isBlank() ? "xj-bili" : name;
     }
 
     private static void cleanupDir(Path dir) {

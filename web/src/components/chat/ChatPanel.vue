@@ -255,12 +255,12 @@ function onPanelClick(e: MouseEvent) {
                 {{ retryingCourseId === msg.courseTask.courseId ? '已重新提交处理…' : '重试' }}
               </button>
             </template>
-            <!-- B27 意图确认大卡片：结构化提问 + 选项组 + 确认按钮（点击回发拼接文本） -->
+            <!-- B27 意图确认大卡片：结构化提问 + 选项组 + 确认按钮（点击回发拼接文本）；confirmed 时折叠为单行 -->
             <template v-else-if="msg.intentCard">
-              <div class="text-[14px] leading-6 text-ink">{{ msg.intentCard.message }}</div>
-              <IntentCard :card="msg.intentCard" @confirm="emit('intent', $event)" />
+              <div class="break-words text-[14px] leading-6 text-ink">{{ msg.intentCard.message }}</div>
+              <IntentCard :card="msg.intentCard" :confirmed="msg.intentCard.confirmed" @confirm="emit('intent', $event)" />
             </template>
-            <div v-else class="markdown-body" v-html="renderContent(msg.content)"></div>
+            <div v-else class="markdown-body break-words" v-html="renderContent(msg.content)"></div>
 
             <!-- 动作条：复制可用，其余为占位 -->
             <div v-if="!msg.streaming" class="mt-2.5 flex items-center gap-0.5 text-ink-2">

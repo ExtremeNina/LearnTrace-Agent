@@ -146,6 +146,7 @@ const agent = useAgentStore()
 const draft = ref('')
 const assistantBox = ref<HTMLDivElement | null>(null)
 const uploadInputRef = ref<HTMLInputElement | null>(null)
+const chatInputRef = ref<HTMLTextAreaElement | null>(null)
 // 历史对话弹窗（B26 反馈：对话模块直接可见的历史入口）
 const showHistory = ref(false)
 
@@ -192,7 +193,25 @@ function sendDraft() {
   }
   const content = text || '请转写这个视频'
   draft.value = ''
+  nextTick(autoGrowInput)
   agent.send(content)
+}
+
+/** 输入框自增高：内容多时长高到上限后内部滚动（Enter 发送 / Shift+Enter 换行） */
+function autoGrowInput() {
+  const el = chatInputRef.value
+  if (!el) {
+    return
+  }
+  el.style.height = 'auto'
+  el.style.height = Math.min(el.scrollHeight, 144) + 'px'
+}
+
+function onInputKeydown(e: KeyboardEvent) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault()
+    sendDraft()
+  }
 }
 
 /** 意图确认选项卡片点击（事件委托）：选项文本直接作为用户消息发送 */
@@ -465,7 +484,7 @@ watch(
                       <Film :size="13" />
                       视频<span v-if="msg.video.durationSec" class="text-white/80">（{{ formatDuration(msg.video.durationSec) }}）</span>
                     </div>
-                    <span class="whitespace-pre-wrap">{{ msg.content }}</span>
+                    <span class="break-words whitespace-pre-wrap">{{ msg.content }}</span>
                   </div>
                   <div
                     v-else-if="msg.streaming && !msg.content && !msg.transcribe && !msg.courseTask"
@@ -485,7 +504,7 @@ watch(
                   </div>
                   <!-- B11 课程任务完成：附跳转链接 -->
                   <template v-else-if="msg.courseTask?.status === 'done'">
-                    <div class="mr-4 text-[13px] leading-6 text-gray-700">{{ msg.courseTask.text }}</div>
+                    <div class="mr-4 break-words text-[13px] leading-6 text-gray-700">{{ msg.courseTask.text }}</div>
                     <RouterLink
                       v-if="msg.courseTask.link"
                       :to="msg.courseTask.link"
@@ -497,16 +516,17 @@ watch(
                   </template>
                   <!-- B27 意图确认大卡片 -->
                   <template v-else-if="msg.intentCard">
-                    <div class="mr-4 text-[13px] leading-6 text-gray-700">{{ msg.intentCard.message }}</div>
+                    <div class="mr-4 break-words text-[13px] leading-6 text-gray-700">{{ msg.intentCard.message }}</div>
                     <IntentCard
                       class="mr-4 mt-1"
                       :card="msg.intentCard"
+                      :confirmed="msg.intentCard.confirmed"
                       @confirm="agent.send($event)"
                     />
                   </template>
                   <div
                     v-else
-                    class="assistant-md mr-4 text-[13px] leading-6 text-gray-700"
+                    class="assistant-md mr-4 break-words text-[13px] leading-6 text-gray-700"
                     v-html="renderIntentChips(renderMarkdown(msg.content))"
                   ></div>
                 </template>
@@ -516,10 +536,10 @@ watch(
                 <ModelPicker tone="blue" />
               </div>
               <div class="relative mt-2">
-                <div class="flex items-center rounded-full border border-blue-200 bg-white pl-2 pr-1 transition-colors focus-within:border-blue-400">
+                <div class="flex items-end rounded-2xl border border-blue-200 bg-white pl-2 pr-1 transition-colors focus-within:border-blue-400">
                   <!-- 加号：整合上传资料（统一走对话分流：≤30min 默认转写 / >30min 或「做成课程」走课程流水线） -->
                   <button
-                    class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-ink-2 transition-colors hover:bg-blue-50 hover:text-blue-500"
+                    class="mb-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-ink-2 transition-colors hover:bg-blue-50 hover:text-blue-500"
                     :class="agent.uploading ? 'animate-pulse text-blue-400' : ''"
                     :title="agent.uploading ? '正在上传…' : '上传资料（≤30 分钟默认仅转写语音；>30 分钟自动按网课处理）'"
                     :disabled="agent.uploading"
@@ -527,11 +547,14 @@ watch(
                   >
                     <Plus :size="17" />
                   </button>
-                  <input
+                  <textarea
+                    ref="chatInputRef"
                     v-model="draft"
-                    class="min-w-0 flex-1 bg-transparent py-2.5 pr-2 text-[13px] text-ink outline-none"
-                    placeholder="有问题尽管问我…"
-                    @keydown.enter="sendDraft"
+                    rows="1"
+                    class="max-h-36 min-w-0 flex-1 resize-none overflow-y-auto bg-transparent py-2.5 pr-2 text-[13px] leading-6 text-ink outline-none"
+                    placeholder="有问题尽管问我…（Shift+Enter 换行）"
+                    @keydown.enter="onInputKeydown"
+                    @input="autoGrowInput"
                   />
                   <button
                     class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-blue-500 to-blue-600 text-white transition-opacity hover:opacity-90 disabled:opacity-40"
