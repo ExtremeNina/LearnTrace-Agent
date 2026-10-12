@@ -6,7 +6,7 @@ AI 个人学习工作台：学习资产（视频 / 题目 / 笔记）+ 知识点
 
 **LearnTrace** 把个人学习中最容易散失的三类资产——看过的**视频**、拍过的**题目**、随手记的**笔记**——统一收纳进同一个工作台，围绕三条核心链路让 AI 参与其中：
 
-- **视频转写（核心链路）**：采用 Human-in-the-loop 循环，支持多轮对话与视频转写——上传视频先由意图确认 Agent 定制提问，确认后自动完成语音转写、关键帧识别，把视频转写成**结构化 AI 笔记 + 课后习题**，语音内容也可存为笔记。转写链路内置多角色评审：
+- **视频转写（核心链路）**：采用 Human-in-the-loop 循环，支持多轮对话与视频转写——上传视频或**粘贴 B 站视频链接**（yt-dlp 自动拉取）先由意图确认 Agent 定制提问，确认后自动完成语音转写、关键帧识别，把视频转写成**结构化 AI 笔记 + 课后习题**，语音内容也可存为笔记。转写链路内置多角色评审：
   - 笔记角色：内容理解 Agent 产出章节与知识点 → **内容设计评审**（前置门禁，不合格打回重写）→ 笔记渲染 → **讲解评审** 与 **练习适用性评审** 并行（不合格定向重生成）；
   - 出题角色：笔记与画像就绪后启动 **出题 Agent**（规划知识点与题量）→ **写题 Agent**（逐题实现）→ **审题 Agent**（程序化校验 + LLM 评审，不合格反馈回写）。
   - 每日生成今日简报，提示用户的学习状态并跟随会话按「会话 × 日期」归属。
@@ -30,7 +30,7 @@ AI 个人学习工作台：学习资产（视频 / 题目 / 笔记）+ 知识点
 
 - **前端**：Vue 3 + TypeScript + Pinia + Tailwind CSS（Vite 构建，桌面 / 移动端响应式；WebSocket 流式对话）
 - **后端**：Spring Boot 3.4 + MyBatis-Plus + MySQL 8 + Redis + RabbitMQ + Sa-Token；视频处理 FFmpeg（抽音频 / 关键帧）
-- **AI**：Spring AI 接 DeepSeek（对话、笔记生成、意图确认、每日简报）；Spring AI Alibaba Graph（视频流水线编排）；语音转写 Qwen-Audio ASR（阿里云百炼）；OCR 百度 PaddleOCR（AI Studio 异步任务）；向量检索 Redis（RediSearch）+ 百炼 text-embedding；图片 / 视频存储阿里云 OSS
+- **AI**：Spring AI 接 DeepSeek（对话、笔记生成、意图确认、每日简报）；Spring AI Alibaba Graph（视频流水线编排）；语音转写 Qwen-Audio ASR（阿里云百炼）；OCR 百度 PaddleOCR（AI Studio 异步任务）；B 站链接视频拉取 yt-dlp；向量检索 Redis（RediSearch）+ 百炼 text-embedding；图片 / 视频存储阿里云 OSS
 
 ## 总体架构
 
@@ -129,7 +129,7 @@ LJ-Agent/
 ## 测试
 
 ```bash
-cd springboot && mvn test   # 310 个单元测试（50 个测试类，含 FFmpeg 真实调用用例）
+cd springboot && mvn test   # 342 个单元测试（53 个测试类，含 FFmpeg 真实调用用例）
 cd web && npm run build     # 前端类型检查（vue-tsc）与构建
 node web/test-profile-smoke.mjs        # 个人页面端到端冒烟（需后端已启动）
 node web/test-ws.mjs                   # WebSocket 对话冒烟
