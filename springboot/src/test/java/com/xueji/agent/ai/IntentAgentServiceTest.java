@@ -181,7 +181,7 @@ class IntentAgentServiceTest {
         ProfileService profileService = mock(ProfileService.class);
         when(profileService.getByUser(1L)).thenThrow(new RuntimeException("LLM 不可用"));
         CourseService courseService = mock(CourseService.class);
-        when(courseService.uploadFromLocal(anyLong(), any(), anyString(), any(), any(), any(), any()))
+        when(courseService.uploadFromLocal(anyLong(), any(), anyString(), any(), any(), any(), any(), any()))
                 .thenReturn(new Course().setId(5L).setTitle("测试课程"));
 
         IntentAgentService service = new IntentAgentService();
@@ -198,7 +198,7 @@ class IntentAgentServiceTest {
         assertThat(result.intentCardJson()).isNull();
         assertThat(result.text()).contains("课程《测试课程》");
         // 入参标题取自临时文件名（titleFromFileName），确认话术标题取建课返回的课程名
-        verify(courseService).uploadFromLocal(eq(1L), any(), eq("test-video"), any(),
+        verify(courseService).uploadFromLocal(eq(1L), any(), eq("test-video"), any(), eq((String) null),
                 eq("FOLLOW"), eq((String) null), eq((String) null));
     }
 

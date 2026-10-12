@@ -6,6 +6,7 @@ import com.xueji.agent.domain.enums.CourseStatus;
 import com.xueji.agent.common.ModelServiceErrors;
 import com.xueji.agent.common.MqKeys;
 import com.xueji.agent.common.OwnershipCheck;
+import com.xueji.agent.common.Subjects;
 import com.xueji.agent.domain.dto.CourseUpdateDto;
 import com.xueji.agent.domain.entity.ContentDocument;
 import com.xueji.agent.domain.entity.ContentKnowledgePoint;
@@ -122,20 +123,20 @@ public class CourseServiceImpl implements CourseService {
             throw new BusinessException("视频保存失败，请重试");
         }
 
-        Course course = uploadFromLocal(userId, temp, derivedTitle, expectations, null, null, null);
-        // 页面上传路径回填学科与笔记模型（对话路径两者走默认）
-        course.setSubject(subject == null || subject.isBlank() ? null : subject.trim())
-                .setModelConfigId(modelConfigId);
+        Course course = uploadFromLocal(userId, temp, derivedTitle, expectations, subject, null, null, null);
+        // 页面上传路径回填笔记模型（对话路径走默认；学科已随建课落库）
+        course.setModelConfigId(modelConfigId);
         courseMapper.updateById(course);
         return course;
     }
 
     @Override
-    public Course uploadFromLocal(Long userId, Path temp, String title, String expectations,
+    public Course uploadFromLocal(Long userId, Path temp, String title, String expectations, String subject,
                                   String noteStyle, String learnerGoal, String learnerLevel) {
         Course course = new Course()
                 .setUserId(userId)
                 .setTitle(title)
+                .setSubject(Subjects.clamp(subject))
                 .setExpectations(expectations == null || expectations.isBlank() ? null : expectations.trim())
                 .setNoteStyle(noteStyle == null || noteStyle.isBlank() ? null : noteStyle.trim())
                 .setLearnerGoal(learnerGoal == null || learnerGoal.isBlank() ? null : learnerGoal.trim())

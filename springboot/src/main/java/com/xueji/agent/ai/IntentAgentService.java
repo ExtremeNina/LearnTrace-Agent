@@ -256,8 +256,8 @@ public class IntentAgentService {
         if (!Files.exists(video)) {
             return new AskResult("视频临时文件已被清理，麻烦重新上传一次，马上为你处理。", null);
         }
-        // course.title 非空约束：用户没指定标题时回退视频文件名（去 UUID 前缀）
-        Course course = courseService.uploadFromLocal(userId, video, titleFromFileName(video), null,
+        // course.title 非空约束：用户没指定标题时回退视频文件名（去 UUID 前缀）；学科由兜底任务回填（此处无 LLM 判定上下文）
+        Course course = courseService.uploadFromLocal(userId, video, titleFromFileName(video), null, null,
                 noteStyle, learnerGoal, learnerLevel);
         String title = course.getTitle();
         Message placeholder = new Message()

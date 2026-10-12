@@ -25,10 +25,10 @@ public interface CourseService {
     /**
      * 从本地临时视频文件创建课程（B11 对话上传分流）：
      * 文件已由 /upload/chat-video 暂存（对话路径），直接建课（PENDING）并投递 MQ。
-     * title 缺省从文件名推导，expectations 可空，笔记模型走系统默认；
+     * title 缺省从文件名推导，expectations/subject 可空（subject 由意图 LLM 推断，白名单收敛），笔记模型走系统默认；
      * noteStyle/learnerGoal/learnerLevel 为意图三问卡采集的笔记风格与学习者画像（可空，FOLLOW/EXAM_SPRINT）
      */
-    Course uploadFromLocal(Long userId, java.nio.file.Path temp, String title, String expectations,
+    Course uploadFromLocal(Long userId, java.nio.file.Path temp, String title, String expectations, String subject,
                            String noteStyle, String learnerGoal, String learnerLevel);
 
     /**

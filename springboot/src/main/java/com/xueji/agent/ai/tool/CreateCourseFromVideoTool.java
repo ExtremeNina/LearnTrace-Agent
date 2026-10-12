@@ -41,6 +41,8 @@ public class CreateCourseFromVideoTool {
             String title,
             @ToolParam(description = "用户对笔记内容的特别要求（如「重点讲原理」「适合考前复习」），用户没有提出就留空", required = false)
             String expectations,
+            @ToolParam(description = "学科，根据视频标题与用户消息判断，只能从：数学 / 语文 / 英语 / 物理 / 化学 / 生物 / 历史 / 地理 / 政治 / 计算机 / 其他 中选一个；没有任何线索时留空，不要猜测", required = false)
+            String subject,
             ToolContext toolContext) {
         Long userId = ((Number) toolContext.getContext().get("userId")).longValue();
         Long conversationId = ((Number) toolContext.getContext().get("conversationId")).longValue();
@@ -71,8 +73,8 @@ public class CreateCourseFromVideoTool {
                 return "CREATE_FAILED: 视频临时文件已丢失（可能已被转写流程清理），请让用户重新上传";
             }
             String courseTitle = isMeaningfulTitle(title) ? title.trim() : titleFromFileName(video);
-            // 主 LLM 降级路径：风格与画像未采集，传 null 走默认跟学型（正常路径由意图三问卡采集）
-            Course course = courseService.uploadFromLocal(userId, video, courseTitle, expectations, null, null, null);
+            // 主 LLM 降级路径：风格与画像未采集，传 null 走默认跟学型（正常路径由意图三问卡采集）；学科由意图 LLM 推断
+            Course course = courseService.uploadFromLocal(userId, video, courseTitle, expectations, subject, null, null, null);
 
             // 课程任务占位消息：流水线各阶段按 message.courseId 定位并更新进度（事实源先落库）
             Message placeholder = new Message()

@@ -58,10 +58,12 @@ onUnmounted(() => {
 const toast = useToastStore()
 const editingId = ref<number | null>(null)
 const editTitle = ref('')
+const editSubject = ref('')
 
 function startEditTitle(c: CourseInfo) {
   editingId.value = c.id
   editTitle.value = c.title
+  editSubject.value = c.subject ?? ''
 }
 
 /** 回车/失焦保存；标题为空或未变则跳过 */
@@ -75,11 +77,29 @@ async function saveTitle(c: CourseInfo) {
     return
   }
   try {
-    await updateCourse(c.id, { title })
+    await updateCourse(c.id, { title, subject: editSubject.value || undefined })
     c.title = title
+    if (editSubject.value) {
+      c.subject = editSubject.value
+    }
     toast.push('标题已更新')
   } catch (e) {
     toast.push(e instanceof Error ? e.message : '标题修改失败')
+  }
+}
+
+/** 学科下拉变更即保存（手动纠正对话建课缺失的学科） */
+async function saveSubject(c: CourseInfo) {
+  const subject = editSubject.value
+  if ((c.subject ?? '') === subject) {
+    return
+  }
+  try {
+    await updateCourse(c.id, { title: c.title, subject: subject || undefined })
+    c.subject = subject || undefined
+    toast.push(subject ? '学科已更新' : '学科已清除')
+  } catch (e) {
+    toast.push(e instanceof Error ? e.message : '学科修改失败')
   }
 }
 
@@ -336,8 +356,8 @@ async function batchDelete() {
           </div>
 
           <div class="px-3.5 py-3">
-            <!-- B27 批量模式行内改名：铅笔进入编辑，回车/失焦保存 -->
-            <div v-if="selectMode && editingId === c.id" class="min-h-[42px]" @click.stop>
+            <!-- B27 批量模式行内改名：铅笔进入编辑，回车/失焦保存；2026-10-12 扩展学科下拉（对话建课无学科时可手动补） -->
+            <div v-if="selectMode && editingId === c.id" class="min-h-[42px] space-y-1.5" @click.stop>
               <input
                 v-model="editTitle"
                 type="text"
@@ -345,13 +365,24 @@ async function batchDelete() {
                 @keydown.enter="saveTitle(c)"
                 @blur="saveTitle(c)"
               />
+              <div class="flex items-center gap-1.5">
+                <span class="text-[12px] text-ink-2">学科</span>
+                <select
+                  v-model="editSubject"
+                  class="flex-1 rounded-lg border border-line bg-surface px-2 py-1 text-[13px] text-ink outline-none focus:border-primary"
+                  @change="saveSubject(c)"
+                >
+                  <option value="">未分类</option>
+                  <option v-for="s in SUBJECTS" :key="s" :value="s">{{ s }}</option>
+                </select>
+              </div>
             </div>
             <p v-else class="line-clamp-2 min-h-[42px] text-[14px] leading-5 text-ink">
               {{ c.title }}
               <button
                 v-if="selectMode && selectable(c)"
                 class="ml-1 inline-flex align-middle text-ink-2 hover:text-primary"
-                title="修改标题"
+                title="修改标题与学科"
                 @click.stop="startEditTitle(c)"
               >
                 <Pencil :size="12" />
