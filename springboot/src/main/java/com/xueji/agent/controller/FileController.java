@@ -40,4 +40,13 @@ public class FileController {
     public Result<ChatVideoUploadVO> uploadChatVideo(@RequestParam("file") MultipartFile file) {
         return Result.data(chatVideoService.upload(file));
     }
+
+    /**
+     * B 站链接视频拉取（2026-10-12）：yt-dlp 下载到本地临时目录，
+     * 返回与 chat-video 同构的临时路径与时长——后续意图卡/建课/流水线零改动复用
+     */
+    @PostMapping("/chat-video-url")
+    public Result<ChatVideoUploadVO> uploadChatVideoUrl(@RequestParam("url") String url) {
+        return Result.data(chatVideoService.downloadFromUrl(url));
+    }
 }

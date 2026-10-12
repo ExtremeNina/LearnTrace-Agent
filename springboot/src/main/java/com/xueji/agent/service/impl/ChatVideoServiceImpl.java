@@ -4,6 +4,8 @@ import com.xueji.agent.domain.vo.ChatVideoUploadVO;
 import com.xueji.agent.exception.BusinessException;
 import com.xueji.agent.service.ChatVideoService;
 import com.xueji.agent.utils.MediaUtils;
+import com.xueji.agent.utils.YtDlpClient;
+import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -24,6 +26,26 @@ public class ChatVideoServiceImpl implements ChatVideoService {
 
     /** 与 AliUploadUtils 的网课视频白名单一致 */
     private static final List<String> ALLOWED_VIDEO_EXT = List.of("mp4", "mov", "mkv", "avi", "webm", "m4v");
+
+    @Resource
+    private YtDlpClient ytDlpClient;
+
+    @Override
+    public ChatVideoUploadVO downloadFromUrl(String url) {
+        Path video = ytDlpClient.download(url, MAX_CHAT_VIDEO_SIZE);
+        try {
+            int durationSec = MediaUtils.ffprobeDurationSec(video);
+            log.info("B 站链接视频拉取完成, 时长={}s", durationSec);
+            return new ChatVideoUploadVO().setTempPath(video.toString()).setDurationSec(durationSec);
+        } catch (IOException | InterruptedException e) {
+            cleanupQuietly(video);
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            log.error("B 站链接视频 ffprobe 失败", e);
+            throw new BusinessException("链接视频解析失败，请稍后重试或直接上传文件");
+        }
+    }
 
     @Override
     public ChatVideoUploadVO upload(MultipartFile file) {

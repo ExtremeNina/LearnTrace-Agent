@@ -516,7 +516,8 @@ public class CoursePipelineService {
                 taskMessage.setContent(text);
             }
             messageMapper.updateById(taskMessage);
-            pushService.pushToUser(course.getUserId(), ChatEvent.course(taskMessage.getId(), stage, text, extra, course.getId()));
+            pushService.pushToUser(course.getUserId(), ChatEvent.course(taskMessage.getId(), stage, text, extra, course.getId())
+                    .conversationId(taskMessage.getConversationId()));
         } catch (Exception e) {
             // 进度推送失败不影响流水线主流程
             log.warn("课程任务进度推送失败, courseId={}, stage={}", course.getId(), stage, e);

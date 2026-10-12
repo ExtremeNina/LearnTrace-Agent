@@ -88,5 +88,9 @@ qwen:
     format: ${QWEN_ASR_FORMAT:wav}
     sample-rate: ${QWEN_ASR_SAMPLE_RATE:16000}
 
+# yt-dlp（B 站链接视频拉取）：默认走 PATH；显式路径指向 yt-dlp.exe 时缺失仅启动告警
+yt-dlp:
+  path: ${YTDLP_PATH:yt-dlp}
+
 server:
   port: 9090

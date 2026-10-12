@@ -30,4 +30,6 @@ export interface ServerMessage {
   payload?: string
   /** 仅 COURSE：课程 ID（failed 卡片重试用） */
   courseId?: number
+  /** 仅 COURSE/TRANSCRIBE：归属会话 ID（前端与当前会话不一致时不渲染，防幽灵会话） */
+  conversationId?: number
 }

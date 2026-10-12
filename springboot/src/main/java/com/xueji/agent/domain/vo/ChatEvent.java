@@ -26,6 +26,8 @@ public class ChatEvent {
     private final String payload;
     /** 仅 COURSE：课程 ID（failed 卡片重试用） */
     private final Long courseId;
+    /** 仅 COURSE/TRANSCRIBE：归属会话 ID（前端仅在与当前打开会话一致时渲染，防幽灵会话） */
+    private Long conversationId;
 
     private ChatEvent(String type, String turnId, String text, Long messageId, String code, String message,
                       String status, Integer done, Integer total) {
@@ -85,5 +87,11 @@ public class ChatEvent {
     /** 课程流水线阶段进度事件（B11 分流，后台推送；message = 完成时的课程链接路径；courseId 供 failed 卡片重试） */
     public static ChatEvent course(Long messageId, String stage, String text, String extra, Long courseId) {
         return new ChatEvent("COURSE", null, text, messageId, null, extra, stage, null, null, null, courseId);
+    }
+
+    /** wither：补归属会话（前端仅在与当前打开会话一致时渲染） */
+    public ChatEvent conversationId(Long conversationId) {
+        this.conversationId = conversationId;
+        return this;
     }
 }

@@ -223,7 +223,8 @@ public class TranscriptionServiceImpl implements TranscriptionService {
         message.setPayload(payload.toString());
         messageMapper.updateById(message);
         pushService.pushToUser(userId, ChatEvent.transcribe(messageId, status,
-                "done".equals(status) ? content : null, null, null, errorMessage));
+                "done".equals(status) ? content : null, null, null, errorMessage)
+                .conversationId(message.getConversationId()));
     }
 
     /** 进度推送（不改消息内容，只更新 payload 进度字段） */
@@ -243,7 +244,8 @@ public class TranscriptionServiceImpl implements TranscriptionService {
         payload.set("total", total);
         message.setPayload(payload.toString());
         messageMapper.updateById(message);
-        pushService.pushToUser(userId, ChatEvent.transcribe(messageId, status, null, done, total, error));
+        pushService.pushToUser(userId, ChatEvent.transcribe(messageId, status, null, done, total, error)
+                .conversationId(message.getConversationId()));
     }
 
     private void appendToMemory(Long conversationId, String transcript) {

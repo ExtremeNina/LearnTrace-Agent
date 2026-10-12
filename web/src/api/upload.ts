@@ -29,3 +29,21 @@ export function uploadChatVideo(file: File): Promise<ChatVideoUploadInfo> {
     timeout: 600000,
   })
 }
+
+/**
+ * B 站链接视频拉取（yt-dlp 下载到服务端临时目录）：
+ * 返回与文件上传同构的临时路径与时长，后续走同一条意图卡/建课链路
+ */
+export function fetchBilibiliVideo(url: string): Promise<ChatVideoUploadInfo> {
+  return request<ChatVideoUploadInfo>({
+    method: 'POST',
+    url: '/upload/chat-video-url',
+    params: { url },
+    timeout: 600000,
+  })
+}
+
+/** B 站视频页链接检测（BV 号），用于输入框发送前识别 */
+export function isBilibiliVideoUrl(text: string): boolean {
+  return /https?:\/\/(www\.)?bilibili\.com\/video\/BV[0-9A-Za-z]{8,12}/.test(text)
+}

@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import * as conversationApi from '../api/conversation'
-import { uploadChatVideo, uploadImage } from '../api/upload'
+import { fetchBilibiliVideo, isBilibiliVideoUrl, uploadChatVideo, uploadImage } from '../api/upload'
 import { getTodayBriefing, listConversationBriefings } from '../api/briefing'
 import type { BriefingInfo, ConversationInfo } from '../types/api'
 import type { ServerMessage } from '../types/ws'
@@ -329,23 +329,11 @@ export const useAgentStore = defineStore('agent', () => {
     try {
       const info = await uploadChatVideo(file)
       pendingVideo.value = { tempPath: info.tempPath, durationSec: info.durationSec, name: file.name }
-      pushUploadNotice(file.name, info.durationSec)
     } catch (e) {
       error.value = e instanceof Error ? e.message : '视频上传失败'
     } finally {
       uploading.value = false
     }
-  }
-
-  /** 上传成功 → 消息流插入本地提示气泡（不落库，切换会话自然清除；B26 反馈：上传反馈进气泡） */
-  function pushUploadNotice(name: string, durationSec: number) {
-    const m = Math.floor(durationSec / 60)
-    const s = Math.floor(durationSec % 60)
-    messages.value.push({
-      role: 'assistant',
-      content: `**视频《${name}》（${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}）已上传完成**\n`
-        + `发送后将按你的意图处理：默认转写语音；>30 分钟或「做成课程」自动走网课流水线。`,
-    })
   }
 
   /**
@@ -445,13 +433,34 @@ export const useAgentStore = defineStore('agent', () => {
   }
 
   /**
-   * 发送一条用户消息：无活动会话时先创建；经 WS 发起回合（可附图 / 附视频）
+   * 发送一条用户消息：无活动会话时先创建；经 WS 发起回合（可附图 / 附视频）。
+   * 文本含 B 站视频链接且未附文件时：先经后端 yt-dlp 下载为本地临时文件，与文件上传同构进入转写/建课链路
    */
   async function send(text: string, currentTimeSec?: number) {
     if (streaming.value) {
       return
     }
     error.value = ''
+    if (!pendingVideo.value && isBilibiliVideoUrl(text)) {
+      const url = text.match(/https?:\/\/(?:www\.)?bilibili\.com\/video\/BV[0-9A-Za-z]{8,12}(?:\?[^\s]*)?/)?.[0] ?? ''
+      const notice: ChatMsg = { role: 'assistant', content: '正在解析 B 站链接视频（下载中，约 10~30 秒）…' }
+      messages.value.push(notice)
+      uploading.value = true
+      try {
+        const info = await fetchBilibiliVideo(url)
+        pendingVideo.value = { tempPath: info.tempPath, durationSec: info.durationSec, name: 'B 站视频链接' }
+      } catch (e) {
+        messages.value = messages.value.filter((m) => m !== notice)
+        messages.value.push({
+          role: 'assistant',
+          content: e instanceof Error ? e.message : '链接视频拉取失败，请检查链接或直接上传文件',
+        })
+        return
+      } finally {
+        uploading.value = false
+      }
+      messages.value = messages.value.filter((m) => m !== notice)
+    }
     if (activeId.value === null) {
       await createConversation()
       // 会话已创建：当日简报若尚未生成则在此生成并归属本会话（追加在最后一次对话之后，B27）
@@ -537,8 +546,12 @@ export const useAgentStore = defineStore('agent', () => {
         break
       }
       case 'TRANSCRIBE': {
-        // B11 视频转写事件：占位消息不存在时插入（本会话首次收到），存在时原地更新
+        // B11 视频转写事件：占位消息不存在时插入（本会话首次收到），存在时原地更新。
+        // 归属校验：事件不属于当前打开会话（或当前为新空对话）一律忽略——防幽灵会话（2026-10-12）
         if (!msg.messageId) {
+          break
+        }
+        if ((msg.conversationId != null && msg.conversationId !== activeId.value) || activeId.value === null) {
           break
         }
         let target = messages.value.find((m) => m.id === msg.messageId)
@@ -560,8 +573,12 @@ export const useAgentStore = defineStore('agent', () => {
         break
       }
       case 'COURSE': {
-        // B11 分流：课程流水线阶段进度事件（占位消息按 messageId 增改）
+        // B11 分流：课程流水线阶段进度事件（占位消息按 messageId 增改）。
+        // 归属校验：网课页重试等场景下事件不属于当前会话一律忽略——对话页零渲染，防幽灵会话（2026-10-12）
         if (!msg.messageId) {
+          break
+        }
+        if ((msg.conversationId != null && msg.conversationId !== activeId.value) || activeId.value === null) {
           break
         }
         let target = messages.value.find((m) => m.id === msg.messageId)
@@ -628,7 +645,6 @@ export const useAgentStore = defineStore('agent', () => {
     clearPendingImage,
     uploadPendingVideo,
     clearPendingVideo,
-    pushUploadNotice,
     ensureTodayBriefing,
     migrateLegacyBriefing,
     send,

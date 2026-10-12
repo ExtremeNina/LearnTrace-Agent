@@ -16,4 +16,10 @@ public interface ChatVideoService {
      * 上传对话视频：校验格式 / 大小，保存到系统临时目录并返回元信息（时长由转写工具与课程分支各自校验）
      */
     ChatVideoUploadVO upload(MultipartFile file);
+
+    /**
+     * B 站链接视频拉取（2026-10-12）：yt-dlp 下载到系统临时目录，返回与文件上传同构的元信息；
+     * 产物走与文件上传同一条链路（意图卡 → 建课 → 流水线，OSS/重试回源自动继承）
+     */
+    ChatVideoUploadVO downloadFromUrl(String url);
 }

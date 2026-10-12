@@ -274,7 +274,8 @@ public class IntentAgentService {
                         .toString())
                 .setCreatedAt(LocalDateTime.now());
         messageMapper.insert(placeholder);
-        pushService.pushToUser(userId, ChatEvent.course(placeholder.getId(), "PENDING", null, null, course.getId()));
+        pushService.pushToUser(userId, ChatEvent.course(placeholder.getId(), "PENDING", null, null, course.getId())
+                .conversationId(conversationId));
         log.info("意图 Agent 建课完成, userId={}, conversationId={}, courseId={}, style={}, goal={}, level={}",
                 userId, conversationId, course.getId(), noteStyle, learnerGoal, learnerLevel);
         String confirm = "课程《" + title + "》已开始处理（预计几分钟），画面识别、AI 笔记与课后习题的进度会实时显示在对话中，"
