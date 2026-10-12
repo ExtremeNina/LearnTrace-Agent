@@ -8,7 +8,7 @@ WS 流式对话（DeepSeek 流式 + 工具调用）、回合互斥、消息双�
 **输入**
 - WS `chat.send`（conversationId + content + 可选 imageUrl / videoTempPath + videoDurationSec）：握手经 WsAuthHandshakeInterceptor 鉴权（token query 参数），userId 注入 session
 - WS `chat.stop`：取消当前回合
-- REST：会话创建 / 列表 / 消息 / 重命名 / 删除（全部经 OwnershipCheck 校验归属）；`POST /upload/chat-video`（B11 对话视频：1GB + 白名单 + ffprobe 探时长——不做时长拒绝，分流在工具层）
+- REST：会话创建 / 列表 / 消息 / 重命名 / 删除（全部经 OwnershipCheck 校验归属）；`POST /upload/chat-video`（B11 对话视频：1GB + 白名单 + ffprobe 探时长——不做时长拒绝，分流在工具层）；`POST /upload/chat-video-url`（2026-10-12，B 站链接：BV 号白名单 → yt-dlp 下载临时目录 → 与文件上传同构返回，前端发送前检测链接自动走此通道，错误按 yt-dlp stderr 分类为可读文案）
 
 **视频上传分流（B11，2026-10-05 统一入口；B27 意图 Agent 接管）**
 - AI 对话是唯一视频上传入口（视频管理页仅管理：列表 / 进度 / 播放 / 删除 / 重试）
@@ -18,9 +18,10 @@ WS 流式对话（DeepSeek 流式 + 工具调用）、回合互斥、消息双�
   - `COURSE`（明确做成课程 / >30min）→ **三问卡**（学习目的：期末备考/系统学习/查漏补缺/兴趣了解；知识水平：零基础入门/有一定基础/进阶提升；讲解形式：**跟学型/考点速查型**），pending `stage=PROFILE`；
   - `UNCLEAR` → 单题**处理方式卡**（轻量转写 / 做成课程），pending `stage=ROUTE`；
   - 回合2 `resolveAndExecute` 按 stage 分派：ROUTE 确定性关键词分派（含「课程」→ 三问卡、含「转写/提问/总结」→ 转写、两可按时长默认）；PROFILE LLM 解析一次（`INTENT_RESOLVE_PROMPT` 固定三问口径，兼容自定义补充）→ 画像落档（goal→goal、水平→**profile.level（列已存在首次接线）**、学段从自由文本抽取）→ `createCourse`（**风格 + 目的/水平随课程落库** note_style/learner_goal/learner_level）。
-  - 每题支持**自定义回答**：IntentCard 选项下方输入框，作答规则「选项、文本二选一或并存」，确认拼接 `题目：选项（补充：文本）`；卡片以 `intentCard` 结构随 `COMPLETE.payload` 透出（扁平 `{message, questions}`，历史渲染同构——历史分支已修复为扁平解析）；降级链：判定失败按时长默认（>30min 三问卡 / 否则处理方式卡）、三问解析失败默认跟学型照常建课、LLM 余额不足统一充值文案；WS 断线重连后复位 streaming 并重新拉取会话消息
+  - 每题支持**自定义回答**：IntentCard 选项下方输入框，作答规则「选项、文本二选一或并存」，确认拼接 `题目：选项（补充：文本）`；卡片以 `intentCard` 结构随 `COMPLETE.payload` 透出（扁平 `{message, questions}`，历史渲染同构——历史分支已修复为扁平解析）；**整卡箭头折叠（2026-10-12 用户口径，替代按题摘要行）**：确认回答后卡片收起为单行头部 + 箭头（同「已思考 ∨」样式），点箭头展开/折叠；历史加载按「卡片之后存在以首题标题开头的用户回答」启发式判定 confirmed 并解析 `answers` 回填——锁定选项不可改且高亮用户所选（答案解析自确认拼接文本，补充段入自定义输入框）；降级链：判定失败按时长默认（>30min 三问卡 / 否则处理方式卡）、三问解析失败默认跟学型照常建课、LLM 余额不足统一充值文案；WS 断线重连后复位 streaming 并重新拉取会话消息
+  - 上传成功**不再**渲染本地通知气泡（2026-10-12：原「视频《xx》已上传完成」气泡无 id 不落库，发送下一条消息新建会话时被清空造成前后不一致——已整体移除，输入框 pendingVideo 预览与发送后视频消息卡片保留）
 - 标题提取：上传临时文件名（`xj-chat-video-<时间戳>-` / UUID 前缀 / 尾部时间戳序号）剥离，course.title 兜底取原始文件名基名（IntentAgentService 与 CreateCourseFromVideoTool 各一份同规则实现，均有单测）
-- 课程流水线进度回流：`CreateCourseFromVideoTool` 创建 `course_task` 占位消息（message.course_id 关联），CoursePipelineService 各阶段更新 payload 并推 `ChatEvent.COURSE` 事件，完成附 `/courses/{id}` 链接（页面路径上传无占位消息，自动跳过推送）
+- 课程流水线进度回流：`CreateCourseFromVideoTool` 创建 `course_task` 占位消息（message.course_id 关联），CoursePipelineService 各阶段更新 payload 并推 `ChatEvent.COURSE` 事件，完成附 `/courses/{id}` 链接（页面路径上传无占位消息，自动跳过推送）。**事件归属校验（2026-10-12 幽灵会话修复）**：COURSE/TRANSCRIBE 事件补 conversationId（payload 同步），前端 agent.ts 仅渲染归属当前打开会话的事件——网课页重试时对话页零渲染（原「找不到消息就插入当前会话」导致幽灵对话：进度渲染进不入会话列表的空新对话，重进后被历史覆盖消失）；对话内 failed 课程任务卡片带重试按钮（调 `POST /courses/{id}/retry`，courseId 随事件/payload 透传）
 - 循环依赖：createCourseFromVideoTool 的 CourseService 参数标 `@Lazy`（chatClient → 工具 → CourseService → AiModelService → chatClient）
 
 **视频转写（B11，2026-10-05 完成）**

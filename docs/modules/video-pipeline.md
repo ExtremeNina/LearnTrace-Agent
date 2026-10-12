@@ -7,7 +7,8 @@
 
 **输入**
 - REST `POST /courses`（multipart 视频 ≤1GB，title / subject / expectations 可选）→ 落库 PENDING + 投递 MQ（对象负载 CourseProcessMessage：courseId + tempPath，Jackson 转换器序列化）；**页面均已移除上传按钮——AI 对话是唯一上传入口**（B11 分流：`CreateCourseFromVideoTool` → `CourseService.uploadFromLocal`，对话上传 >30min 或「做成课程」意图进入本流水线，各阶段经 ChatEvent.COURSE 回流对话气泡）
-- REST `POST /courses/{id}/retry`（重新投递，同款对象负载；仅 FAILED 可重试）
+- REST `POST /upload/chat-video-url`（2026-10-12，B 站链接转写）：BV 号白名单校验 → yt-dlp 下载 mp4 到本地临时目录（≤1080p、10 分钟超时、≤1GB）→ ffprobe 时长 → 返回与 chat-video 同构的 {tempPath, durationSec}，后续意图卡/建课/流水线零改动复用；错误按 yt-dlp stderr 分类映射可读文案（视频不存在/需登录付费/多 P 拒绝/超时等），失败清理残留；依赖 yt-dlp（`ytdlp.path` 配置，`YTDLP_PATH` 环境变量，`tools/yt-dlp.exe` gitignored）
+- REST `POST /courses/{id}/retry`（重新投递，同款对象负载；仅 FAILED 可重试）——2026-10-12 起重试不依赖原始本地文件：`process()` 的 `resolveVideo` 三分支（本地临时文件存在 → 直接用；丢失但 `video_oss_key` 非空 → OSS 回源下载继续全流程，治「重试必然失败」——临时文件首次处理后 finally 必删 + `Files.exists(Path.of(""))` 空路径指向工作目录的陷阱；两者皆无 → 提示重新上传）
 - REST `DELETE /courses/{id}`、`POST /courses/batch-delete`（List<Long>；PROCESSING 中禁删，批量中不可删的自动跳过并返回计数文案）——删除连带：软删课程与其 AI 笔记、清理知识联系、移除转写向量（RagIngestService）、OSS 按前缀 `course/{id}/` 异步删除
 - REST `PUT /courses/{id}`（标题 / 学科 / 学习笔记 studyNote，仅更新提供字段）
 - REST `GET /courses`（标题 / 状态 / 日期 / 学科筛选）、`GET /courses/{id}`（详情聚合：course + transcript + frames + note）
@@ -19,7 +20,8 @@
 - 学习笔记 study_note 经 PUT 更新（前端富文本 HTML）
 
 **依赖**
-- FFmpeg（宿主 PATH；fps_mode vfr——8.x 已移除 vsync；280s 分片抽音频）
+- FFmpeg（宿主 PATH；fps_mode vfr——8.x 已移除 vsync；280s 分片抽音频；yt-dlp 合并 B 站 DASH 流复用）
+- yt-dlp（B 站链接视频拉取，外部二进制 `tools/yt-dlp.exe`，配置 `ytdlp.path` / `YTDLP_PATH`，缺失仅下载时报错不阻断启动）
 - Qwen-Audio ASR（DashScope 专用部署端点，密钥本地配置；裸 RestClient 直连——豁免记录见 agent.md 硬性规范）
 - PaddleOCR AI Studio 异步任务（提交 + 轮询 NDJSON，轮询上限可配置 `paddle-ocr.poll-timeout-seconds` 默认 45s；结果签名 URL 需裸请求避免二次编码）
 - DeepSeek（NoteGenerationService 生成笔记，独立 conversationId 隔离，不污染用户对话）
@@ -44,8 +46,9 @@
 - **笔记风格与画像注入（2026-10-11，意图三问卡采集）**：课程落库 `note_style`（FOLLOW=跟学型 / EXAM_SPRINT=考点速查型，NULL=默认跟学型）+ `learner_goal` / `learner_level`；章节页提示词两套变体（跟学型"引入→讲解→例子"保留讲解节奏 / 考点速查型"结论/公式→易错点→典型例"例题压缩），总结页按风格附加输出形态指令（复习路径建议 / 考前清单）；三个 builder 用户消息统一追加 `[学习者目标]` `[知识水平]` `[用户的特别要求]`（course.expectations——此前只有废弃旧路径在用，本版起分页管线真正消费）；`learnerContextBlock` 非空才注入
 - **只重渲染端点**：`POST /courses/{id}/note`（`renderNoteOnly`）——校验 SUCCESS + 已有 ContentDocument 后异步直调 `generateAndSaveNoteFromDocument`（加载已有理解三表与转写/帧），理解结构 / 转写 / 出题不动，笔记风格与画像随课程生效，余额不足写 error_msg；详情页「重新生成」按钮已指向本端点，旧 `/courses/{id}/understand`（全 Graph 重跑）保留
 - 老课程 duration 可能为 NULL，前端用播放器时长兜底
+- **学科自动推断（2026-10-12）**：对话建课链路不采集学科（上传表单已移除）导致 subject 全 NULL——① 意图建课工具 `CreateCourseFromVideoTool` 加 subject 参数（LLM 按视频标题/用户消息推断，无线索留空）；② `SubjectBackfillScheduler` 每日兜底（启动 60s 首跑）：subject 为空课程经 `SubjectInferenceService`（标题+转写摘录前 500 字轻量 LLM）推断回填，单轮 ≤20 门、失败保持 NULL 下轮重试、判不出写「其他」防重跑；③ 列表行内编辑学科下拉手动纠正。学科白名单收口 `common/Subjects`（与前端 SUBJECTS 同表，LLM 输出不在表内 → 其他）
 
 ## 测试方法
-- 单元：CoursePipelineFFmpegTest（真实 FFmpeg 小样本：抽音频 / 抽帧命令与产物断言——遵循"核心外部交互用真实调用"）；CourseServiceImplTest（编辑字段语义 / 越权 / 重试 JSON 负载契约与非 FAILED 拒绝 / 删除连带清理（AI 笔记 + 向量 + OSS 前缀）与 PROCESSING 禁删 / 批量删除跳过语义 / 超时自愈置 FAILED）；NoteGenerationServiceTest（转写 / 帧 / 期望的消息组装 + 时间戳归一化 / 连续去重）；NoteHeadingTimestampAssignerTest（方案 B：章节标题取 startSec / 知识点窗口内 bigram 命中与左端收缩防前移 / 兜底 timeSec / 无佐证不加 / 正文违规时间戳剥除 / 单调钳制）；NoteTimestampCalibratorTest（方案 C 遗留：命中回填 / 00:00 降级 / 非 0 保留 / 单调钳制 / 空转写 no-op / 粗粒度大段拒判）；NoteQualityCheckerTest（方案 B 新结构 + 旧四段结构兼容）；CoursePipelineServiceExpandFallbackTest（伪句级整片与带偏移区间切分 / 正常单句与多句不误切 / (0,0) 兜底）；QwenAsrToolTest（splitFallbackSegment 句级估算）
+- 单元：CoursePipelineFFmpegTest（真实 FFmpeg 小样本：抽音频 / 抽帧命令与产物断言——遵循"核心外部交互用真实调用"）；CourseServiceImplTest（编辑字段语义 / 越权 / 重试 JSON 负载契约与非 FAILED 拒绝 / 删除连带清理（AI 笔记 + 向量 + OSS 前缀）与 PROCESSING 禁删 / 批量删除跳过语义 / 超时自愈置 FAILED）；NoteGenerationServiceTest（转写 / 帧 / 期望的消息组装 + 时间戳归一化 / 连续去重）；NoteHeadingTimestampAssignerTest（方案 B：章节标题取 startSec / 知识点窗口内 bigram 命中与左端收缩防前移 / 兜底 timeSec / 无佐证不加 / 正文违规时间戳剥除 / 单调钳制）；NoteTimestampCalibratorTest（方案 C 遗留：命中回填 / 00:00 降级 / 非 0 保留 / 单调钳制 / 空转写 no-op / 粗粒度大段拒判）；NoteQualityCheckerTest（方案 B 新结构 + 旧四段结构兼容）；CoursePipelineServiceExpandFallbackTest（伪句级整片与带偏移区间切分 / 正常单句与多句不误切 / (0,0) 兜底）；CoursePipelineRetrySourceTest（重试回源三分支：空白 tempPath 不绕过守卫 / OSS 回源 / 双缺失引导重传 / 本地文件优先不触发下载）；YtDlpClientTest（BV 号白名单与多 P 校验 / yt-dlp 错误分类映射）；QwenAsrToolTest（splitFallbackSegment 句级估算）
 - 人工全链路：3 个约 10 分钟真实视频跑通 SUCCESS（转写句级分段、关键帧批量识别、笔记含时间戳胶囊）
 - 真实闭环验证：上传 → 处理 → 详情三区（视频+学习笔记 / AI 笔记 / 转写对照）逐项核对；删除后核对向量键（transcript:c{id}:* 消失）与 OSS 前缀清理日志；时间戳核对——章节/知识点标题 [mm:ss] 与视频实际讲解位置一致、正文无时间戳、时间线表格与标题时间同源；阅读态核对——底栏常驻可翻页、键盘 ←/→ 翻页、点标题胶囊跳转正确
