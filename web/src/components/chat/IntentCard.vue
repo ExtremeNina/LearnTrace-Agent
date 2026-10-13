@@ -140,7 +140,7 @@ if (props.card.answers) {
               :disabled="locked"
               variant="outline"
               class="h-auto w-full justify-start rounded-xl border-gray-200 bg-white/60 px-3 py-1.5 text-left text-[13px] font-normal text-gray-600 hover:border-blue-300 hover:bg-white hover:text-gray-600 data-[state=on]:border-primary data-[state=on]:bg-primary-soft data-[state=on]:font-medium data-[state=on]:text-primary data-[state=on]:ring-1 data-[state=on]:ring-primary/30"
-              @update:pressed="pick(q.title, opt)"
+              @click="pick(q.title, opt)"
             >
               {{ opt }}
             </Toggle>
