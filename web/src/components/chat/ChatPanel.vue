@@ -8,6 +8,9 @@ import { useAgentStore } from '../../stores/agent'
 import { renderIntentChips, renderMarkdown } from '../../utils/markdown'
 import { retryCourse } from '../../api/course'
 import IntentCard from './IntentCard.vue'
+import { Button } from '@/components/ui/button'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { ScrollArea } from '@/components/ui/scroll-area'
 
 /**
  * 会话消息流面板（/chat 与网课详情「AI 问答」共用）：
@@ -49,7 +52,9 @@ watch(
   () => agent.messages.map((m) => m.content).join('|'),
   () => {
     nextTick(() => {
-      scrollBox.value?.scrollTo({ top: scrollBox.value.scrollHeight })
+      // 消息流已换 ScrollArea：滚动发生在视口元素上
+      const viewport = scrollBox.value?.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]')
+      viewport?.scrollTo({ top: viewport.scrollHeight })
     })
   }
 )
@@ -159,7 +164,7 @@ function onPanelClick(e: MouseEvent) {
 </script>
 
 <template>
-  <div ref="scrollBox" class="min-h-0 flex-1 overflow-y-auto" @click="onPanelClick">
+  <div ref="scrollBox" class="min-h-0 flex-1" @click="onPanelClick">
     <div v-if="agent.messages.length === 0" class="flex h-full flex-col items-center justify-center gap-5 px-4">
       <svg width="52" height="52" viewBox="0 0 48 48" fill="none" class="text-ink-2/60">
         <path
@@ -175,16 +180,19 @@ function onPanelClick(e: MouseEvent) {
       </h1>
     </div>
 
-    <div v-else class="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-6">
+    <ScrollArea v-else class="h-full">
+      <div class="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-6">
       <div v-for="(msg, i) in agent.messages" :key="i" class="flex gap-2" :class="msg.role === 'user' ? 'justify-end' : 'justify-start'">
         <!-- AI 标识小图标：仅助手消息显示 -->
-        <div
+        <Avatar
           v-if="msg.role === 'assistant'"
-          class="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary-soft text-primary"
+          class="mt-1 size-7 shrink-0"
           title="学迹 AI"
         >
-          <Sparkles :size="14" />
-        </div>
+          <AvatarFallback class="bg-primary-soft text-primary">
+            <Sparkles :size="14" />
+          </AvatarFallback>
+        </Avatar>
         <div
           class="max-w-[85%] rounded-2xl px-4 py-2.5 text-[15px] leading-7"
           :class="msg.role === 'user'
@@ -215,12 +223,14 @@ function onPanelClick(e: MouseEvent) {
             <!-- B11 转写完成：默认折叠，可展开全文 -->
             <template v-else-if="msg.transcribe?.status === 'done'">
               <div class="markdown-body" v-html="renderContent(expandedTranscripts.has(msg.id ?? -1) ? msg.content : transcriptPreview(msg.content) + '\n\n…')"></div>
-              <button
-                class="mt-2 flex items-center gap-1 text-[13px] text-primary hover:underline"
+              <Button
+                variant="ghost"
+                size="sm"
+                class="mt-2 h-7 px-1 text-[13px] text-primary hover:text-primary hover:underline"
                 @click="toggleTranscript(i)"
               >
                 {{ expandedTranscripts.has(msg.id ?? -1) ? '收起全文' : '查看全文' }}
-              </button>
+              </Button>
             </template>
             <!-- B11 分流：课程流水线进度 / 完成链接 -->
             <div v-else-if="msg.courseTask?.status === 'processing'" class="flex items-center gap-2 py-1 text-[14px] text-ink-2">
@@ -229,14 +239,17 @@ function onPanelClick(e: MouseEvent) {
             </div>
             <template v-else-if="msg.courseTask?.status === 'done'">
               <div class="text-[14px] leading-6 text-ink">{{ msg.courseTask.text }}</div>
-              <RouterLink
+              <Button
                 v-if="msg.courseTask.link"
-                :to="msg.courseTask.link"
-                class="mt-2 inline-flex items-center gap-1.5 rounded-full bg-primary-soft px-3.5 py-1.5 text-[13px] text-primary transition-colors hover:opacity-90"
+                as-child
+                variant="secondary"
+                class="mt-2 w-fit rounded-full px-3.5 text-[13px] text-primary hover:text-primary"
               >
-                <MonitorPlay :size="14" />
-                查看课程与 AI 笔记
-              </RouterLink>
+                <RouterLink :to="msg.courseTask.link">
+                  <MonitorPlay :size="14" />
+                  查看课程与 AI 笔记
+                </RouterLink>
+              </Button>
             </template>
             <!-- 失败卡片：错误文案 + 重试（与视频管理页共用 retry 接口；重试成功后 COURSE 事件切回 processing） -->
             <template v-else-if="msg.courseTask?.status === 'failed'">
@@ -244,16 +257,17 @@ function onPanelClick(e: MouseEvent) {
                 <AlertCircle :size="15" class="mt-0.5 shrink-0" />
                 <span>{{ msg.courseTask.text || msg.content }}</span>
               </div>
-              <button
+              <Button
                 v-if="msg.courseTask.courseId"
-                type="button"
-                class="mt-2 inline-flex items-center gap-1.5 rounded-full border border-line px-3.5 py-1.5 text-[13px] text-ink-2 transition-colors hover:border-primary hover:text-primary disabled:opacity-50"
+                variant="outline"
+                size="sm"
+                class="mt-2 w-fit rounded-full px-3.5 text-[13px]"
                 :disabled="retryingCourseId !== null"
                 @click="retryFailedCourse(msg.courseTask.courseId)"
               >
                 <RotateCcw :size="14" />
                 {{ retryingCourseId === msg.courseTask.courseId ? '已重新提交处理…' : '重试' }}
-              </button>
+              </Button>
             </template>
             <!-- B27 意图确认大卡片：结构化提问 + 选项组 + 确认按钮（点击回发拼接文本）；confirmed 时折叠为单行 -->
             <template v-else-if="msg.intentCard">
@@ -264,29 +278,31 @@ function onPanelClick(e: MouseEvent) {
 
             <!-- 动作条：复制可用，其余为占位 -->
             <div v-if="!msg.streaming" class="mt-2.5 flex items-center gap-0.5 text-ink-2">
-              <button
-                class="flex h-7 w-7 items-center justify-center rounded-md hover:bg-line/60 hover:text-ink"
+              <Button
+                variant="ghost"
+                size="icon"
+                class="size-7 rounded-md text-ink-2 hover:text-ink"
                 :title="copiedIndex === i ? '已复制' : '复制'"
                 @click="copyMessage(i, msg.content)"
               >
                 <Check v-if="copiedIndex === i" :size="15" class="text-primary" />
                 <Copy v-else :size="15" />
-              </button>
-              <button class="flex h-7 w-7 items-center justify-center rounded-md hover:bg-line/60 hover:text-ink" title="重新生成（开发中）">
+              </Button>
+              <Button variant="ghost" size="icon" class="size-7 rounded-md text-ink-2 hover:text-ink" title="重新生成（开发中）">
                 <RefreshCw :size="15" />
-              </button>
-              <button class="flex h-7 w-7 items-center justify-center rounded-md hover:bg-line/60 hover:text-ink" title="有帮助（开发中）">
+              </Button>
+              <Button variant="ghost" size="icon" class="size-7 rounded-md text-ink-2 hover:text-ink" title="有帮助（开发中）">
                 <ThumbsUp :size="15" />
-              </button>
-              <button class="flex h-7 w-7 items-center justify-center rounded-md hover:bg-line/60 hover:text-ink" title="没帮助（开发中）">
+              </Button>
+              <Button variant="ghost" size="icon" class="size-7 rounded-md text-ink-2 hover:text-ink" title="没帮助（开发中）">
                 <ThumbsDown :size="15" />
-              </button>
-              <button class="flex h-7 w-7 items-center justify-center rounded-md hover:bg-line/60 hover:text-ink" title="朗读（开发中）">
+              </Button>
+              <Button variant="ghost" size="icon" class="size-7 rounded-md text-ink-2 hover:text-ink" title="朗读（开发中）">
                 <Volume2 :size="15" />
-              </button>
-              <button class="flex h-7 w-7 items-center justify-center rounded-md hover:bg-line/60 hover:text-ink" title="分享（开发中）">
+              </Button>
+              <Button variant="ghost" size="icon" class="size-7 rounded-md text-ink-2 hover:text-ink" title="分享（开发中）">
                 <Share2 :size="15" />
-              </button>
+              </Button>
             </div>
 
             <!-- 解答类回答：保存引导 -->
@@ -302,6 +318,7 @@ function onPanelClick(e: MouseEvent) {
           </div>
         </div>
       </div>
+    </ScrollArea>
     </div>
 </template>
 

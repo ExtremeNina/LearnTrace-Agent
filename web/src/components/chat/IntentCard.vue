@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue'
 import { ChevronDown, ListChecks, Send } from 'lucide-vue-next'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Toggle } from '@/components/ui/toggle'
 
 /**
  * 意图确认大卡片（B27 立项 / 2026-10-11 固定题改造）：意图 Agent 的结构化提问——
@@ -124,40 +127,36 @@ if (props.card.answers) {
           {{ q.title }}
         </p>
         <div class="mt-2 flex flex-col gap-2">
-          <button
+          <!-- 选项：Toggle pressed 态即选中（主色高亮）；再点取消由 pick() 的 toggle-off 逻辑负责 -->
+          <Toggle
             v-for="opt in q.options"
             :key="opt"
-            type="button"
-            class="w-full rounded-xl border px-3 py-1.5 text-left text-[13px] transition-all"
-            :class="selections[q.title] === opt
-              ? 'border-primary bg-primary-soft font-medium text-primary ring-1 ring-primary/30'
-              : 'border-gray-200 text-gray-600 hover:border-blue-300 hover:bg-blue-50'"
+            :pressed="selections[q.title] === opt"
             :disabled="locked"
-            @click="pick(q.title, opt)"
+            variant="outline"
+            class="h-auto w-full justify-start rounded-xl border-gray-200 px-3 py-1.5 text-left text-[13px] font-normal text-gray-600 hover:border-blue-300 hover:bg-blue-50 hover:text-gray-600 data-[state=on]:border-primary data-[state=on]:bg-primary-soft data-[state=on]:font-medium data-[state=on]:text-primary data-[state=on]:ring-1 data-[state=on]:ring-primary/30"
+            @update:pressed="pick(q.title, opt)"
           >
             {{ opt }}
-          </button>
-          <input
+          </Toggle>
+          <Input
             v-model="customs[q.title]"
-            type="text"
-            class="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-1.5 text-[13px] text-gray-700 outline-none transition-colors placeholder:text-gray-400 focus:border-blue-300 focus:bg-white disabled:opacity-70"
+            class="h-auto rounded-xl border-gray-200 bg-gray-50 py-1.5 text-[13px] text-gray-700 focus-visible:border-blue-300 focus-visible:bg-white focus-visible:ring-0"
             placeholder="或输入自定义回答…"
             :disabled="locked"
             @click.stop
           />
         </div>
       </div>
-      <button
+      <Button
         v-if="!locked"
-        type="button"
-        class="flex w-full items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 px-3 py-2 text-[13px] font-medium text-white transition-opacity"
-        :class="allAnswered ? 'hover:opacity-90' : 'cursor-not-allowed opacity-40'"
+        class="w-full rounded-xl text-[13px]"
         :disabled="!allAnswered"
         @click="confirm"
       >
         <Send :size="13" />
         {{ allAnswered ? '确认开始' : '每题选择选项或输入自定义回答后确认' }}
-      </button>
+      </Button>
     </div>
   </div>
 </template>

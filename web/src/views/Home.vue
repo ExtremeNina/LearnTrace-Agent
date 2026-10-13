@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch, type ComponentPublicInstance } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   ChevronRight, Clock, Film, GraduationCap, History,
@@ -17,10 +17,11 @@ import bannerWaterUrl from '../assets/banner-water.webp'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Progress } from '@/components/ui/progress'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Textarea } from '@/components/ui/textarea'
 
 /**
  * 首页学习仪表盘（B25，视觉按设计稿实现——靛蓝色系 / 渐变按钮 / 卡片白底圆角；深色主题适配后置）：
@@ -154,6 +155,15 @@ const draft = ref('')
 const assistantBox = ref<HTMLDivElement | null>(null)
 const uploadInputRef = ref<HTMLInputElement | null>(null)
 const chatInputRef = ref<HTMLTextAreaElement | null>(null)
+
+/** Textarea 是组件：函数式 ref 解出原生 textarea 元素（供自增高逻辑使用） */
+function bindChatInput(el: Element | ComponentPublicInstance | null) {
+  if (el instanceof HTMLTextAreaElement) {
+    chatInputRef.value = el
+  } else {
+    chatInputRef.value = ((el as ComponentPublicInstance | null)?.$el as HTMLTextAreaElement | undefined) ?? null
+  }
+}
 // 历史对话弹窗（B26 反馈：对话模块直接可见的历史入口）
 const showHistory = ref(false)
 
@@ -229,14 +239,14 @@ function onAssistantClick(e: MouseEvent) {
   }
 }
 
-// 新消息或流式输出推进时滚到底部
+// 新消息或流式输出推进时滚到底部（消息流已换 ScrollArea，滚动发生在视口元素上）
 watch(
   () => [agent.messages.length, agent.streaming],
   () => {
     nextTick(() => {
-      const box = assistantBox.value
-      if (box) {
-        box.scrollTop = box.scrollHeight
+      const viewport = assistantBox.value?.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]')
+      if (viewport) {
+        viewport.scrollTop = viewport.scrollHeight
       }
     })
   }
@@ -489,7 +499,7 @@ watch(
               </div>
               <div
                 ref="assistantBox"
-                class="mt-3 flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto pr-3"
+                class="mt-3 min-h-0 flex-1"
                 @click="onAssistantClick"
               >
                 <div v-if="agent.messages.length === 0" class="text-[12px] leading-5 text-gray-500">
@@ -502,59 +512,66 @@ watch(
                     <li>整理知识点和错题</li>
                   </ul>
                 </div>
-                <template v-for="(msg, i) in agent.messages" :key="i">
-                  <div v-if="msg.role === 'user'" class="ml-auto w-fit max-w-[85%] rounded-lg bg-blue-500 px-3 py-2 text-[13px] text-white">
-                    <!-- B11 视频消息标识（与 ChatPanel 一致） -->
-                    <div v-if="msg.video" class="mb-1.5 flex items-center gap-1.5 rounded-md bg-white/15 px-2 py-1 text-[12px]">
-                      <Film :size="13" />
-                      视频<span v-if="msg.video.durationSec" class="text-white/80">（{{ formatDuration(msg.video.durationSec) }}）</span>
-                    </div>
-                    <span class="break-words whitespace-pre-wrap">{{ msg.content }}</span>
+                <ScrollArea v-else class="h-full">
+                  <div class="flex flex-col gap-2.5 pr-3">
+                    <template v-for="(msg, i) in agent.messages" :key="i">
+                      <div v-if="msg.role === 'user'" class="ml-auto w-fit max-w-[85%] rounded-lg bg-blue-500 px-3 py-2 text-[13px] text-white">
+                        <!-- B11 视频消息标识（与 ChatPanel 一致） -->
+                        <div v-if="msg.video" class="mb-1.5 flex items-center gap-1.5 rounded-md bg-white/15 px-2 py-1 text-[12px]">
+                          <Film :size="13" />
+                          视频<span v-if="msg.video.durationSec" class="text-white/80">（{{ formatDuration(msg.video.durationSec) }}）</span>
+                        </div>
+                        <span class="break-words whitespace-pre-wrap">{{ msg.content }}</span>
+                      </div>
+                      <div
+                        v-else-if="msg.streaming && !msg.content && !msg.transcribe && !msg.courseTask"
+                        class="mr-4 text-[12px] text-blue-400"
+                      >
+                        正在思考<span class="animate-pulse">…</span>
+                      </div>
+                      <!-- B11 后台任务进度：转写分片 / 课程流水线阶段 -->
+                      <div
+                        v-else-if="msg.transcribe?.status === 'processing' || msg.courseTask?.status === 'processing'"
+                        class="mr-4 flex items-center gap-2 py-1 text-[12px] text-blue-400"
+                      >
+                        <LoaderCircle :size="13" class="animate-spin" />
+                        {{ msg.transcribe
+                          ? (msg.transcribe.total > 0 && msg.transcribe.done > 0 ? `正在转写第 ${msg.transcribe.done + 1} / ${msg.transcribe.total} 段…` : '正在提取音频…')
+                          : (msg.courseTask?.text || '课程处理中…') }}
+                      </div>
+                      <!-- B11 课程任务完成：附跳转链接 -->
+                      <template v-else-if="msg.courseTask?.status === 'done'">
+                        <div class="mr-4 break-words text-[13px] leading-6 text-gray-700">{{ msg.courseTask.text }}</div>
+                        <Button
+                          v-if="msg.courseTask.link"
+                          as-child
+                          variant="secondary"
+                          class="mr-4 mt-1.5 w-fit rounded-full px-3 text-[12px] text-blue-600 hover:text-blue-600"
+                        >
+                          <RouterLink :to="msg.courseTask.link">
+                            <MonitorPlay :size="13" />
+                            查看课程与 AI 笔记
+                          </RouterLink>
+                        </Button>
+                      </template>
+                      <!-- B27 意图确认大卡片 -->
+                      <template v-else-if="msg.intentCard">
+                        <div class="mr-4 break-words text-[13px] leading-6 text-gray-700">{{ msg.intentCard.message }}</div>
+                        <IntentCard
+                          class="mr-4 mt-1"
+                          :card="msg.intentCard"
+                          :confirmed="msg.intentCard.confirmed"
+                          @confirm="agent.send($event)"
+                        />
+                      </template>
+                      <div
+                        v-else
+                        class="assistant-md mr-4 break-words text-[13px] leading-6 text-gray-700"
+                        v-html="renderIntentChips(renderMarkdown(msg.content))"
+                      ></div>
+                    </template>
                   </div>
-                  <div
-                    v-else-if="msg.streaming && !msg.content && !msg.transcribe && !msg.courseTask"
-                    class="mr-4 text-[12px] text-blue-400"
-                  >
-                    正在思考<span class="animate-pulse">…</span>
-                  </div>
-                  <!-- B11 后台任务进度：转写分片 / 课程流水线阶段 -->
-                  <div
-                    v-else-if="msg.transcribe?.status === 'processing' || msg.courseTask?.status === 'processing'"
-                    class="mr-4 flex items-center gap-2 py-1 text-[12px] text-blue-400"
-                  >
-                    <LoaderCircle :size="13" class="animate-spin" />
-                    {{ msg.transcribe
-                      ? (msg.transcribe.total > 0 && msg.transcribe.done > 0 ? `正在转写第 ${msg.transcribe.done + 1} / ${msg.transcribe.total} 段…` : '正在提取音频…')
-                      : (msg.courseTask?.text || '课程处理中…') }}
-                  </div>
-                  <!-- B11 课程任务完成：附跳转链接 -->
-                  <template v-else-if="msg.courseTask?.status === 'done'">
-                    <div class="mr-4 break-words text-[13px] leading-6 text-gray-700">{{ msg.courseTask.text }}</div>
-                    <RouterLink
-                      v-if="msg.courseTask.link"
-                      :to="msg.courseTask.link"
-                      class="mr-4 mt-1.5 inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1.5 text-[12px] text-blue-600 transition-colors hover:bg-blue-100"
-                    >
-                      <MonitorPlay :size="13" />
-                      查看课程与 AI 笔记
-                    </RouterLink>
-                  </template>
-                  <!-- B27 意图确认大卡片 -->
-                  <template v-else-if="msg.intentCard">
-                    <div class="mr-4 break-words text-[13px] leading-6 text-gray-700">{{ msg.intentCard.message }}</div>
-                    <IntentCard
-                      class="mr-4 mt-1"
-                      :card="msg.intentCard"
-                      :confirmed="msg.intentCard.confirmed"
-                      @confirm="agent.send($event)"
-                    />
-                  </template>
-                  <div
-                    v-else
-                    class="assistant-md mr-4 break-words text-[13px] leading-6 text-gray-700"
-                    v-html="renderIntentChips(renderMarkdown(msg.content))"
-                  ></div>
-                </template>
+                </ScrollArea>
               </div>
               <!-- 模型切换器（与对话页一致，点击切换 / 管理模型） -->
               <div class="mt-3 flex items-center">
@@ -574,11 +591,11 @@ watch(
                   >
                     <Plus :size="17" />
                   </Button>
-                  <textarea
-                    ref="chatInputRef"
+                  <Textarea
+                    :ref="bindChatInput"
                     v-model="draft"
                     rows="1"
-                    class="max-h-36 min-w-0 flex-1 resize-none overflow-y-auto bg-transparent py-2.5 pr-2 text-[13px] leading-6 text-ink outline-none"
+                    class="max-h-36 min-h-0 min-w-0 flex-1 resize-none overflow-y-auto border-0 bg-transparent py-2.5 pr-2 text-[13px] leading-6 text-ink shadow-none focus-visible:ring-0 md:text-[13px]"
                     placeholder="有问题尽管问我…（Shift+Enter 换行）"
                     @keydown.enter="onInputKeydown"
                     @input="autoGrowInput"
@@ -599,31 +616,34 @@ watch(
               </p>
               <input ref="uploadInputRef" type="file" accept="video/mp4,video/x-matroska,video/quicktime,video/webm,.mp4,.mkv,.mov,.webm" class="hidden" @change="onUploadFile" />
 
-              <!-- 历史对话弹窗（Dialog：自带 ESC / 焦点管理 / 关闭按钮） -->
-              <Dialog v-model:open="showHistory">
-                <DialogContent class="max-w-md">
-                  <DialogHeader>
-                    <DialogTitle class="text-[15px] font-semibold">历史对话</DialogTitle>
-                    <DialogDescription class="sr-only">查看全部历史会话</DialogDescription>
-                  </DialogHeader>
-                  <p v-if="agent.conversations.length === 0" class="py-6 text-center text-[13px] text-muted-foreground">
-                    暂无会话，发一条消息开始吧
-                  </p>
-                  <ScrollArea v-else class="max-h-[52vh] pr-2">
-                    <div class="flex flex-col gap-1">
-                      <button
+              <!-- 历史对话弹窗（CommandDialog：搜索过滤 + 键盘导航 + ESC/焦点管理） -->
+              <CommandDialog
+                v-model:open="showHistory"
+                title="历史对话"
+                description="搜索并切换历史会话"
+              >
+                <CommandInput placeholder="搜索会话…" />
+                <CommandList class="max-h-[52vh]">
+                  <CommandEmpty>没有匹配的会话</CommandEmpty>
+                  <template v-if="agent.conversations.length > 0">
+                    <CommandGroup heading="全部会话">
+                      <CommandItem
                         v-for="c in agent.conversations"
                         :key="c.id"
-                        class="flex w-full items-center justify-between gap-3 rounded-xl px-3.5 py-2.5 text-left text-[14px] text-ink transition-colors hover:bg-panel"
-                        @click="pickConversation(c.id)"
+                        :value="`${c.id} ${c.title}`"
+                        class="rounded-xl px-3.5 py-2.5"
+                        @select="pickConversation(c.id)"
                       >
-                        <span class="truncate">{{ c.title }}</span>
+                        <span class="min-w-0 flex-1 truncate">{{ c.title }}</span>
                         <span class="shrink-0 text-[11px] text-muted-foreground">{{ relativeTime(c.updatedAt ?? c.createdAt) }}</span>
-                      </button>
-                    </div>
-                  </ScrollArea>
-                </DialogContent>
-              </Dialog>
+                      </CommandItem>
+                    </CommandGroup>
+                  </template>
+                  <div v-else class="py-6 text-center text-[13px] text-muted-foreground">
+                    暂无会话，发一条消息开始吧
+                  </div>
+                </CommandList>
+              </CommandDialog>
             </section>
             </div>
         </div>
