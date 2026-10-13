@@ -59,8 +59,7 @@ function onOpenProfile() {
     <div class="flex min-w-0 items-center gap-2.5 px-1 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
       <span class="brand-mark flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[16px] font-bold text-white">L</span>
       <span class="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
-        <p class="brand-title truncate text-[20px] leading-6">LearnTrace</p>
-        <p class="mt-0.5 truncate text-[11px] text-muted-foreground">让学习更有轨迹</p>
+        <p class="brand-title text-[16px] leading-5">LearnTrace</p>
       </span>
     </div>
   </SidebarHeader>
