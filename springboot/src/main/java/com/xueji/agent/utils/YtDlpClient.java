@@ -11,6 +11,7 @@ import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
@@ -41,6 +42,13 @@ public class YtDlpClient {
 
     @Value("${ytdlp.path:yt-dlp}")
     private String ytdlpPath;
+
+    /**
+     * 浏览器 cookies 登录态（逗号分隔多浏览器，如 edge,chrome）：课程类视频的音频流 URL 对游客签名无效
+     * （CDN 挂起连接导致下载卡死），必须携带登录 cookies；空 = 游客模式（与历史行为一致，零回归）
+     */
+    @Value("${ytdlp.cookies-from-browser:}")
+    private String cookiesFromBrowser;
 
     @PostConstruct
     public void warnIfMissing() {
@@ -79,17 +87,15 @@ public class YtDlpClient {
         try {
             dir = Files.createTempDirectory("xj-bili-");
             // 先取标题（同时快速校验视频存在性与可访问性），再以标题命名产物文件
-            String title = runYtDlp(new String[]{
-                    ytdlpPath, "--no-playlist", "--skip-download", "--print", "%(title).80s", validated
-            }, DOWNLOAD_TIMEOUT_MINUTES);
+            String title = runYtDlp(buildCommandArgs(ytdlpPath, cookiesFromBrowser,
+                    "--skip-download", "--print", "%(title).80s", validated), DOWNLOAD_TIMEOUT_MINUTES);
             if (title == null || title.isBlank()) {
                 title = "bilibili-" + bvOf(validated);
             }
             String outputTemplate = dir.resolve("%(title).80s.%(ext)s").toString();
-            runYtDlp(new String[]{
-                    ytdlpPath, "--no-playlist", "-f", "bv*[height<=1080]+ba/b[height<=1080]/b",
-                    "--merge-output-format", "mp4", "-o", outputTemplate, validated
-            }, DOWNLOAD_TIMEOUT_MINUTES);
+            runYtDlp(buildCommandArgs(ytdlpPath, cookiesFromBrowser,
+                    "-f", "bv*[height<=1080]+ba/b[height<=1080]/b",
+                    "--merge-output-format", "mp4", "-o", outputTemplate, validated), DOWNLOAD_TIMEOUT_MINUTES);
 
             Path product = locateProduct(dir);
             long size = Files.size(product);
@@ -155,6 +161,40 @@ public class YtDlpClient {
         }
     }
 
+    /**
+     * yt-dlp 命令组装：防卡死 socket 超时 + 浏览器 cookies 登录态 + 额外参数。
+     * --socket-timeout 20：B 站对无效签名的流地址会"接受连接但不吐数据"，无超时会干等到总超时；
+     * 加上后 20 秒收不到数据即报错，由 yt-dlp 内部自动重试换节点（静态纯函数便于单测）
+     */
+    static String[] buildCommandArgs(String ytdlpPath, String cookiesFromBrowser, String... extras) {
+        List<String> args = new java.util.ArrayList<>();
+        args.add(ytdlpPath);
+        args.add("--no-playlist");
+        args.add("--socket-timeout");
+        args.add("20");
+        args.addAll(cookiesArgs(cookiesFromBrowser));
+        for (String extra : extras) {
+            args.add(extra);
+        }
+        return args.toArray(new String[0]);
+    }
+
+    /** cookies 配置解析：逗号分隔多浏览器，逐个展开为 --cookies-from-browser；空白配置返回空列表（游客模式，静态纯函数便于单测） */
+    static List<String> cookiesArgs(String cookiesFromBrowser) {
+        List<String> args = new java.util.ArrayList<>();
+        if (cookiesFromBrowser == null) {
+            return args;
+        }
+        for (String browser : cookiesFromBrowser.split(",")) {
+            String name = browser.trim();
+            if (!name.isEmpty()) {
+                args.add("--cookies-from-browser");
+                args.add(name);
+            }
+        }
+        return args;
+    }
+
     /** yt-dlp stderr 分类：命中关键词返回映射文案，未命中回退通用文案 */
     static String classifyError(String output) {
         if (output == null) {
@@ -171,6 +211,8 @@ public class YtDlpClient {
 
     private static Map<String, String> buildErrorClassification() {
         Map<String, String> map = new LinkedHashMap<>();
+        // cookie 库读取失败须置于通用 "cookies" 关键词之前（LinkedHashMap 保序，避免被登录文案掩盖真实原因）
+        map.put("could not copy", "读取浏览器 Cookie 失败（对应浏览器可能未完全关闭），请关闭后重试或检查 ytdlp.cookies-from-browser 配置");
         map.put("unsupported url", "仅支持 B 站视频链接（bilibili.com/video/BV…）");
         map.put("video unavailable", "视频不存在或已被删除，请确认链接");
         map.put("does not exist", "视频不存在或已被删除，请确认链接");

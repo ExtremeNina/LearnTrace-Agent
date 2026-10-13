@@ -90,8 +90,10 @@ qwen:
 
 # yt-dlp（B 站链接视频拉取）：默认走 PATH；显式路径指向 yt-dlp.exe 时缺失仅启动告警。
 # 键名必须为 ytdlp.path（@Value 不走 relaxed binding，勿改回 yt-dlp.path——那会导致配置永不生效）
+# cookies-from-browser：逗号分隔多浏览器（如 edge,chrome）为课程类视频提供登录态；空 = 游客模式（普通视频可下）
 ytdlp:
   path: ${YTDLP_PATH:yt-dlp}
+  cookies-from-browser: ${YTDLP_COOKIES_FROM_BROWSER:}
 
 server:
   port: 9090
