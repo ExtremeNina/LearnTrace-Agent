@@ -602,7 +602,7 @@ watch(
                   />
                   <Button
                     size="icon"
-                    class="size-8 shrink-0 rounded-full disabled:opacity-40"
+                    class="mb-1 size-8 shrink-0 rounded-full disabled:opacity-40"
                     :disabled="agent.streaming || !draft.trim()"
                     title="发送"
                     @click="sendDraft"
