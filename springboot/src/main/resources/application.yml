@@ -88,8 +88,9 @@ qwen:
     format: ${QWEN_ASR_FORMAT:wav}
     sample-rate: ${QWEN_ASR_SAMPLE_RATE:16000}
 
-# yt-dlp（B 站链接视频拉取）：默认走 PATH；显式路径指向 yt-dlp.exe 时缺失仅启动告警
-yt-dlp:
+# yt-dlp（B 站链接视频拉取）：默认走 PATH；显式路径指向 yt-dlp.exe 时缺失仅启动告警。
+# 键名必须为 ytdlp.path（@Value 不走 relaxed binding，勿改回 yt-dlp.path——那会导致配置永不生效）
+ytdlp:
   path: ${YTDLP_PATH:yt-dlp}
 
 server:
