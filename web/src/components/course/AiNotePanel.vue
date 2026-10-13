@@ -426,3 +426,71 @@ async function pickAskConversation(id: number) {
     </Dialog>
   </Card>
 </template>
+
+<style scoped>
+/* AI 笔记 markdown 渲染排版（v-html 注入内容需 :deep 穿透） */
+.note-view :deep(h1),
+.note-view :deep(h2),
+.note-view :deep(h3) {
+  font-weight: 600;
+  font-size: 15px;
+  margin: 1.25rem 0 0.5rem;
+}
+.note-view :deep(h1) {
+  font-size: 17px;
+}
+.note-view :deep(h1:first-child),
+.note-view :deep(h2:first-child),
+.note-view :deep(h3:first-child) {
+  margin-top: 0;
+}
+.note-view :deep(ul) {
+  list-style: disc;
+  padding-left: 1.4rem;
+  margin: 0.25rem 0 0.75rem;
+}
+.note-view :deep(ol) {
+  list-style: decimal;
+  padding-left: 1.4rem;
+  margin: 0.25rem 0 0.75rem;
+}
+.note-view :deep(li) {
+  margin: 0.25rem 0;
+}
+.note-view :deep(hr) {
+  margin: 1rem 0;
+  border-color: #e5e7eb;
+}
+.note-view :deep(table) {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75rem 0;
+  font-size: 13px;
+}
+.note-view :deep(th),
+.note-view :deep(td) {
+  border: 1px solid #e5e7eb;
+  padding: 0.4rem 0.75rem;
+  text-align: left;
+  vertical-align: top;
+}
+.note-view :deep(th) {
+  background: #f9fafb;
+  font-weight: 600;
+}
+.note-view :deep(.ts-chip) {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.25rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 0.375rem;
+  background: #eff6ff;
+  color: #2563eb;
+  font-size: 12px;
+  cursor: pointer;
+  vertical-align: middle;
+}
+.note-view :deep(.ts-chip:hover) {
+  text-decoration: underline;
+}
+</style>
