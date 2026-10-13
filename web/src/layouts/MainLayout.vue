@@ -79,14 +79,14 @@ async function remindReview() {
     class="h-full min-h-0 overflow-hidden bg-surface text-ink"
     :style="{ '--sidebar-width': '13rem' }"
   >
-    <!-- 主导航侧栏：桌面常驻（offcanvas 可完全收起） / 移动端 Sheet 抽屉 -->
-    <Sidebar collapsible="offcanvas">
-      <SideNav :due-count="bellDue" @open-profile="openProfile" />
+    <!-- 主导航侧栏（sidebar-07 风格）：icon 折叠收起留图标列 + inset 悬浮变体 / 移动端 Sheet 抽屉 -->
+    <Sidebar collapsible="icon" variant="inset">
+      <SideNav :due-count="bellDue" :user="auth.user" @open-profile="openProfile" />
       <SidebarRail />
     </Sidebar>
 
-    <!-- 右列：移动端极简顶栏（桌面无顶栏） + 主区 -->
-    <SidebarInset class="overflow-hidden bg-surface">
+    <!-- 右列：移动端极简顶栏（桌面无顶栏） + 主区（inset 变体下呈圆角卡片） -->
+    <SidebarInset class="overflow-hidden bg-surface rounded-none md:rounded-xl">
       <header class="flex h-10 shrink-0 items-center gap-2 border-b border-gray-200 bg-panel px-3 md:hidden">
         <SidebarTrigger class="-ml-1" />
         <span class="text-[15px] font-medium">LearnTrace</span>
