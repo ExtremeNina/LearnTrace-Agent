@@ -27,6 +27,9 @@ public class ChatVideoServiceImpl implements ChatVideoService {
     /** 与 AliUploadUtils 的网课视频白名单一致 */
     private static final List<String> ALLOWED_VIDEO_EXT = List.of("mp4", "mov", "mkv", "avi", "webm", "m4v");
 
+    /** B 站链接路径的占位名（前端 agent.ts 同款文案）：无真实文件名语义，作 videoName 时回退临时文件名规则 */
+    public static final String BILIBILI_PLACEHOLDER_NAME = "B 站视频链接";
+
     @Resource
     private YtDlpClient ytDlpClient;
 
@@ -87,8 +90,22 @@ public class ChatVideoServiceImpl implements ChatVideoService {
         return fileName.substring(fileName.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT);
     }
 
+    /**
+     * 前端权威文件名 → 课程标题（去扩展名、清洗非法字符）。
+     * 空 / B 站占位名返回 null，调用方回退各自的临时文件名标题规则（titleFromFileName）——
+     * 与损坏点无关地根治建课标题乱码（videoName 经 WS 透传，不经 multipart/临时路径）
+     */
+    public static String courseTitleFromVideoName(String videoName) {
+        if (videoName == null || videoName.isBlank() || BILIBILI_PLACEHOLDER_NAME.equals(videoName.trim())) {
+            return null;
+        }
+        String cleaned = baseName(videoName.trim());
+        // baseName 对无有效字符的输入回退默认基名，视作无效交给调用方兜底
+        return "xj-chat-video".equals(cleaned) ? null : cleaned;
+    }
+
     /** 原始文件名去扩展名做临时文件基名；清洗非法路径字符，无有效名回退默认（公开静态便于单测） */
-    static String baseName(String fileName) {
+    public static String baseName(String fileName) {
         if (fileName == null || fileName.isBlank()) {
             return "xj-chat-video";
         }

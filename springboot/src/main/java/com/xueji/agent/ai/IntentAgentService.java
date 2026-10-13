@@ -13,6 +13,7 @@ import com.xueji.agent.mapper.MessageMapper;
 import com.xueji.agent.service.CourseService;
 import com.xueji.agent.service.ProfileService;
 import com.xueji.agent.service.TranscriptionService;
+import com.xueji.agent.service.impl.ChatVideoServiceImpl;
 import com.xueji.agent.utils.RedisUtils;
 import com.xueji.agent.ws.AgentEventPushService;
 import jakarta.annotation.Resource;
@@ -79,8 +80,8 @@ public class IntentAgentService {
     @Resource
     private RedisUtils redisUtils;
 
-    /** 待确认意图的视频参数（stage：ROUTE=处理方式卡已出 / PROFILE=三问卡已出） */
-    public record PendingVideo(String videoTempPath, Integer durationSec, String stage) {
+    /** 待确认意图的视频参数（stage：ROUTE=处理方式卡已出 / PROFILE=三问卡已出；videoName 为权威文件名，可空） */
+    public record PendingVideo(String videoTempPath, Integer durationSec, String stage, String videoName) {
     }
 
     /** 三问解析结果（公开静态便于单测） */
@@ -109,7 +110,8 @@ public class IntentAgentService {
     /**
      * 回合1：LLM 判定意图 → 直接转写 / 三问卡 / 处理方式卡。
      */
-    public AskResult askIntent(Long userId, Long conversationId, String userText, String videoTempPath, Integer durationSec) {
+    public AskResult askIntent(Long userId, Long conversationId, String userText, String videoTempPath,
+                               Integer durationSec, String videoName) {
         int duration = durationSec == null ? 0 : durationSec;
         String intent;
         try {
@@ -123,7 +125,7 @@ public class IntentAgentService {
             // 余额不足：写 pending（stage=ROUTE，充值后用户回复可继续），返回充值文案
             if (ModelServiceErrors.isBalanceInsufficient(e)) {
                 log.warn("意图判定遇到模型服务余额不足, conversationId={}", conversationId);
-                rememberPending(conversationId, videoTempPath, durationSec, STAGE_ROUTE);
+                rememberPending(conversationId, videoTempPath, durationSec, STAGE_ROUTE, videoName);
                 return new AskResult(ModelServiceErrors.BALANCE_MESSAGE, null);
             }
             log.warn("意图判定失败，按时长降级, conversationId={}", conversationId, e);
@@ -136,11 +138,11 @@ public class IntentAgentService {
         return switch (intent.trim().toUpperCase()) {
             case "TRANSCRIBE" -> startTranscription(userId, conversationId, videoTempPath, duration);
             case "COURSE" -> {
-                rememberPending(conversationId, videoTempPath, durationSec, STAGE_PROFILE);
+                rememberPending(conversationId, videoTempPath, durationSec, STAGE_PROFILE, videoName);
                 yield profileCard(duration);
             }
             default -> {
-                rememberPending(conversationId, videoTempPath, durationSec, STAGE_ROUTE);
+                rememberPending(conversationId, videoTempPath, durationSec, STAGE_ROUTE, videoName);
                 yield routeCard(duration);
             }
         };
@@ -176,7 +178,7 @@ public class IntentAgentService {
         if (!course) {
             return startTranscription(userId, conversationId, pending.videoTempPath(), durationSec);
         }
-        rememberPending(conversationId, pending.videoTempPath(), pending.durationSec(), STAGE_PROFILE);
+        rememberPending(conversationId, pending.videoTempPath(), pending.durationSec(), STAGE_PROFILE, pending.videoName());
         return profileCard(durationSec);
     }
 
@@ -215,7 +217,7 @@ public class IntentAgentService {
             log.warn("三问解析失败，按默认跟学型建课, conversationId={}", conversationId, e);
         }
         saveProfilePatch(userId, goal, level, gradeLevel);
-        return createCourse(userId, conversationId, pending.videoTempPath(), style, goal, level, reply);
+        return createCourse(userId, conversationId, pending.videoTempPath(), pending.videoName(), style, goal, level, reply);
     }
 
     /** 风格答案归一：FOLLOW/EXAM_SPRINT 直收，中文「考点速查」类说法映射 EXAM_SPRINT，其余默认 FOLLOW（公开静态便于单测） */
@@ -250,14 +252,19 @@ public class IntentAgentService {
     }
 
     /** 建课三步（与 CreateCourseFromVideoTool 一致）：标题兜底 → uploadFromLocal（带风格与画像）→ course_task 占位消息 */
-    private AskResult createCourse(Long userId, Long conversationId, String tempPath,
+    private AskResult createCourse(Long userId, Long conversationId, String tempPath, String videoName,
                                    String noteStyle, String learnerGoal, String learnerLevel, String reply) {
         Path video = Path.of(tempPath);
         if (!Files.exists(video)) {
             return new AskResult("视频临时文件已被清理，麻烦重新上传一次，马上为你处理。", null);
         }
-        // course.title 非空约束：用户没指定标题时回退视频文件名（去 UUID 前缀）；学科由兜底任务回填（此处无 LLM 判定上下文）
-        Course course = courseService.uploadFromLocal(userId, video, titleFromFileName(video), null, null,
+        // course.title 非空约束：优先前端权威文件名 videoName（规避临时路径字符集损坏），
+        // 空 / B 站占位名回退临时文件名（去 UUID 前缀）；学科由兜底任务回填（此处无 LLM 判定上下文）
+        String resolvedTitle = ChatVideoServiceImpl.courseTitleFromVideoName(videoName);
+        if (resolvedTitle == null) {
+            resolvedTitle = titleFromFileName(video);
+        }
+        Course course = courseService.uploadFromLocal(userId, video, resolvedTitle, null, null,
                 noteStyle, learnerGoal, learnerLevel);
         String title = course.getTitle();
         Message placeholder = new Message()
@@ -325,13 +332,14 @@ public class IntentAgentService {
 
     // ---- pending 状态（Redis） ----
 
-    private void rememberPending(Long conversationId, String videoTempPath, Integer durationSec, String stage) {
+    private void rememberPending(Long conversationId, String videoTempPath, Integer durationSec, String stage, String videoName) {
         try {
             redisUtils.setValueTimeout(PENDING_KEY_PREFIX + conversationId,
                     new JSONObject()
                             .set("videoTempPath", videoTempPath)
                             .set("durationSec", durationSec)
                             .set("stage", stage)
+                            .set("videoName", videoName)
                             .toString(),
                     PENDING_TTL_SEC);
         } catch (Exception e) {
@@ -351,8 +359,8 @@ public class IntentAgentService {
             if (tempPath == null || durationSec == null) {
                 return null;
             }
-            // 旧格式无 stage 字段（升级过渡期残留）：按 ROUTE 处理，确定性分派可安全兜底
-            return new PendingVideo(tempPath, durationSec, obj.getStr("stage", STAGE_ROUTE));
+            // 旧格式无 stage / videoName 字段（升级过渡期残留）：stage 按 ROUTE 处理（确定性分派可安全兜底），videoName 按 null 回退
+            return new PendingVideo(tempPath, durationSec, obj.getStr("stage", STAGE_ROUTE), obj.getStr("videoName", null));
         } catch (Exception e) {
             log.warn("意图 pending 读取失败, conversationId={}", conversationId, e);
             return null;

@@ -131,7 +131,7 @@ class IntentAgentServiceTest {
     private IntentAgentService.PendingVideo newPending(String stage) throws Exception {
         Path video = videoDir.resolve("test-video.mp4");
         Files.writeString(video, "x");
-        return new IntentAgentService.PendingVideo(video.toString(), 600, stage);
+        return new IntentAgentService.PendingVideo(video.toString(), 600, stage, null);
     }
 
     @Test

@@ -47,8 +47,10 @@ public class CreateCourseFromVideoTool {
         Long userId = ((Number) toolContext.getContext().get("userId")).longValue();
         Long conversationId = ((Number) toolContext.getContext().get("conversationId")).longValue();
         // 视频参数解析：优先 ToolContext（当前回合附带）；画像问询等后续回合从会话最近一条视频消息 payload 回查
-        //（与 TranscribeVideoTool 同款回查，根治「回答完学段/目标后建课提示重新上传视频」）
+        //（与 TranscribeVideoTool 同款回查，根治「回答完学段/目标后建课提示重新上传视频」）；
+        // videoName 为前端权威 UTF-8 文件名（建课标题优先取用，可缺省）
         String tempPath = contextStr(toolContext, "videoTempPath");
+        String videoName = contextStr(toolContext, "videoName");
         if (tempPath == null || tempPath.isBlank()) {
             Message videoMessage = messageMapper.selectOne(new QueryWrapper<Message>()
                     .eq("conversation_id", conversationId)
@@ -58,7 +60,11 @@ public class CreateCourseFromVideoTool {
                     .last("LIMIT 1"));
             if (videoMessage != null && videoMessage.getPayload() != null && !videoMessage.getPayload().isBlank()) {
                 try {
-                    tempPath = JSONUtil.parseObj(videoMessage.getPayload()).getStr("videoTempPath", null);
+                    cn.hutool.json.JSONObject payload = JSONUtil.parseObj(videoMessage.getPayload());
+                    tempPath = payload.getStr("videoTempPath", null);
+                    if (videoName == null || videoName.isBlank()) {
+                        videoName = payload.getStr("videoName", null);
+                    }
                 } catch (Exception e) {
                     log.warn("视频消息 payload 解析失败, messageId={}", videoMessage.getId());
                 }
@@ -72,7 +78,7 @@ public class CreateCourseFromVideoTool {
             if (!Files.exists(video)) {
                 return "CREATE_FAILED: 视频临时文件已丢失（可能已被转写流程清理），请让用户重新上传";
             }
-            String courseTitle = isMeaningfulTitle(title) ? title.trim() : titleFromFileName(video);
+            String courseTitle = isMeaningfulTitle(title) ? title.trim() : resolveCourseTitle(videoName, video);
             // 主 LLM 降级路径：风格与画像未采集，传 null 走默认跟学型（正常路径由意图三问卡采集）；学科由意图 LLM 推断
             Course course = courseService.uploadFromLocal(userId, video, courseTitle, expectations, subject, null, null, null);
 
@@ -111,6 +117,12 @@ public class CreateCourseFromVideoTool {
             return false;
         }
         return !title.trim().matches("(课程视频|视频课程).*");
+    }
+
+    /** 标题解析：优先前端权威 videoName（清洗后），空 / B 站占位名回退临时文件名规则 */
+    private static String resolveCourseTitle(String videoName, Path video) {
+        String fromVideoName = com.xueji.agent.service.impl.ChatVideoServiceImpl.courseTitleFromVideoName(videoName);
+        return fromVideoName != null ? fromVideoName : titleFromFileName(video);
     }
 
     /** 视频文件名 → 课程标题（静态纯函数便于单测） */

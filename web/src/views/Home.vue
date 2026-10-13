@@ -180,6 +180,14 @@ async function openHistory() {
   await agent.loadConversations()
 }
 
+/** 意图卡确认：先把 confirmed 写回 store 消息对象（页面切换重挂载后保持折叠），再发送确认文本 */
+function onIntentConfirm(msg: (typeof agent.messages)[number], text: string) {
+  if (msg.intentCard) {
+    msg.intentCard.confirmed = true
+  }
+  agent.send(text)
+}
+
 async function pickConversation(id: number) {
   showHistory.value = false
   await agent.openConversation(id)
@@ -561,7 +569,7 @@ watch(
                           class="mr-4 mt-1"
                           :card="msg.intentCard"
                           :confirmed="msg.intentCard.confirmed"
-                          @confirm="agent.send($event)"
+                          @confirm="onIntentConfirm(msg, $event)"
                         />
                       </template>
                       <div

@@ -61,7 +61,7 @@ public class AgentChatServiceImpl implements AgentChatService {
 
     @Override
     public Flux<ChatEvent> chat(Long userId, Long conversationId, String content, String imageUrl,
-                                String videoTempPath, Integer videoDurationSec) {
+                                String videoTempPath, Integer videoDurationSec, String videoName) {
         OwnershipCheck.requireOwned(conversationMapper.selectById(conversationId), userId, "会话不存在");
 
         String turnId = "t_" + java.util.UUID.randomUUID().toString().substring(0, 8);
@@ -103,6 +103,10 @@ public class AgentChatServiceImpl implements AgentChatService {
                 cn.hutool.json.JSONObject payload = cn.hutool.json.JSONUtil.createObj()
                         .set("videoDurationSec", videoDurationSec)
                         .set("videoTempPath", videoTempPath);
+                // 权威文件名入 payload：后续回合建课工具回查时取用（与 videoTempPath 同款回查路径）
+                if (StringUtils.hasText(videoName)) {
+                    payload.set("videoName", videoName);
+                }
                 userMessage.setPayload(payload.toString());
             }
             messageMapper.insert(userMessage);
@@ -115,7 +119,7 @@ public class AgentChatServiceImpl implements AgentChatService {
             // ② 文本回合且有 pending 意图 → resolveAndExecute 按 stage 分派（处理方式卡分派 / 三问解析落档建课）
             if (hasVideo) {
                 com.xueji.agent.ai.IntentAgentService.AskResult ask =
-                        intentAgentService.askIntent(userId, conversationId, content, videoTempPath, videoDurationSec);
+                        intentAgentService.askIntent(userId, conversationId, content, videoTempPath, videoDurationSec, videoName);
                 return staticReply(turnId, conversationId, ask.text(), ask.intentCardJson());
             }
             if (!hasImage && StringUtils.hasText(content) && intentAgentService.hasPending(conversationId)) {
@@ -163,6 +167,9 @@ public class AgentChatServiceImpl implements AgentChatService {
             if (hasVideo) {
                 toolContext.put("videoTempPath", videoTempPath);
                 toolContext.put("videoDurationSec", videoDurationSec);
+                if (StringUtils.hasText(videoName)) {
+                    toolContext.put("videoName", videoName);
+                }
             }
 
         Flux<ChatEvent> body = chatClient.prompt()

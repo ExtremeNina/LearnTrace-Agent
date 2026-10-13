@@ -9,6 +9,8 @@ export interface ClientMessage {
   /** B11：对话视频（上传接口产出的本地临时路径与 ffprobe 时长） */
   videoTempPath?: string
   videoDurationSec?: number
+  /** 前端持有的权威 UTF-8 文件名：后端建课标题优先取用，规避临时路径字符集损坏 */
+  videoName?: string
   /** 课程详情 AI 问答：跳转视频的时间戳（秒） */
   currentTimeSec?: number
 }

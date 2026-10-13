@@ -501,6 +501,8 @@ export const useAgentStore = defineStore('agent', () => {
       imageUrl,
       videoTempPath: video?.tempPath,
       videoDurationSec: video?.durationSec,
+      // 权威 UTF-8 文件名：后端建课标题优先使用，规避临时路径字符集损坏
+      videoName: video?.name,
       // 网课页学习场景：随消息透传当前播放位置（秒），后端 v2 消费课程上下文
       currentTimeSec,
     })

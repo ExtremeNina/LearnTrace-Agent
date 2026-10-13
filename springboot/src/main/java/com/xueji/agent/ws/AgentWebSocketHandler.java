@@ -88,11 +88,13 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
         }
 
         String imageUrl = node.path("imageUrl").asText("");
-        // B11 视频消息：上传接口产出的本地临时路径与 ffprobe 时长（存在时走视频转写链路）
+        // B11 视频消息：上传接口产出的本地临时路径与 ffprobe 时长（存在时走视频转写链路）；
+        // videoName 为前端持有的权威 UTF-8 文件名（建课标题优先取用，可缺省）
         String videoTempPath = node.path("videoTempPath").asText("");
         Integer videoDurationSec = node.has("videoDurationSec") && node.path("videoDurationSec").isInt()
                 ? node.path("videoDurationSec").asInt() : null;
-        Disposable disposable = agentChatService.chat(userId, conversationId, content, imageUrl, videoTempPath, videoDurationSec)
+        String videoName = node.path("videoName").asText("");
+        Disposable disposable = agentChatService.chat(userId, conversationId, content, imageUrl, videoTempPath, videoDurationSec, videoName)
                 .doFinally(sig -> {
                     // 服务端事件流已包含 STOP，这里只做守卫清理
                     activeTurns.remove(conversationId);

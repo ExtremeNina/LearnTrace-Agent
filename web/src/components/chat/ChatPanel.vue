@@ -161,6 +161,14 @@ function onPanelClick(e: MouseEvent) {
     emit('chip', target.dataset.ts)
   }
 }
+
+/** 意图卡确认：先把 confirmed 写回 store 消息对象（页面切换重挂载后保持折叠），再发送确认文本 */
+function onIntentConfirm(msg: (typeof agent.messages)[number], text: string) {
+  if (msg.intentCard) {
+    msg.intentCard.confirmed = true
+  }
+  emit('intent', text)
+}
 </script>
 
 <template>
@@ -272,7 +280,7 @@ function onPanelClick(e: MouseEvent) {
             <!-- B27 意图确认大卡片：结构化提问 + 选项组 + 确认按钮（点击回发拼接文本）；confirmed 时折叠为单行 -->
             <template v-else-if="msg.intentCard">
               <div class="break-words text-[14px] leading-6 text-ink">{{ msg.intentCard.message }}</div>
-              <IntentCard :card="msg.intentCard" :confirmed="msg.intentCard.confirmed" @confirm="emit('intent', $event)" />
+              <IntentCard :card="msg.intentCard" :confirmed="msg.intentCard.confirmed" @confirm="onIntentConfirm(msg, $event)" />
             </template>
             <div v-else class="markdown-body break-words" v-html="renderContent(msg.content)"></div>
 
