@@ -254,7 +254,7 @@ watch(
 </script>
 
 <template>
-  <div class="h-full overflow-y-auto bg-gray-50">
+  <div class="h-full overflow-y-auto bg-background">
     <div class="px-4 py-5 md:px-6">
       <!-- 加载 / 错误 -->
       <div v-if="loading" class="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_400px]">
