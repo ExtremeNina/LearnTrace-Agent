@@ -1,20 +1,23 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   Download, ArrowLeft, CircleCheck, History, LoaderCircle, Pencil, Save, Send, X,
-  Bold, Italic, Underline, Clock, ChevronDown, Check, RefreshCw,
+  ChevronDown, Check, RefreshCw,
 } from 'lucide-vue-next'
-import { appendCourseQuiz, getCourseDetail, quizToQuestions, quizToReview, renderCourseNote, updateCourse, reportCourseProgress } from '../api/course'
+import { getCourseDetail, renderCourseNote, reportCourseProgress } from '../api/course'
 import { useToastStore } from '../stores/toast'
 import type { CourseDetailData } from '../api/course'
 import { updateNoteContent } from '../api/note'
 import { renderMarkdown, renderNoteHtml } from '../utils/markdown'
 import { buildNoteMarkdown, buildQuizMarkdown, downloadMarkdown, exportNoteDocx, exportQuizDocx, printContent, sanitizeFileName } from '../utils/export'
-import DOMPurify from 'dompurify'
+import { parseTs } from '../utils/format'
 import MdSourceEditor from '../components/notes/MdSourceEditor.vue'
 import ChatPanel from '../components/chat/ChatPanel.vue'
 import ModelPicker from '../components/chat/ModelPicker.vue'
+import TranscriptPanel from '../components/course/TranscriptPanel.vue'
+import QuizPanel from '../components/course/QuizPanel.vue'
+import StudyNoteEditor from '../components/course/StudyNoteEditor.vue'
 import { useAgentStore } from '../stores/agent'
 
 /**
@@ -62,80 +65,12 @@ async function reload() {
   data.value = await getCourseDetail(courseId)
 }
 
-// ---- 课后习题（B26 习题产物化）----
+// ---- 课后习题：面板已抽至 components/course/QuizPanel.vue（父层保留数据与导出依赖）----
 const toast = useToastStore()
-const quizGenerating = ref(false)
-const expandedAnswers = reactive(new Set<number>())
-const showAllAnswers = ref(false)
-const savedToQuestions = reactive(new Set<number>())
-const savedToReview = reactive(new Set<number>())
 
 const quizQuestions = computed(() => data.value?.quizQuestions ?? [])
 
-interface ParsedQuizQuestion {
-  stem: string
-  options: string[]
-  subQuestions: string[]
-}
-
-/**
- * 题面结构化解析（启发式）：把「题干 A. xx B. xx C. xx D. xx」拆为选项行、「（1）…（2）…」拆为小问行；
- * 找不到 A-D 连续序列或（N）小问时回退原样整段渲染（stem 即全文）。题干中的代码/括号说明不误切
- */
-function parseQuestionText(text: string): ParsedQuizQuestion {
-  const t = text.trim()
-  // 选项序列：空格/行首 + 字母 A-D + [.、．:：]，须构成 A,B,C,… 连续序列（≥2 个）才认定
-  const markerRegex = /(?:^|[\s　])([A-D])[.、．:：]\s*/g
-  const marks: { letter: string; start: number; end: number }[] = []
-  let m: RegExpExecArray | null
-  while ((m = markerRegex.exec(t)) !== null) {
-    marks.push({ letter: m[1], start: m.index, end: m.index + m[0].length })
-  }
-  let optionsStart = -1
-  for (let i = 0; i < marks.length; i++) {
-    if (marks[i].letter !== 'A') {
-      continue
-    }
-    let code = 66
-    let j = i + 1
-    while (j < marks.length && marks[j].letter.charCodeAt(0) === code) {
-      code++
-      j++
-    }
-    if (j - i >= 2) {
-      optionsStart = i
-      break
-    }
-  }
-  if (optionsStart >= 0) {
-    const stem = t.slice(0, marks[optionsStart].start).trim()
-    const options: string[] = []
-    for (let i = optionsStart; i < marks.length; i++) {
-      const end = i + 1 < marks.length ? marks[i + 1].start : t.length
-      options.push(t.slice(marks[i].start, end).trim())
-    }
-    return { stem, options, subQuestions: [] }
-  }
-  // 小问拆分：（1）（2）… 或 (1)(2)…，≥2 个才认定；排除代码内括号（括号内非纯数字不命中）
-  const subRegex = /(?:^|[\s　])[(（](\d{1,2})[)）]/g
-  const subs: number[] = []
-  let s: RegExpExecArray | null
-  while ((s = subRegex.exec(t)) !== null) {
-    subs.push(s.index)
-  }
-  if (subs.length >= 2) {
-    const stem = t.slice(0, subs[0]).trim()
-    const subQuestions: string[] = []
-    for (let i = 0; i < subs.length; i++) {
-      const end = i + 1 < subs.length ? subs[i + 1] : t.length
-      subQuestions.push(t.slice(subs[i], end).trim())
-    }
-    return { stem, options: [], subQuestions }
-  }
-  return { stem: t, options: [], subQuestions: [] }
-}
-
-const parsedQuizQuestions = computed(() => quizQuestions.value.map((q) => parseQuestionText(q.questionText)))
+// 课后习题题面解析 / 展开收起 / 追加出题 / 存题存复习已随 QuizPanel 迁移
 
 // ---- 导出（AI 笔记 / 课后习题：Markdown 与 Word；打印 / 存为 PDF 走浏览器兜底）----
 const showExportMenu = ref(false)
@@ -234,69 +169,6 @@ function closeExportMenu() {
   showExportMenu.value = false
 }
 
-function toggleAnswer(id: number) {
-  if (expandedAnswers.has(id)) {
-    expandedAnswers.delete(id)
-  } else {
-    expandedAnswers.add(id)
-  }
-}
-
-function toggleAllAnswers() {
-  showAllAnswers.value = !showAllAnswers.value
-}
-
-/** 追加出题：异步后轮询（与重新生成同模式） */
-async function appendQuiz(count = 5) {
-  if (quizGenerating.value) {
-    return
-  }
-  quizGenerating.value = true
-  try {
-    await appendCourseQuiz(courseId, count)
-    toast.push('已开始追加出题，约 1 分钟')
-    const before = quizQuestions.value.length
-    for (let i = 0; i < 12; i++) {
-      await new Promise((r) => setTimeout(r, 10000))
-      await reload()
-      if (quizQuestions.value.length > before || i === 11) {
-        break
-      }
-    }
-    if (quizQuestions.value.length > before) {
-      toast.push(`已新增 ${quizQuestions.value.length - before} 道课后习题`)
-    } else {
-      // 后端把真实失败原因写进了课程 error_msg（如模型服务余额不足），优先展示
-      const err = data.value?.course.errorMsg
-      toast.push(err && err.includes('余额不足') ? err : '追加出题超时，可稍后手动刷新', 'error')
-    }
-  } catch (e) {
-    toast.push(e instanceof Error ? e.message : '追加出题失败', 'error')
-  } finally {
-    quizGenerating.value = false
-  }
-}
-
-async function saveToQuestions(id: number) {
-  try {
-    await quizToQuestions(id)
-    savedToQuestions.add(id)
-    toast.push('已加入题目管理')
-  } catch (e) {
-    toast.push(e instanceof Error ? e.message : '加入失败', 'error')
-  }
-}
-
-async function saveToReview(id: number) {
-  try {
-    await quizToReview(id)
-    savedToReview.add(id)
-    toast.push('已加入复习计划（含题目管理）')
-  } catch (e) {
-    toast.push(e instanceof Error ? e.message : '加入失败', 'error')
-  }
-}
-
 // ---- AI 问答：历史对话弹窗（课程页默认新会话，可切换历史会话继续聊） ----
 const showAskHistory = ref(false)
 
@@ -349,8 +221,6 @@ onMounted(async () => {
     if (videoRef.value && videoRef.value.readyState >= 1) {
       applyInitialSeek()
     }
-    // 学习笔记初始内容在 DOM 挂载后灌入（不绑定响应式，避免保存后光标重置）
-    nextTick(() => initStudyBox())
   } catch (e) {
     error.value = e instanceof Error ? e.message : '加载失败'
   } finally {
@@ -374,13 +244,6 @@ onUnmounted(() => {
   window.removeEventListener('keydown', onNoteKeydown)
   reportProgressNow()
 })
-
-function parseTs(ts: string): number {
-  const parts = ts.split(':').map(Number)
-  return parts.length === 3
-    ? parts[0] * 3600 + parts[1] * 60 + parts[2]
-    : parts[0] * 60 + parts[1]
-}
 
 function seekTo(sec: number) {
   const video = videoRef.value
@@ -423,15 +286,6 @@ function applyInitialSeek() {
 /** 编辑器预览里点时间戳胶囊 → 跳转视频对应位置 */
 function onEditorChip(ts: string) {
   seekTo(parseTs(ts))
-}
-
-function formatTs(sec: number): string {
-  const h = Math.floor(sec / 3600)
-  const m = Math.floor((sec % 3600) / 60)
-  const s = Math.floor(sec % 60)
-  const mm = String(m).padStart(2, '0')
-  const ss = String(s).padStart(2, '0')
-  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`
 }
 
 function formatSize(bytes: number | null | undefined): string {
@@ -593,71 +447,7 @@ async function saveNoteEdit() {
   }
 }
 
-// ---- 学习笔记（视频下方随想区，富文本 + 时间戳插入） ----
-const studyRef = ref<HTMLDivElement | null>(null)
-const studyDirty = ref(false)
-let studySavedHtml = ''
-
-function initStudyBox() {
-  if (!studyRef.value) {
-    return
-  }
-  studySavedHtml = DOMPurify.sanitize(data.value?.course.studyNote ?? '')
-  studyRef.value.innerHTML = studySavedHtml
-  studyDirty.value = false
-}
-
-function onStudyInput() {
-  if (studyRef.value) {
-    studyDirty.value = studyRef.value.innerHTML !== studySavedHtml
-  }
-}
-
-async function saveStudyNote() {
-  if (!studyRef.value || !studyDirty.value) {
-    return
-  }
-  const html = studyRef.value.innerHTML
-  try {
-    const updated = await updateCourse(courseId, { studyNote: html })
-    if (data.value) {
-      data.value.course.studyNote = html
-    }
-    studySavedHtml = updated.studyNote ?? html
-    studyDirty.value = false
-  } catch (e) {
-    window.alert(e instanceof Error ? e.message : '保存失败，请稍后重试')
-  }
-}
-
-function execStudy(command: string) {
-  document.execCommand('styleWithCSS', false, 'true')
-  document.execCommand(command, false)
-  studyRef.value?.focus()
-}
-
-/** 在光标处插入当前播放进度的时间戳胶囊（保存后可点击跳回该片段） */
-function insertStudyTs() {
-  const video = videoRef.value
-  const box = studyRef.value
-  if (!video || !box) {
-    return
-  }
-  const ts = formatTs(video.currentTime)
-  box.focus()
-  document.execCommand('insertHTML', false, `<span class="ts-chip" data-ts="${ts}">${ts}</span>&nbsp;`)
-  onStudyInput()
-}
-
-/** 学习笔记内点击时间戳胶囊 → 跳回视频对应位置 */
-function onStudyClick(e: MouseEvent) {
-  const chip = (e.target as HTMLElement).closest('[data-ts]')
-  if (chip) {
-    seekTo(parseTs(chip.getAttribute('data-ts') || ''))
-  }
-}
-
-// ---- 转写对照：段落与关键帧整合 ----
+// ---- 视频总时长（学习笔记/转写对照面板已抽至 components/course/） ----
 const duration = computed(() => {
   if (data.value?.course.duration) {
     return data.value.course.duration
@@ -668,59 +458,6 @@ const duration = computed(() => {
   const maxSeg = Math.max(0, ...(data.value?.transcript ?? []).map((s) => s.endSec))
   const maxFrame = Math.max(0, ...(data.value?.frames ?? []).map((f) => f.timeSec))
   return Math.max(maxSeg, maxFrame)
-})
-
-/** 转写段落 + 落在该时间段内的关键帧（未落段的帧挂到最后一段） */
-const segmentsWithFrames = computed(() => {
-  const frames = [...(data.value?.frames ?? [])].sort((a, b) => a.timeSec - b.timeSec)
-  const used = new Set<number>()
-  const rows = (data.value?.transcript ?? []).map((seg) => {
-    const segFrames = frames.filter((f) => f.timeSec >= seg.startSec && f.timeSec < seg.endSec && !used.has(f.id))
-    segFrames.forEach((f) => used.add(f.id))
-    return { seg, frames: segFrames }
-  })
-  const rest = frames.filter((f) => !used.has(f.id))
-  if (rest.length && rows.length) {
-    rows[rows.length - 1].frames.push(...rest)
-  }
-  return rows
-})
-
-/** 转写修正元数据解析（B26 阶段 1 修正管线） */
-function correctionOf(meta: string | null | undefined): { status?: string; suggestion?: string; original?: string } | null {
-  if (!meta) {
-    return null
-  }
-  try {
-    return JSON.parse(meta)
-  } catch {
-    return null
-  }
-}
-
-/** SUGGESTED（未确认建议）计数：转写对照页顶部的批量确认入口 */
-const suggestedCount = computed(
-  () => (data.value?.transcript ?? []).filter((s) => correctionOf(s.correctionMeta)?.status === 'SUGGESTED').length
-)
-
-/** 时间轴刻度：转写段起点 + 关键帧位置 */
-const timelineTicks = computed(() => {
-  const total = duration.value
-  if (!total) {
-    return []
-  }
-  const ticks: { t: number; kind: 'transcript' | 'frame'; pct: number }[] = []
-  for (const seg of data.value?.transcript ?? []) {
-    if (seg.startSec <= total) {
-      ticks.push({ t: seg.startSec, kind: 'transcript', pct: (seg.startSec / total) * 100 })
-    }
-  }
-  for (const f of data.value?.frames ?? []) {
-    if (f.timeSec <= total) {
-      ticks.push({ t: f.timeSec, kind: 'frame', pct: (f.timeSec / total) * 100 })
-    }
-  }
-  return ticks
 })
 </script>
 
@@ -838,52 +575,15 @@ const timelineTicks = computed(() => {
               </template>
             </div>
 
-            <!-- 学习笔记（用户随想） -->
-            <div class="mt-4 flex min-h-[180px] flex-1 flex-col rounded-xl bg-surface shadow-card">
-              <div class="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2">
-                <p class="text-[13px] font-semibold text-ink">学习笔记</p>
-                <div class="ml-auto flex items-center gap-1">
-                  <button class="flex h-7 w-7 items-center justify-center rounded-lg text-ink hover:bg-line/60" title="加粗" @mousedown.prevent @click="execStudy('bold')">
-                    <Bold :size="14" />
-                  </button>
-                  <button class="flex h-7 w-7 items-center justify-center rounded-lg text-ink hover:bg-line/60" title="斜体" @mousedown.prevent @click="execStudy('italic')">
-                    <Italic :size="14" />
-                  </button>
-                  <button class="flex h-7 w-7 items-center justify-center rounded-lg text-ink hover:bg-line/60" title="下划线" @mousedown.prevent @click="execStudy('underline')">
-                    <Underline :size="14" />
-                  </button>
-                  <button
-                    class="flex h-7 items-center gap-1 rounded-lg px-2 text-[12px] text-ink hover:bg-line/60"
-                    title="插入当前播放进度的时间戳"
-                    :disabled="!data.course.videoOssKey"
-                    @mousedown.prevent
-                    @click="insertStudyTs"
-                  >
-                    <Clock :size="14" />
-                    时间戳
-                  </button>
-                  <button
-                    class="ml-1 flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[12px]"
-                    :class="studyDirty ? 'bg-primary text-white hover:opacity-90' : 'border border-line text-ink-2 opacity-50 cursor-not-allowed'"
-                    :disabled="!studyDirty"
-                    @click="saveStudyNote"
-                  >
-                    <Save :size="13" />
-                    保存
-                  </button>
-                </div>
-              </div>
-              <div
-                ref="studyRef"
-                class="study-view min-h-0 flex-1 overflow-y-auto px-4 py-3 text-[14px] leading-7 text-ink outline-none"
-                contenteditable="true"
-                @input="onStudyInput"
-                @click="onStudyClick"
-              ></div>
-              <p class="border-t border-line px-4 py-1.5 text-[11px] text-ink-2">
-                记录观看感想；点「时间戳」插入当前进度，保存后点击胶囊可跳回该片段。
-              </p>
-            </div>
+            <!-- 学习笔记（用户随想）：组件见 components/course/StudyNoteEditor.vue -->
+            <StudyNoteEditor
+              :course-id="courseId"
+              :initial-content="data.course.studyNote ?? ''"
+              :can-insert-ts="!!data.course.videoOssKey"
+              :get-current-sec="() => videoRef?.currentTime ?? 0"
+              @seek="seekTo"
+              @saved="(html) => { if (data) data.course.studyNote = html }"
+            />
           </div>
 
           <!-- 右：AI 笔记 / 转写对照 / AI 问答 -->
@@ -943,104 +643,15 @@ const timelineTicks = computed(() => {
               </div>
             </div>
 
-            <!-- 课后习题（B26 习题产物化）：出题 Agent + 判题 Agent 产物 -->
-            <div v-else-if="activeTab === 'quiz'" class="flex min-h-0 flex-1 flex-col" @click="onNoteClick">
-              <div class="flex shrink-0 items-center justify-between border-b border-line px-3 py-2">
-                <p class="text-[13px] text-ink-2">
-                  共 {{ quizQuestions.length }} 题<span v-if="quizQuestions.length"> · 时间戳可点击跳转</span>
-                </p>
-                <div class="flex items-center gap-2">
-                  <button
-                    v-if="quizQuestions.length"
-                    class="text-[12px] text-ink-2 transition-colors hover:text-primary"
-                    @click="toggleAllAnswers"
-                  >
-                    {{ showAllAnswers ? '隐藏全部答案' : '显示全部答案' }}
-                  </button>
-                  <button
-                    class="rounded-full bg-primary px-3 py-1 text-[12px] text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-                    :disabled="quizGenerating"
-                    @click="appendQuiz(5)"
-                  >
-                    {{ quizGenerating ? '出题中…' : quizQuestions.length ? '再出几道' : '生成课后习题' }}
-                  </button>
-                </div>
-              </div>
-              <div class="min-h-0 flex-1 overflow-y-auto p-3">
-                <div
-                  v-if="quizQuestions.length === 0"
-                  class="flex h-40 flex-col items-center justify-center gap-2 text-[13px] text-ink-2"
-                >
-                  <p>{{ quizGenerating ? '出题 Agent 正在出题，判题 Agent 把关中…' : '这门课还没有课后习题' }}</p>
-                  <p v-if="!quizGenerating" class="text-[12px] text-ink-2/70">点击右上角「生成课后习题」，题目数量由 AI 按时长与知识点规划</p>
-                </div>
-                <div class="flex flex-col gap-2.5">
-                  <div
-                    v-for="(q, qi) in quizQuestions"
-                    :key="q.id"
-                    class="rounded-xl bg-panel px-3 py-2.5"
-                  >
-                    <p class="text-[14px] font-medium leading-6 text-ink">
-                      {{ qi + 1 }}. {{ parsedQuizQuestions[qi]?.stem ?? q.questionText }}
-                    </p>
-                    <div
-                      v-if="parsedQuizQuestions[qi]?.options.length"
-                      class="mt-1.5 flex flex-col gap-1 pl-4"
-                    >
-                      <p v-for="opt in parsedQuizQuestions[qi]!.options" :key="opt" class="text-[13.5px] leading-6 text-ink">
-                        {{ opt }}
-                      </p>
-                    </div>
-                    <div
-                      v-else-if="parsedQuizQuestions[qi]?.subQuestions.length"
-                      class="mt-1.5 flex flex-col gap-1 pl-4"
-                    >
-                      <p v-for="sub in parsedQuizQuestions[qi]!.subQuestions" :key="sub" class="text-[13.5px] leading-6 text-ink">
-                        {{ sub }}
-                      </p>
-                    </div>
-                    <div
-                      v-if="showAllAnswers || expandedAnswers.has(q.id)"
-                      class="mt-2 rounded-lg bg-surface px-3 py-2 text-[13px] leading-6"
-                    >
-                      <p class="font-medium text-ink">答案</p>
-                      <p class="mt-0.5 text-ink">{{ q.answer }}</p>
-                      <template v-if="q.analysis">
-                        <p class="mt-1.5 font-medium text-ink">解析</p>
-                        <p class="mt-0.5 text-ink-2">{{ q.analysis }}</p>
-                      </template>
-                    </div>
-                    <div class="mt-2 flex items-center gap-3 text-[12px]">
-                      <button
-                        class="text-primary hover:underline"
-                        @click="toggleAnswer(q.id)"
-                      >
-                        {{ showAllAnswers || expandedAnswers.has(q.id) ? '收起答案' : '查看答案' }}
-                      </button>
-                      <button
-                        class="text-ink-2 transition-colors hover:text-primary disabled:opacity-50"
-                        :disabled="savedToQuestions.has(q.id)"
-                        @click="saveToQuestions(q.id)"
-                      >
-                        {{ savedToQuestions.has(q.id) ? '已入题目管理' : '加入题目管理' }}
-                      </button>
-                      <button
-                        class="text-ink-2 transition-colors hover:text-primary disabled:opacity-50"
-                        :disabled="savedToReview.has(q.id)"
-                        @click="saveToReview(q.id)"
-                      >
-                        {{ savedToReview.has(q.id) ? '已入复习计划' : '加入复习计划' }}
-                      </button>
-                      <button
-                        v-if="q.sourceSec != null"
-                        class="ts-chip ml-auto"
-                        :data-ts="formatTs(q.sourceSec)"
-                      >{{ formatTs(q.sourceSec) }}</button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <!-- 课后习题（B26 习题产物化）：面板见 components/course/QuizPanel.vue -->
+            <QuizPanel
+              v-else-if="activeTab === 'quiz'"
+              :course-id="courseId"
+              :questions="quizQuestions"
+              :error-msg="data.course.errorMsg"
+              :reload="reload"
+              @seek="seekTo"
+            />
 
             <div v-else ref="noteScrollRef" class="min-h-0 flex-1 overflow-y-auto p-3">
               <!-- AI 笔记 -->
@@ -1102,76 +713,14 @@ const timelineTicks = computed(() => {
                 </template>
               </template>
 
-              <!-- 转写对照（整合关键帧） -->
-              <template v-else>
-                <div v-if="timelineTicks.length" class="mb-3 px-1 pt-1">
-                  <div class="relative h-2 rounded-full bg-line/70">
-                    <button
-                      v-for="(tick, i) in timelineTicks"
-                      :key="i"
-                      class="absolute top-1/2 h-3 w-[3px] -translate-y-1/2 rounded-full"
-                      :class="tick.kind === 'frame' ? 'bg-primary' : 'bg-ink-2/60'"
-                      :style="{ left: tick.pct + '%' }"
-                      :title="formatTs(tick.t) + (tick.kind === 'frame' ? ' · 关键帧' : ' · 转写段')"
-                      @click="seekTo(tick.t)"
-                    ></button>
-                  </div>
-                  <div class="mt-1 flex justify-between text-[11px] text-ink-2">
-                    <span>00:00</span>
-                    <span>{{ formatTs(duration) }}</span>
-                  </div>
-                  <div class="mt-1 flex gap-3 text-[11px] text-ink-2">
-                    <span class="flex items-center gap-1"><span class="h-1.5 w-1.5 rounded-full bg-ink-2/60"></span>转写段落</span>
-                    <span class="flex items-center gap-1"><span class="h-1.5 w-1.5 rounded-full bg-primary"></span>关键帧</span>
-                    <span class="ml-auto">点击刻度跳转</span>
-                  </div>
-                </div>
-
-                <div class="flex flex-col gap-7">
-                  <!-- B26 阶段 1：未确认转写修正批量入口 -->
-                  <div v-if="suggestedCount > 0" class="flex items-center gap-2 rounded-xl bg-amber-50 px-3 py-2 text-[12px] text-amber-600">
-                    ⚠️ 有 {{ suggestedCount }} 处疑似转写错误（下方已标注建议写法），确认无误可忽略
-                  </div>
-                  <div v-for="row in segmentsWithFrames" :key="row.seg.id">
-                    <div class="flex gap-4">
-                      <button class="w-12 shrink-0 pt-0.5 text-left text-[12px] font-medium text-primary hover:underline" @click="seekTo(row.seg.startSec)">
-                        {{ formatTs(row.seg.startSec) }}
-                      </button>
-                      <p class="min-w-0 flex-1 text-[13px] leading-6.5 text-ink">
-                        <template v-if="row.seg.textCorrected">
-                          {{ row.seg.textCorrected }}
-                          <span
-                            class="cursor-help text-[11px] text-ink-2 line-through decoration-ink-2/40"
-                            :title="'已自动修正（原文：' + (correctionOf(row.seg.correctionMeta)?.original || row.seg.text) + '）'"
-                          >{{ row.seg.text }}</span>
-                        </template>
-                        <template v-else>{{ row.seg.text }}</template>
-                        <!-- SUGGESTED：未确认建议，内联标注 -->
-                        <span
-                          v-if="correctionOf(row.seg.correctionMeta)?.status === 'SUGGESTED'"
-                          class="ml-1 cursor-help border-b border-dashed border-amber-500 text-amber-600"
-                          :title="'疑似转写错误，建议写作：' + (correctionOf(row.seg.correctionMeta)?.suggestion || '')"
-                        >{{ row.seg.text }}</span>
-                      </p>
-                    </div>
-                    <div v-if="row.frames.length" class="mt-2 flex gap-2 overflow-x-auto pb-1">
-                      <button
-                        v-for="f in row.frames"
-                        :key="f.id"
-                        class="relative shrink-0"
-                        :title="f.ocrText || '关键帧 ' + formatTs(f.timeSec)"
-                        @click="seekTo(f.timeSec)"
-                      >
-                        <img :src="f.ossKey" :alt="'第 ' + f.timeSec + 's 画面'" class="h-14 w-24 rounded-lg border border-line object-cover" />
-                        <span class="absolute bottom-0.5 right-0.5 rounded bg-black/60 px-1 text-[10px] text-white">{{ formatTs(f.timeSec) }}</span>
-                      </button>
-                    </div>
-                  </div>
-                  <p v-if="!(data.transcript.length || data.frames.length)" class="rounded-xl border border-dashed border-line py-8 text-center text-[13px] text-ink-2">
-                    未获得转写与关键帧数据
-                  </p>
-                </div>
-              </template>
+              <!-- 转写对照（整合关键帧）：面板见 components/course/TranscriptPanel.vue -->
+              <TranscriptPanel
+                v-else
+                :transcript="data.transcript"
+                :frames="data.frames"
+                :duration="duration"
+                @seek="seekTo"
+              />
             </div>
 
             <!-- 分页：结构性底栏（tab 栏同款，固定在面板底部、不参与滚动），仅 AI 笔记阅读态且多页时显示；页码可点开下拉直达任意页 -->
@@ -1271,26 +820,6 @@ const timelineTicks = computed(() => {
 </template>
 
 <style scoped>
-.study-view :deep(.ts-chip) {
-  display: inline-flex;
-  align-items: center;
-  margin-left: 0.25rem;
-  padding: 0.05rem 0.4rem;
-  border-radius: 0.375rem;
-  background: #eff6ff;
-  color: #2563eb;
-  font-size: 12px;
-  cursor: pointer;
-  vertical-align: middle;
-}
-.study-view :deep(.ts-chip:hover) {
-  text-decoration: underline;
-}
-.study-view:empty::before {
-  content: '记录这一节课的感想与疑问…';
-  color: #9ca3af;
-}
-
 .note-view :deep(h1),
 .note-view :deep(h2),
 .note-view :deep(h3) {
