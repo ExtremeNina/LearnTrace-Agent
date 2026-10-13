@@ -3,6 +3,9 @@ import { onMounted, ref } from 'vue'
 import { Bold, Clock, Italic, Save, Underline } from 'lucide-vue-next'
 import DOMPurify from 'dompurify'
 import { updateCourse } from '../../api/course'
+import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
+import { Separator } from '@/components/ui/separator'
 import { formatTs, parseTs } from '../../utils/format'
 
 const props = defineProps<{
@@ -81,21 +84,23 @@ function onStudyClick(e: MouseEvent) {
 </script>
 
 <template>
-  <div class="mt-4 flex min-h-[180px] flex-1 flex-col rounded-xl bg-surface shadow-card">
-    <div class="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2">
+  <Card class="mt-4 flex min-h-[180px] flex-1 flex-col gap-0 rounded-xl p-0">
+    <div class="flex flex-wrap items-center gap-2 px-3 py-2">
       <p class="text-[13px] font-semibold text-ink">学习笔记</p>
       <div class="ml-auto flex items-center gap-1">
-        <button class="flex h-7 w-7 items-center justify-center rounded-lg text-ink hover:bg-line/60" title="加粗" @mousedown.prevent @click="execStudy('bold')">
+        <Button variant="ghost" size="icon" class="size-7 rounded-lg text-ink hover:bg-line/60" title="加粗" @mousedown.prevent @click="execStudy('bold')">
           <Bold :size="14" />
-        </button>
-        <button class="flex h-7 w-7 items-center justify-center rounded-lg text-ink hover:bg-line/60" title="斜体" @mousedown.prevent @click="execStudy('italic')">
+        </Button>
+        <Button variant="ghost" size="icon" class="size-7 rounded-lg text-ink hover:bg-line/60" title="斜体" @mousedown.prevent @click="execStudy('italic')">
           <Italic :size="14" />
-        </button>
-        <button class="flex h-7 w-7 items-center justify-center rounded-lg text-ink hover:bg-line/60" title="下划线" @mousedown.prevent @click="execStudy('underline')">
+        </Button>
+        <Button variant="ghost" size="icon" class="size-7 rounded-lg text-ink hover:bg-line/60" title="下划线" @mousedown.prevent @click="execStudy('underline')">
           <Underline :size="14" />
-        </button>
-        <button
-          class="flex h-7 items-center gap-1 rounded-lg px-2 text-[12px] text-ink hover:bg-line/60"
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          class="h-7 gap-1 rounded-lg px-2 text-[12px] text-ink hover:bg-line/60"
           title="插入当前播放进度的时间戳"
           :disabled="!canInsertTs"
           @mousedown.prevent
@@ -103,18 +108,21 @@ function onStudyClick(e: MouseEvent) {
         >
           <Clock :size="14" />
           时间戳
-        </button>
-        <button
-          class="ml-1 flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[12px]"
-          :class="studyDirty ? 'bg-primary text-white hover:opacity-90' : 'border border-line text-ink-2 opacity-50 cursor-not-allowed'"
+        </Button>
+        <Button
+          size="sm"
+          class="ml-1 h-auto gap-1 rounded-lg px-2.5 py-1.5 text-[12px]"
+          :variant="studyDirty ? 'default' : 'outline'"
+          :class="studyDirty ? '' : 'text-ink-2 opacity-50 cursor-not-allowed'"
           :disabled="!studyDirty"
           @click="saveStudyNote"
         >
           <Save :size="13" />
           保存
-        </button>
+        </Button>
       </div>
     </div>
+    <Separator />
     <div
       ref="studyRef"
       class="study-view min-h-0 flex-1 overflow-y-auto px-4 py-3 text-[14px] leading-7 text-ink outline-none"
@@ -122,10 +130,11 @@ function onStudyClick(e: MouseEvent) {
       @input="onStudyInput"
       @click="onStudyClick"
     ></div>
-    <p class="border-t border-line px-4 py-1.5 text-[11px] text-ink-2">
+    <Separator />
+    <p class="px-4 py-1.5 text-[11px] text-ink-2">
       记录观看感想；点「时间戳」插入当前进度，保存后点击胶囊可跳回该片段。
     </p>
-  </div>
+  </Card>
 </template>
 
 <style scoped>
