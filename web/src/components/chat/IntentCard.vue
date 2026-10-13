@@ -2,6 +2,7 @@
 import { computed, reactive, ref } from 'vue'
 import { ChevronDown, ListChecks, Send } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Toggle } from '@/components/ui/toggle'
 
@@ -101,7 +102,7 @@ if (props.card.answers) {
 </script>
 
 <template>
-  <div class="mt-2 rounded-2xl border border-blue-100 bg-blue-50/40 p-3.5">
+  <Card class="mt-2 gap-0 rounded-2xl border-blue-100 bg-blue-50/40 p-3.5 shadow-none">
     <!-- 折叠头部：点击箭头/整行切换展开折叠 -->
     <button
       type="button"
@@ -116,17 +117,20 @@ if (props.card.answers) {
         :class="collapsed ? '-rotate-90' : ''"
       />
     </button>
-    <div v-show="!collapsed" class="mt-2.5">
-      <div
+    <CardContent v-show="!collapsed" class="mt-2.5 flex flex-col gap-2.5 p-0">
+      <!-- 每题一张子卡 -->
+      <Card
         v-for="q in card.questions"
         :key="q.title"
-        class="mb-2.5 rounded-xl border border-blue-100 bg-white p-3 last:mb-0"
+        class="gap-0 rounded-xl border-blue-100 p-3 shadow-none"
       >
-        <p class="flex items-center gap-1.5 text-[13px] font-medium text-gray-800">
-          <ListChecks :size="14" class="text-blue-500" />
-          {{ q.title }}
-        </p>
-        <div class="mt-2 flex flex-col gap-2">
+        <CardHeader class="p-0">
+          <CardTitle class="flex items-center gap-1.5 text-[13px] font-medium text-gray-800">
+            <ListChecks :size="14" class="text-blue-500" />
+            {{ q.title }}
+          </CardTitle>
+        </CardHeader>
+        <CardContent class="mt-2 flex flex-col gap-2 p-0">
           <!-- 选项：Toggle pressed 态即选中（主色高亮）；再点取消由 pick() 的 toggle-off 逻辑负责 -->
           <Toggle
             v-for="opt in q.options"
@@ -146,17 +150,17 @@ if (props.card.answers) {
             :disabled="locked"
             @click.stop
           />
-        </div>
-      </div>
+        </CardContent>
+      </Card>
       <Button
         v-if="!locked"
-        class="w-full rounded-xl text-[13px]"
+        class="rounded-xl text-[13px]"
         :disabled="!allAnswered"
         @click="confirm"
       >
         <Send :size="13" />
         {{ allAnswered ? '确认开始' : '每题选择选项或输入自定义回答后确认' }}
       </Button>
-    </div>
-  </div>
+    </CardContent>
+  </Card>
 </template>
