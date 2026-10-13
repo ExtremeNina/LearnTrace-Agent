@@ -74,7 +74,7 @@ function onOpenProfile() {
               as-child
               :is-active="isActive(item.path)"
               :tooltip="item.label"
-              class="h-10 text-[14px] ring-primary/30 hover:bg-primary-soft/60 hover:text-ink data-[active=true]:bg-primary-soft data-[active=true]:text-primary data-[active=true]:ring-2"
+              class="h-10 text-[14px] hover:bg-line/50 hover:text-ink data-[active=true]:bg-line/60 data-[active=true]:text-ink"
             >
               <RouterLink :to="item.path" @click="onNavigate">
                 <component :is="item.icon" />
@@ -100,7 +100,7 @@ function onOpenProfile() {
           <SidebarMenuItem>
             <SidebarMenuButton
               tooltip="设置"
-              class="h-10 text-[14px] hover:bg-primary-soft/60 hover:text-ink"
+              class="h-10 text-[14px] hover:bg-line/50 hover:text-ink"
               @click="onOpenProfile"
             >
               <Settings />
