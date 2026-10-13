@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import {
   ChevronRight, Clock, Film, GraduationCap, History,
   LoaderCircle, MonitorPlay, Play, Plus,
-  Send, Sparkles, Target, X,
+  Send, Sparkles, Target,
 } from 'lucide-vue-next'
 import { getHomeOverview, heartbeatStudyTime } from '../api/home'
 import type { HomeOverview } from '../api/home'
@@ -14,6 +14,13 @@ import { useReviewModalStore } from '../stores/reviewModal'
 import { renderIntentChips, renderMarkdown } from '../utils/markdown'
 import IntentCard from '../components/chat/IntentCard.vue'
 import bannerWaterUrl from '../assets/banner-water.webp'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Progress } from '@/components/ui/progress'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Skeleton } from '@/components/ui/skeleton'
 
 /**
  * 首页学习仪表盘（B25，视觉按设计稿实现——靛蓝色系 / 渐变按钮 / 卡片白底圆角；深色主题适配后置）：
@@ -240,8 +247,14 @@ watch(
   <div class="h-full overflow-y-auto bg-gray-50">
     <div class="px-4 py-5 md:px-6">
       <!-- 加载 / 错误 -->
-      <div v-if="loading" class="flex h-64 items-center justify-center text-[13px] text-ink-2">
-        加载中…
+      <div v-if="loading" class="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_400px]">
+        <div class="flex min-w-0 flex-col gap-5">
+          <Skeleton class="h-32 w-full rounded-lg" />
+          <Skeleton class="h-48 w-full rounded-lg" />
+          <Skeleton class="h-44 w-full rounded-lg" />
+          <Skeleton class="h-56 w-full rounded-lg" />
+        </div>
+        <Skeleton class="h-[480px] w-full rounded-lg sm:h-[560px]" />
       </div>
       <div v-else-if="error" class="flex h-64 items-center justify-center text-[13px] text-ink-2">
         {{ error }}
@@ -263,17 +276,22 @@ watch(
             </div>
 
             <!-- 继续学习 -->
-            <section v-if="continueCourse" class="min-w-0 rounded-lg border border-gray-100 bg-white p-6 shadow-sm lg:col-start-1 lg:row-start-2">
-              <div class="flex items-center justify-between">
-                <h2 class="flex items-center gap-2 text-[15px] font-bold text-gray-900">
-                  <MonitorPlay :size="17" class="text-blue-500" />
+            <Card v-if="continueCourse" class="min-w-0 gap-5 lg:col-start-1 lg:row-start-2">
+              <CardHeader>
+                <CardTitle class="flex items-center gap-2 text-[15px] font-bold text-gray-900">
+                  <MonitorPlay :size="17" class="text-primary" />
                   继续学习
-                </h2>
-                <RouterLink to="/courses" class="flex items-center text-[12px] text-gray-400 transition-colors hover:text-blue-500">
-                  查看全部
-                  <ChevronRight :size="13" />
-                </RouterLink>
-              </div>
+                </CardTitle>
+                <CardAction>
+                  <Button variant="ghost" size="sm" as-child class="text-muted-foreground">
+                    <RouterLink to="/courses">
+                      查看全部
+                      <ChevronRight />
+                    </RouterLink>
+                  </Button>
+                </CardAction>
+              </CardHeader>
+              <CardContent>
               <div class="mt-5 flex flex-col gap-4 lg:flex-row">
                 <!-- 左：软底面板——封面 + 文字列（进度条 / 时间）+ 右下角继续按钮 -->
                 <div class="flex min-w-0 flex-1 items-stretch gap-4 rounded-lg border border-transparent bg-gray-50/80 p-4 transition-all hover:border-blue-200 hover:bg-white hover:shadow-sm">
@@ -293,23 +311,18 @@ watch(
                     <p class="mt-1 text-[12px] text-gray-400">
                       {{ continueCourse.subject || '网课' }} · 课程进度 {{ continueCourse.progressPct != null ? continueCourse.progressPct + '%' : '—' }}
                     </p>
-                    <div class="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-gray-200/70">
-                      <div
-                        class="h-full rounded-full bg-gradient-to-r from-blue-400 to-blue-600"
-                        :style="{ width: (continueCourse.progressPct ?? 0) + '%' }"
-                      />
-                    </div>
+                    <Progress class="mt-3 h-1.5 bg-gray-200/70" :model-value="continueCourse.progressPct ?? 0" />
                     <div class="mt-4 flex items-end justify-between">
                       <p class="text-[12px] tabular-nums text-gray-500">
                         {{ formatTs(continueCourse.lastPositionSec) }} / {{ formatDuration(continueCourse.duration) }}
                       </p>
-                      <button
-                        class="flex shrink-0 items-center gap-1.5 rounded-full bg-gradient-to-r from-blue-500 to-blue-600 px-4 py-2 text-[13px] font-medium text-white transition-opacity hover:opacity-90"
+                      <Button
+                        class="shrink-0 rounded-full px-4 text-[13px]"
                         @click="router.push(`/courses/${continueCourse.id}?t=${formatTs(continueCourse.lastPositionSec)}`)"
                       >
                         <Play :size="14" />
                         继续学习
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 </div>
@@ -328,20 +341,24 @@ watch(
                   </ul>
                 </div>
               </div>
-            </section>
+            </CardContent>
+            </Card>
 
             <!-- 今日复习 -->
-            <section class="min-w-0 rounded-lg border border-gray-100 bg-white p-6 shadow-sm lg:col-start-1 lg:row-start-3">
-              <div class="flex items-center justify-between">
-                <h2 class="flex items-center gap-2 text-[15px] font-bold text-gray-900">
-                  <GraduationCap :size="17" class="text-blue-500" />
+            <Card class="min-w-0 gap-5 lg:col-start-1 lg:row-start-3">
+              <CardHeader>
+                <CardTitle class="flex items-center gap-2 text-[15px] font-bold text-gray-900">
+                  <GraduationCap :size="17" class="text-primary" />
                   今日复习
-                </h2>
-                <button class="flex items-center text-[12px] text-gray-400 transition-colors hover:text-blue-500" @click="reviewModal.open()">
-                  查看全部
-                  <ChevronRight :size="13" />
-                </button>
-              </div>
+                </CardTitle>
+                <CardAction>
+                  <Button variant="ghost" size="sm" class="text-muted-foreground" @click="reviewModal.open()">
+                    查看全部
+                    <ChevronRight />
+                  </Button>
+                </CardAction>
+              </CardHeader>
+              <CardContent class="mt-0">
               <div
                 v-if="dueCount > 0"
                 class="mt-4 flex flex-col gap-3 rounded-lg border border-transparent bg-blue-50/70 px-4 py-5 transition-all hover:border-blue-200 hover:bg-white hover:shadow-sm sm:flex-row sm:items-center"
@@ -356,41 +373,48 @@ watch(
                     </p>
                     <p class="mt-0.5 text-[12px] text-gray-500">建议花 {{ suggestMinutes }} 分钟进行复习</p>
                     <div v-if="overview.todayQueue.length > 0" class="mt-2 flex flex-wrap gap-1.5">
-                      <span
+                      <Badge
                         v-for="card in overview.todayQueue"
                         :key="card.frontText"
-                        class="rounded-full bg-white px-2.5 py-0.5 text-[11px] text-gray-500"
+                        variant="secondary"
+                        class="bg-white font-normal text-muted-foreground"
                       >
                         {{ truncate(card.frontText, 10) }}
-                      </span>
+                      </Badge>
                     </div>
                   </div>
                 </div>
-                <button
-                  class="flex shrink-0 items-center gap-1.5 self-start rounded-full bg-gradient-to-r from-blue-500 to-blue-600 px-5 py-2.5 text-[13px] font-medium text-white transition-opacity hover:opacity-90 sm:self-center"
+                <Button
+                  class="shrink-0 self-start rounded-full sm:self-center"
                   @click="reviewModal.open()"
                 >
                   开始复习
                   <ChevronRight :size="14" />
-                </button>
+                </Button>
               </div>
               <div v-else class="mt-4 rounded-lg border border-dashed border-blue-100 px-4 py-6 text-center text-[13px] text-gray-400">
                 今日复习已清空 ✅ 到题目 / 笔记详情页「加入复习」，卡片会按记忆曲线出现在这里
               </div>
-            </section>
+            </CardContent>
+            </Card>
 
             <!-- 最近学习 -->
-            <section class="min-w-0 rounded-lg border border-gray-100 bg-white p-6 shadow-sm lg:col-start-1 lg:row-start-4">
-              <div class="flex items-center justify-between">
-                <h2 class="flex items-center gap-2 text-[15px] font-bold text-gray-900">
-                  <Clock :size="17" class="text-blue-500" />
+            <Card class="min-w-0 gap-5 lg:col-start-1 lg:row-start-4">
+              <CardHeader>
+                <CardTitle class="flex items-center gap-2 text-[15px] font-bold text-gray-900">
+                  <Clock :size="17" class="text-primary" />
                   最近学习
-                </h2>
-                <RouterLink to="/courses" class="flex items-center text-[12px] text-gray-400 transition-colors hover:text-blue-500">
-                  查看全部
-                  <ChevronRight :size="13" />
-                </RouterLink>
-              </div>
+                </CardTitle>
+                <CardAction>
+                  <Button variant="ghost" size="sm" as-child class="text-muted-foreground">
+                    <RouterLink to="/courses">
+                      查看全部
+                      <ChevronRight />
+                    </RouterLink>
+                  </Button>
+                </CardAction>
+              </CardHeader>
+              <CardContent>
               <div v-if="overview.recentCourses.length > 0" class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 <RouterLink
                   v-for="course in overview.recentCourses"
@@ -412,12 +436,7 @@ watch(
                   <p class="mt-3 truncate text-[14px] font-semibold text-gray-900">{{ course.title }}</p>
                   <p class="mt-1.5 text-[11px] text-gray-400">上次学到: {{ formatTs(course.lastPositionSec) }}</p>
                   <div class="mt-2 flex items-center gap-2">
-                    <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-100">
-                      <div
-                        class="h-full rounded-full bg-gradient-to-r from-blue-400 to-blue-600"
-                        :style="{ width: (course.progressPct ?? 0) + '%' }"
-                      />
-                    </div>
+                    <Progress class="h-1.5 flex-1 bg-gray-100" :model-value="course.progressPct ?? 0" />
                     <span class="text-[11px] tabular-nums text-gray-400">{{ course.progressPct != null ? course.progressPct + '%' : '—' }}</span>
                   </div>
                   <p class="mt-2.5 text-[11px] text-gray-400/80">{{ relativeTime(course.lastStudiedAt || course.updatedAt) }}</p>
@@ -426,7 +445,8 @@ watch(
               <div v-else class="mt-4 rounded-lg border border-dashed border-blue-100 px-4 py-6 text-center text-[13px] text-gray-400">
                 暂无学习记录，上传第一门网课吧
               </div>
-            </section>
+            </CardContent>
+            </Card>
 
             <!-- AI 助手：与 /chat 共享会话。wrapper 全断点锁定高度（小屏定高，lg 下由左列四行决定），
                  面板绝对定位填满 wrapper——不参与行高计算，对话再长也不撑高左列三卡片、不把输入框推出视口；
@@ -440,26 +460,31 @@ watch(
                 </h2>
                 <div class="flex items-center gap-2">
                   <!-- B27：加号新建（原「新对话」按钮位置移到历史左侧），当前会话名展示在右侧 -->
-                  <button
-                    class="flex h-7 w-7 items-center justify-center rounded-full border border-blue-200 text-blue-500 transition-colors hover:bg-blue-50"
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    class="size-7 rounded-full border-blue-200 text-primary hover:bg-blue-50 hover:text-primary"
                     title="开启新会话（原会话保留在 /chat 历史）"
                     @click="agent.startNew()"
                   >
                     <Plus :size="14" />
-                  </button>
-                  <button
-                    class="flex h-7 w-7 items-center justify-center rounded-full border border-blue-200 text-blue-500 transition-colors hover:bg-blue-50"
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    class="size-7 rounded-full border-blue-200 text-primary hover:bg-blue-50 hover:text-primary"
                     title="查看历史对话"
                     @click="openHistory"
                   >
                     <History :size="14" />
-                  </button>
-                  <span
-                    class="max-w-40 truncate rounded-full bg-blue-50 px-3 py-1 text-[12px] text-blue-600"
+                  </Button>
+                  <Badge
+                    variant="outline"
+                    class="max-w-40 truncate border-blue-200 bg-blue-50 px-3 py-1 text-[12px] text-blue-600"
                     :title="activeConversationTitle"
                   >
                     {{ activeConversationTitle }}
-                  </span>
+                  </Badge>
                 </div>
               </div>
               <div
@@ -538,15 +563,17 @@ watch(
               <div class="relative mt-2">
                 <div class="flex items-end rounded-2xl border border-blue-200 bg-white pl-2 pr-1 transition-colors focus-within:border-blue-400">
                   <!-- 加号：整合上传资料（统一走对话分流：≤30min 默认转写 / >30min 或「做成课程」走课程流水线） -->
-                  <button
-                    class="mb-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-ink-2 transition-colors hover:bg-blue-50 hover:text-blue-500"
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    class="mb-1 size-8 shrink-0 rounded-full text-ink-2 hover:bg-blue-50 hover:text-primary"
                     :class="agent.uploading ? 'animate-pulse text-blue-400' : ''"
                     :title="agent.uploading ? '正在上传…' : '上传资料（≤30 分钟默认仅转写语音；>30 分钟自动按网课处理）'"
                     :disabled="agent.uploading"
                     @click="openUpload"
                   >
                     <Plus :size="17" />
-                  </button>
+                  </Button>
                   <textarea
                     ref="chatInputRef"
                     v-model="draft"
@@ -556,14 +583,15 @@ watch(
                     @keydown.enter="onInputKeydown"
                     @input="autoGrowInput"
                   />
-                  <button
-                    class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-blue-500 to-blue-600 text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+                  <Button
+                    size="icon"
+                    class="size-8 shrink-0 rounded-full disabled:opacity-40"
                     :disabled="agent.streaming || !draft.trim()"
                     title="发送"
                     @click="sendDraft"
                   >
                     <Send :size="14" />
-                  </button>
+                  </Button>
                 </div>
               </div>
               <p class="mt-2 text-[11px] text-gray-500">
@@ -571,39 +599,31 @@ watch(
               </p>
               <input ref="uploadInputRef" type="file" accept="video/mp4,video/x-matroska,video/quicktime,video/webm,.mp4,.mkv,.mov,.webm" class="hidden" @change="onUploadFile" />
 
-              <!-- 历史对话弹窗 -->
-              <div
-                v-if="showHistory"
-                class="fixed inset-0 z-50 flex items-center justify-center bg-ink/25 px-4 backdrop-blur-sm"
-                @click.self="showHistory = false"
-              >
-                <div class="max-h-[70vh] w-full max-w-md overflow-y-auto rounded-3xl border border-line bg-surface p-5 shadow-xl">
-                  <div class="flex items-center justify-between">
-                    <h3 class="text-[15px] font-semibold text-ink">历史对话</h3>
-                    <button
-                      class="flex h-8 w-8 items-center justify-center rounded-lg text-ink-2 hover:bg-line/60 hover:text-ink"
-                      title="关闭"
-                      @click="showHistory = false"
-                    >
-                      <X :size="15" />
-                    </button>
-                  </div>
-                  <p v-if="agent.conversations.length === 0" class="py-6 text-center text-[13px] text-ink-2">
+              <!-- 历史对话弹窗（Dialog：自带 ESC / 焦点管理 / 关闭按钮） -->
+              <Dialog v-model:open="showHistory">
+                <DialogContent class="max-w-md">
+                  <DialogHeader>
+                    <DialogTitle class="text-[15px] font-semibold">历史对话</DialogTitle>
+                    <DialogDescription class="sr-only">查看全部历史会话</DialogDescription>
+                  </DialogHeader>
+                  <p v-if="agent.conversations.length === 0" class="py-6 text-center text-[13px] text-muted-foreground">
                     暂无会话，发一条消息开始吧
                   </p>
-                  <div class="mt-3 flex flex-col gap-1">
-                    <button
-                      v-for="c in agent.conversations"
-                      :key="c.id"
-                      class="flex w-full items-center justify-between gap-3 rounded-xl px-3.5 py-2.5 text-left text-[14px] text-ink transition-colors hover:bg-panel"
-                      @click="pickConversation(c.id)"
-                    >
-                      <span class="truncate">{{ c.title }}</span>
-                      <span class="shrink-0 text-[11px] text-ink-2">{{ relativeTime(c.updatedAt ?? c.createdAt) }}</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
+                  <ScrollArea v-else class="max-h-[52vh] pr-2">
+                    <div class="flex flex-col gap-1">
+                      <button
+                        v-for="c in agent.conversations"
+                        :key="c.id"
+                        class="flex w-full items-center justify-between gap-3 rounded-xl px-3.5 py-2.5 text-left text-[14px] text-ink transition-colors hover:bg-panel"
+                        @click="pickConversation(c.id)"
+                      >
+                        <span class="truncate">{{ c.title }}</span>
+                        <span class="shrink-0 text-[11px] text-muted-foreground">{{ relativeTime(c.updatedAt ?? c.createdAt) }}</span>
+                      </button>
+                    </div>
+                  </ScrollArea>
+                </DialogContent>
+              </Dialog>
             </section>
             </div>
         </div>
