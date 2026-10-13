@@ -2,8 +2,8 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
 /**
- * 布局 UI 状态（B25 导航重构后）：移动端抽屉开关 + 笔记页栏宽（可拖拽持久化）。
- * 旧的三模式侧栏（对话 / 学习台）状态随导航重构移除——会话栏下沉至 /chat 页内。
+ * 布局 UI 状态（B25 导航重构后）：笔记页栏宽（可拖拽持久化）。
+ * 主导航侧栏改由 shadcn-vue Sidebar 组件托管（cookie 记忆折叠态），会话栏下沉至 /chat 页内。
  */
 
 const NOTES_TREE_WIDTH_KEY = 'xj_notes_tree_width'
@@ -27,17 +27,6 @@ function persistedWidth(key: string, fallback: number, min: number, max: number)
 }
 
 export const useUiStore = defineStore('ui', () => {
-  /** 移动端 SideNav 抽屉开关 */
-  const sidebarOpen = ref(false)
-
-  function openSidebar() {
-    sidebarOpen.value = true
-  }
-
-  function closeSidebar() {
-    sidebarOpen.value = false
-  }
-
   /** 笔记页栏宽（px，拖拽可调，持久化）：分层树 / 知识联系；编辑区占剩余空间 */
   const notesTreeWidth = ref(persistedWidth(NOTES_TREE_WIDTH_KEY, NOTES_TREE_DEFAULT_WIDTH, NOTES_TREE_MIN_WIDTH, NOTES_TREE_MAX_WIDTH))
   const notesLinksWidth = ref(persistedWidth(NOTES_LINKS_WIDTH_KEY, NOTES_LINKS_DEFAULT_WIDTH, NOTES_LINKS_MIN_WIDTH, NOTES_LINKS_MAX_WIDTH))
@@ -53,9 +42,6 @@ export const useUiStore = defineStore('ui', () => {
   }
 
   return {
-    sidebarOpen,
-    openSidebar,
-    closeSidebar,
     notesTreeWidth,
     notesLinksWidth,
     setNotesTreeWidth,

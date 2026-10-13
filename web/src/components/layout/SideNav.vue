@@ -2,9 +2,14 @@
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { Home, MonitorPlay, NotebookPen, Camera, Settings } from 'lucide-vue-next'
+import {
+  SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel,
+  SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar,
+} from '@/components/ui/sidebar'
 
 /**
- * 主导航侧栏（B25 导航重构，视觉对齐设计稿）：品牌区 + 内容导航 + 我的（学习轨迹 / 设置）
+ * 主导航侧栏（B25 导航重构，shadcn-vue Sidebar 体系）：品牌区 + 内容导航 + 我的（设置）。
+ * 折叠 / 移动端抽屉行为由外层 Sidebar 组件托管；点击导航后在移动端自动收起抽屉。
  */
 const emit = defineEmits<{ navigate: []; 'open-profile': [] }>()
 
@@ -12,6 +17,7 @@ const emit = defineEmits<{ navigate: []; 'open-profile': [] }>()
 const props = defineProps<{ dueCount?: number }>()
 
 const route = useRoute()
+const sidebar = useSidebar()
 
 const items = [
   { path: '/', label: '首页', icon: Home },
@@ -25,49 +31,74 @@ const activePath = computed(() => route.path)
 function isActive(path: string): boolean {
   return path === '/' ? activePath.value === '/' : activePath.value.startsWith(path)
 }
+
+/** 导航后收起移动端抽屉（桌面无副作用），并向上冒泡 navigate 事件 */
+function onNavigate() {
+  sidebar.setOpenMobile(false)
+  emit('navigate')
+}
+
+/** 打开个人页面：同样先收起移动端抽屉 */
+function onOpenProfile() {
+  sidebar.setOpenMobile(false)
+  emit('open-profile')
+}
 </script>
 
 <template>
-  <div class="flex h-full min-h-0 flex-col">
-    <!-- 品牌区 -->
-    <div class="px-5 pb-4 pt-5">
-      <p class="brand-title text-[20px] leading-6">LearnTrace</p>
-      <p class="mt-0.5 text-[11px] text-gray-400">让学习更有轨迹</p>
-    </div>
+  <!-- 品牌区 -->
+  <SidebarHeader class="px-2 pb-1 pt-3">
+    <p class="brand-title px-3 text-[20px] leading-6">LearnTrace</p>
+    <p class="mt-0.5 px-3 text-[11px] text-muted-foreground">让学习更有轨迹</p>
+  </SidebarHeader>
 
+  <SidebarContent class="px-1">
     <!-- 内容导航 -->
-    <nav class="min-h-0 flex-1 overflow-y-auto px-3">
-      <RouterLink
-        v-for="item in items"
-        :key="item.path"
-        :to="item.path"
-        class="mb-1 flex items-center gap-3 rounded-lg px-3.5 py-2.5 text-[14px] transition-colors"
-        :class="isActive(item.path) ? 'bg-blue-50 font-medium text-blue-600' : 'text-gray-600 hover:bg-blue-50/60 hover:text-ink'"
-        @click="$emit('navigate')"
-      >
-        <component :is="item.icon" :size="18" />
-        {{ item.label }}
-        <!-- 复习到期红点：挂在「首页」项（今日复习卡片所在页） -->
-        <span
-          v-if="item.path === '/' && (props.dueCount ?? 0) > 0"
-          class="ml-auto h-2 w-2 shrink-0 rounded-full bg-red-500"
-          :title="`${props.dueCount} 张卡片待复习`"
-        />
-      </RouterLink>
+    <SidebarGroup>
+      <SidebarGroupContent>
+        <SidebarMenu class="gap-1">
+          <SidebarMenuItem v-for="item in items" :key="item.path">
+            <SidebarMenuButton
+              as-child
+              :is-active="isActive(item.path)"
+              :tooltip="item.label"
+              class="h-10 text-[14px] data-[active=true]:text-primary"
+            >
+              <RouterLink :to="item.path" @click="onNavigate">
+                <component :is="item.icon" />
+                <span>{{ item.label }}</span>
+                <!-- 复习到期红点：挂在「首页」项（今日复习卡片所在页） -->
+                <span
+                  v-if="item.path === '/' && (props.dueCount ?? 0) > 0"
+                  class="ml-auto h-2 w-2 shrink-0 rounded-full bg-red-500"
+                  :title="`${props.dueCount} 张卡片待复习`"
+                />
+              </RouterLink>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
 
-      <!-- 我的 -->
-      <div class="mt-4 border-t border-line pt-3">
-        <p class="px-3.5 pb-1 text-[11px] text-gray-400">我的</p>
-        <button
-          class="flex w-full items-center gap-3 rounded-lg px-3.5 py-2.5 text-[14px] text-gray-600 transition-colors hover:bg-blue-50/60 hover:text-ink"
-          @click="$emit('open-profile')"
-        >
-          <Settings :size="18" />
-          设置
-        </button>
-      </div>
-    </nav>
-  </div>
+    <!-- 我的 -->
+    <SidebarGroup class="border-t border-sidebar-border pt-2">
+      <SidebarGroupLabel class="text-[11px] text-muted-foreground">我的</SidebarGroupLabel>
+      <SidebarGroupContent>
+        <SidebarMenu class="gap-1">
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              tooltip="设置"
+              class="h-10 text-[14px]"
+              @click="onOpenProfile"
+            >
+              <Settings />
+              <span>设置</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
+  </SidebarContent>
 </template>
 
 <style scoped>

@@ -1,7 +1,5 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue'
-import { Menu } from 'lucide-vue-next'
-import { useUiStore } from '../stores/ui'
 import { useUserStore } from '../stores/user'
 import { useAuthStore } from '../stores/auth'
 import { useToastStore } from '../stores/toast'
@@ -10,12 +8,15 @@ import SideNav from '../components/layout/SideNav.vue'
 import ProfileModal from '../components/ProfileModal.vue'
 import ReviewModal from '../components/ReviewModal.vue'
 import ToastHost from '../components/ToastHost.vue'
+import {
+  Sidebar, SidebarInset, SidebarProvider, SidebarRail, SidebarTrigger,
+} from '@/components/ui/sidebar'
 
 /**
- * 全局布局：主 SideNav（桌面常驻 / 移动抽屉），无桌面顶栏（移动端保留极简顶栏作抽屉入口）。
+ * 全局布局（shadcn-vue Sidebar 体系）：SidebarProvider 托管折叠状态（cookie 记忆 / Ctrl+B），
+ * 桌面端常驻侧栏 + 边缘热区展开（SidebarRail），移动端自动转为 Sheet 抽屉（SidebarTrigger 开启）。
  * 会话侧栏不挂布局层——对话页 /chat 内嵌自己的会话栏。
  */
-const ui = useUiStore()
 const userStore = useUserStore()
 const auth = useAuthStore()
 const toast = useToastStore()
@@ -73,32 +74,21 @@ async function remindReview() {
 </script>
 
 <template>
-  <div class="flex h-full overflow-hidden bg-surface text-ink">
-    <!-- SideNav：桌面端常驻 -->
-    <aside class="hidden w-52 shrink-0 border-r border-gray-100 bg-[#f8f9fb] md:block">
+  <!-- 侧栏宽度沿用设计稿 w-52（13rem）；折叠状态由 cookie 记忆，Ctrl+B 可切换 -->
+  <SidebarProvider
+    class="h-full min-h-0 overflow-hidden bg-surface text-ink"
+    :style="{ '--sidebar-width': '13rem' }"
+  >
+    <!-- 主导航侧栏：桌面常驻（offcanvas 可完全收起） / 移动端 Sheet 抽屉 -->
+    <Sidebar collapsible="offcanvas">
       <SideNav :due-count="bellDue" @open-profile="openProfile" />
-    </aside>
-
-    <!-- SideNav：移动端抽屉 -->
-    <Transition name="fade">
-      <div v-if="ui.sidebarOpen" class="fixed inset-0 z-40 bg-black/30 md:hidden" @click="ui.closeSidebar()" />
-    </Transition>
-    <Transition name="slide">
-      <aside v-if="ui.sidebarOpen" class="fixed inset-y-0 left-0 z-50 w-60 border-r border-gray-100 bg-[#f8f9fb] md:hidden">
-        <SideNav :due-count="bellDue" @navigate="ui.closeSidebar()" @open-profile="ui.closeSidebar(); openProfile()" />
-      </aside>
-    </Transition>
+      <SidebarRail />
+    </Sidebar>
 
     <!-- 右列：移动端极简顶栏（桌面无顶栏） + 主区 -->
-    <div class="flex min-w-0 flex-1 flex-col">
+    <SidebarInset class="overflow-hidden bg-surface">
       <header class="flex h-10 shrink-0 items-center gap-2 border-b border-gray-200 bg-panel px-3 md:hidden">
-        <button
-          class="flex h-8 w-8 items-center justify-center rounded-lg text-ink-2 hover:bg-line/60 hover:text-ink"
-          title="菜单"
-          @click="ui.openSidebar()"
-        >
-          <Menu :size="20" />
-        </button>
+        <SidebarTrigger class="-ml-1" />
         <span class="text-[15px] font-medium">LearnTrace</span>
       </header>
 
@@ -110,7 +100,7 @@ async function remindReview() {
           </KeepAlive>
         </router-view>
       </main>
-    </div>
+    </SidebarInset>
 
     <!-- 个人页面弹窗：资料 / 偏好 / 账号 -->
     <ProfileModal v-model:open="showProfile" />
@@ -118,24 +108,5 @@ async function remindReview() {
     <ReviewModal />
     <!-- 全局轻提示：任务完成 / 失败通知 -->
     <ToastHost />
-  </div>
+  </SidebarProvider>
 </template>
-
-<style scoped>
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.15s ease;
-}
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
-.slide-enter-active,
-.slide-leave-active {
-  transition: transform 0.2s ease;
-}
-.slide-enter-from,
-.slide-leave-to {
-  transform: translateX(-100%);
-}
-</style>
