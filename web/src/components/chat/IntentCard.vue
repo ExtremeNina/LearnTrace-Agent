@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Input } from '@/components/ui/input'
-import { Toggle } from '@/components/ui/toggle'
 
 /**
  * 意图确认大卡片（B27 立项 / 2026-10-11 固定题改造）：意图 Agent 的结构化提问——
@@ -132,18 +131,20 @@ if (props.card.answers) {
               <ListChecks :size="13" class="text-blue-400" />
               {{ q.title }}
             </p>
-            <!-- 选项：Toggle pressed 态即选中（主色高亮）；再点取消由 pick() 的 toggle-off 逻辑负责 -->
-            <Toggle
+            <!-- 选项：单选由 selections 状态驱动（条件类高亮）；再点取消由 pick() 的 toggle-off 逻辑负责 -->
+            <Button
               v-for="opt in q.options"
               :key="opt"
-              :pressed="selections[q.title] === opt"
-              :disabled="locked"
               variant="outline"
-              class="h-auto w-full justify-start rounded-xl border-gray-200 bg-white/60 px-3 py-1.5 text-left text-[13px] font-normal text-gray-600 hover:border-blue-300 hover:bg-white hover:text-gray-600 data-[state=on]:border-primary data-[state=on]:bg-primary-soft data-[state=on]:font-medium data-[state=on]:text-primary data-[state=on]:ring-1 data-[state=on]:ring-primary/30"
+              :disabled="locked"
+              class="h-auto w-full justify-start rounded-xl px-3 py-1 text-left text-[13px] font-normal"
+              :class="selections[q.title] === opt
+                ? 'border-gray-500 bg-white font-medium text-gray-800'
+                : 'border-gray-200 bg-white/60 text-gray-600 hover:border-gray-300 hover:bg-white hover:text-gray-600'"
               @click="pick(q.title, opt)"
             >
               {{ opt }}
-            </Toggle>
+            </Button>
             <Input
               v-model="customs[q.title]"
               class="h-auto rounded-xl border-gray-200 bg-white py-1.5 text-[13px] text-gray-700 focus-visible:border-blue-300 focus-visible:bg-white focus-visible:ring-0"
