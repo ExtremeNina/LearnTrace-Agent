@@ -464,7 +464,8 @@ export const useAgentStore = defineStore('agent', () => {
       uploading.value = true
       try {
         const info = await fetchBilibiliVideo(url)
-        pendingVideo.value = { tempPath: info.tempPath, durationSec: info.durationSec, name: 'B 站视频链接' }
+        // name 取后端 yt-dlp 抓取的真实标题（随 WS videoName 透传建课），缺失回退占位名
+        pendingVideo.value = { tempPath: info.tempPath, durationSec: info.durationSec, name: info.name ?? 'B 站视频链接' }
       } catch (e) {
         messages.value = messages.value.filter((m) => m !== notice)
         messages.value.push({

@@ -35,11 +35,13 @@ public class ChatVideoServiceImpl implements ChatVideoService {
 
     @Override
     public ChatVideoUploadVO downloadFromUrl(String url) {
-        Path video = ytDlpClient.download(url, MAX_CHAT_VIDEO_SIZE);
+        YtDlpClient.DownloadResult result = ytDlpClient.download(url, MAX_CHAT_VIDEO_SIZE);
+        Path video = result.file();
         try {
             int durationSec = MediaUtils.ffprobeDurationSec(video);
-            log.info("B 站链接视频拉取完成, 时长={}s", durationSec);
-            return new ChatVideoUploadVO().setTempPath(video.toString()).setDurationSec(durationSec);
+            log.info("B 站链接视频拉取完成, 时长={}s, 标题={}", durationSec, result.title());
+            // name 为 yt-dlp 抓取的真实标题：前端随 WS videoName 透传，建课标题不再依赖临时文件名
+            return new ChatVideoUploadVO().setTempPath(video.toString()).setDurationSec(durationSec).setName(result.title());
         } catch (IOException | InterruptedException e) {
             cleanupQuietly(video);
             if (e instanceof InterruptedException) {

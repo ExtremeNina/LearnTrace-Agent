@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
+import java.nio.charset.Charset;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -75,13 +76,17 @@ public class YtDlpClient {
         return trimmed;
     }
 
+    /** 下载产物：临时文件与 yt-dlp 抓取的真实视频标题（经 VO 直传建课，绕开临时文件名编码环节） */
+    public record DownloadResult(Path file, String title) {
+    }
+
     /**
      * 下载 B 站视频到本地临时文件（以视频标题命名，供建课标题兜底）。
      *
-     * @return 下载产物路径（mp4）
+     * @return 产物路径与真实视频标题
      * @throws BusinessException 分类后的可读文案
      */
-    public Path download(String url, long maxBytes) {
+    public DownloadResult download(String url, long maxBytes) {
         String validated = validateBilibiliUrl(url);
         Path dir = null;
         try {
@@ -109,7 +114,7 @@ public class YtDlpClient {
             Files.move(product, moved, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
             cleanupDir(dir);
             log.info("B 站视频下载完成: url={}, title={}, size={}B", validated, title, size);
-            return moved;
+            return new DownloadResult(moved, title);
         } catch (BusinessException e) {
             cleanupDir(dir);
             throw e;
@@ -127,14 +132,18 @@ public class YtDlpClient {
 
     /** 执行 yt-dlp 命令：非零退出码按 stderr 分类抛可读文案，超时强杀并清理 */
     private String runYtDlp(String[] command, long timeoutMinutes) throws IOException, InterruptedException {
-        Process p = new ProcessBuilder(command).redirectErrorStream(true).start();
-        String output;
+        ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true);
+        // 中文 Windows 管道模式下 Python 默认按 locale（cp936/GBK）输出，显式强制 UTF-8（标题乱码根治主手段）
+        builder.environment().put("PYTHONUTF8", "1");
+        Process p = builder.start();
+        byte[] bytes;
         boolean finished = p.waitFor(timeoutMinutes, TimeUnit.MINUTES);
         if (!finished) {
             p.destroyForcibly();
             throw new BusinessException("链接视频拉取超时，请稍后重试或直接上传文件");
         }
-        output = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        bytes = p.getInputStream().readAllBytes();
+        String output = decodeOutput(bytes);
         if (p.exitValue() != 0) {
             log.warn("yt-dlp 执行失败, exit={}, output={}", p.exitValue(), truncate(output));
             throw new BusinessException(classifyError(output));
@@ -142,6 +151,23 @@ public class YtDlpClient {
         // --print 输出取最后一行非空（进度条与告警在前）
         String[] lines = output.trim().split("\\r?\\n");
         return lines.length > 0 ? lines[lines.length - 1].trim() : null;
+    }
+
+    /**
+     * yt-dlp stdout 解码：UTF-8 严格解码优先（PYTHONUTF8=1 时的预期编码），
+     * 非法字节回退 GBK（环境变量失效时中文 Windows 的 locale 编码）——
+     * 双保险确保视频标题不出现 U+FFFD 乱码（静态纯函数便于单测）
+     */
+    static String decodeOutput(byte[] bytes) {
+        try {
+            return java.nio.charset.StandardCharsets.UTF_8.newDecoder()
+                    .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+                    .decode(java.nio.ByteBuffer.wrap(bytes))
+                    .toString();
+        } catch (java.nio.charset.CharacterCodingException e) {
+            return new String(bytes, Charset.forName("GBK"));
+        }
     }
 
     /** 产物定位：临时目录内唯一的视频文件（yt-dlp 按标题命名，扩展名以实际产出为准） */

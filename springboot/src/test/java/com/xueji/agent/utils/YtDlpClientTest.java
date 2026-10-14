@@ -3,6 +3,8 @@ package com.xueji.agent.utils;
 import com.xueji.agent.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 
+import java.nio.charset.Charset;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -86,5 +88,19 @@ class YtDlpClientTest {
         // cookie 库被锁（浏览器未完全关闭）→ 优先于通用 "cookies"→登录文案，提示关闭浏览器
         assertThat(YtDlpClient.classifyError("ERROR: could not copy Chrome cookie database: process cannot access"))
                 .contains("读取浏览器 Cookie 失败");
+    }
+
+    @Test
+    void decodeOutputShouldPreferUtf8AndFallBackToGbk() throws Exception {
+        String title = "C语言课程合集_p01_ Unix与C语言的诞生史";
+        // UTF-8 输出（PYTHONUTF8=1 预期）：严格解码成功
+        assertThat(YtDlpClient.decodeOutput(title.getBytes(java.nio.charset.StandardCharsets.UTF_8))).isEqualTo(title);
+        // 纯 ASCII：两种编码字节一致
+        assertThat(YtDlpClient.decodeOutput("plain ascii 123".getBytes(java.nio.charset.StandardCharsets.UTF_8)))
+                .isEqualTo("plain ascii 123");
+        // GBK 输出（环境变量失效时中文 Windows locale 编码）：UTF-8 严格解码失败 → 回退 GBK，标题不再乱码
+        byte[] gbkBytes = title.getBytes(Charset.forName("GBK"));
+        assertThat(gbkBytes).isNotEqualTo(title.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        assertThat(YtDlpClient.decodeOutput(gbkBytes)).isEqualTo(title);
     }
 }

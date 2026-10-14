@@ -31,10 +31,11 @@ const MONO_FONT = 'Consolas'
 const TEXT_COLOR = '222222'
 const BASE_SIZE = 24 // docx 字号为半磅：24 = 12pt
 
-/** 文件名清洗：去掉 Windows 非法字符与首尾空白，空值兜底「未命名课程」 */
+/** 文件名清洗：去掉 Windows 非法字符、U+FFFD 损坏符（乱码标题防御）与首尾空白，空值兜底「未命名课程」 */
 export function sanitizeFileName(title: string | null | undefined): string {
   const base = (title ?? '')
     .replace(/[\\/:*?"<>|]/g, ' ')
+    .replace(/\uFFFD/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
   return base || '未命名课程'

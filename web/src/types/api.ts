@@ -121,6 +121,8 @@ export interface MessageInfo {
 export interface ChatVideoUploadInfo {
   tempPath: string
   durationSec: number
+  /** 权威标题/文件名（B 站链接为 yt-dlp 抓取的真实标题）：随 WS videoName 透传建课标题 */
+  name?: string
 }
 
 /** 题目记录统一视图（拍照题目 + AI 生成的相似题合并列表，source 区分；相似题无图 / 无作答字段） */
