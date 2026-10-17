@@ -36,3 +36,20 @@ Qwen-Audio-3.1-ASR-Flash*.txt
 
 # ---- 本地工具二进制（yt-dlp 等，不入仓库）----
 tools/
+
+# ---- 容器部署（密钥与数据不入库）----
+.env
+docker/mysql/data/
+secrets/
+*.cookies.txt
+
+# ---- 本地/工具产物 ----
+$null
+.codebuddy/
+.playwright-cli/
+.zcode/
+skills-lock.json
+
+# ---- 个人材料（含手机号/邮箱，禁止入库）----
+docs/*简历*.pdf
+docs/*-原版备份.pdf

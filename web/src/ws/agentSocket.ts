@@ -25,8 +25,14 @@ export function connect(token: string, onEvent: EventListener) {
   open()
 }
 
+/** 按当前页面推导 WS 地址：同源 `/ws/agent`（https 自动 wss），容器/自定义域名部署无需改代码 */
+function wsEndpoint(token: string): string {
+  const scheme = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${scheme}//${window.location.host}/ws/agent?token=${encodeURIComponent(token)}`
+}
+
 function open() {
-  socket = new WebSocket(`ws://localhost:9090/ws/agent?token=${encodeURIComponent(lastToken)}`)
+  socket = new WebSocket(wsEndpoint(lastToken))
   socket.onopen = () => {
     attempts = 0
     // 重连成功（非首连）通知调用方：断线期间的事件可能丢失，需复位回合状态并补齐消息
