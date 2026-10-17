@@ -1,0 +1,160 @@
+# LearnTrace（学迹）一键部署
+# 使用：cp .env.example .env（填密钥）→ docker compose up -d --build
+name: learntrace
+
+services:
+  mysql:
+    image: mysql:8.0.39
+    environment:
+      TZ: Asia/Shanghai
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:?请在 .env 中设置 DB_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME:-xueji}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-time-zone=+08:00
+    volumes:
+      - mysql-data:/var/lib/mysql
+      # 仅首次创建数据卷时执行（改 schema 需 down -v 重新初始化）
+      - ./docker/mysql/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+    restart: unless-stopped
+    networks: [appnet]
+
+  redis:
+    image: redis:7.2-alpine
+    environment:
+      TZ: Asia/Shanghai
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    networks: [appnet]
+
+  # RAG 向量库：必须使用带 RediSearch 模块的 redis-stack（普通 redis 不支持 FT.CREATE）
+  redis-stack:
+    image: redis/redis-stack-server:7.4.0-v1
+    environment:
+      TZ: Asia/Shanghai
+    volumes:
+      - vector-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    networks: [appnet]
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    environment:
+      TZ: Asia/Shanghai
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-xueji}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:?请在 .env 中设置 RABBITMQ_PASS}
+    volumes:
+      - rabbit-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+    networks: [appnet]
+
+  backend:
+    build:
+      context: ./springboot
+    image: learntrace-backend:0.1.0
+    environment:
+      TZ: Asia/Shanghai
+      # 数据源（容器内网，关闭 SSL）
+      DB_URL: jdbc:mysql://mysql:3306/${DB_NAME:-xueji}?useUnicode=true&serverTimezone=Asia/Shanghai&characterEncoding=utf-8&zeroDateTimeBehavior=convertToNull&autoReconnect=true&allowMultiQueries=true&useSSL=false
+      DB_USERNAME: root
+      DB_PASSWORD: ${DB_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_DATABASE: "1"
+      VECTOR_REDIS_HOST: redis-stack
+      VECTOR_REDIS_PORT: "6379"
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: "5672"
+      RABBITMQ_USER: ${RABBITMQ_USER:-xueji}
+      RABBITMQ_PASS: ${RABBITMQ_PASS}
+      # AI / 存储密钥（全部来自 .env，禁止写死）
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:?请在 .env 中设置 DEEPSEEK_API_KEY}
+      QWEN_ASR_API_KEY: ${QWEN_ASR_API_KEY:-}
+      QWEN_ASR_BASE_URL: ${QWEN_ASR_BASE_URL:-https://ws-swm6f3vt0izc1plg.cn-beijing.maas.aliyuncs.com}
+      QWEN_ASR_MODEL: ${QWEN_ASR_MODEL:-qwen-audio-3.1-asr-flash}
+      PADDLE_OCR_TOKEN: ${PADDLE_OCR_TOKEN:-}
+      PADDLE_OCR_BASE: ${PADDLE_OCR_BASE:-https://paddleocr.aistudio-app.com/api/v2/ocr}
+      PADDLE_OCR_MODEL: ${PADDLE_OCR_MODEL:-PaddleOCR-VL-1.6}
+      OSS_ACCESS_KEY: ${OSS_ACCESS_KEY:-}
+      OSS_SECRET_KEY: ${OSS_SECRET_KEY:-}
+      OSS_ENDPOINT: ${OSS_ENDPOINT:-oss-cn-hangzhou.aliyuncs.com}
+      OSS_BUCKET: ${OSS_BUCKET:-}
+      OSS_DOMAIN: ${OSS_DOMAIN:-}
+      XJ_EMBEDDING_BASE_URL: ${XJ_EMBEDDING_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
+      XJ_EMBEDDING_API_KEY: ${XJ_EMBEDDING_API_KEY:-}
+      XJ_EMBEDDING_MODEL: ${XJ_EMBEDDING_MODEL:-text-embedding-v3}
+      # 容器内 yt-dlp 走 PATH（不继承宿主机的绝对路径）
+      YTDLP_PATH: yt-dlp
+      YTDLP_COOKIES_FROM_BROWSER: ${YTDLP_COOKIES_FROM_BROWSER:-}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
+    volumes:
+      # 可选：把导出的 B 站 cookies.txt 放到 ./secrets/bili-cookies.txt 后启用
+      - ./secrets:/app/secrets:ro
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      redis-stack:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+    logging:
+      options:
+        max-size: "20m"
+        max-file: "3"
+    networks: [appnet]
+
+  frontend:
+    build:
+      context: ./web
+    image: learntrace-web:0.1.0
+    environment:
+      TZ: Asia/Shanghai
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks: [appnet]
+
+volumes:
+  mysql-data:
+  redis-data:
+  vector-data:
+  rabbit-data:
+
+networks:
+  appnet:
+    driver: bridge
