@@ -1,0 +1,7 @@
+# 构建上下文瘦身 + 密钥隔离（application-local.properties 绝不能进镜像层）
+target/
+*.log
+application-local.properties
+.idea/
+*.iml
+.git/

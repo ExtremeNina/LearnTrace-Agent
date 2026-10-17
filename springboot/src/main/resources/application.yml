@@ -15,10 +15,11 @@ spring:
           temperature: 0.7
   data:
     redis:
-      database: 1
-      host: 127.0.0.1
-      port: 6379
-      password: ''
+      database: ${REDIS_DATABASE:1}
+      # 容器部署由 compose 注入服务名（如 redis）；本地默认 127.0.0.1
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
   rabbitmq:
     host: ${RABBITMQ_HOST:localhost}
     port: ${RABBITMQ_PORT:5672}
@@ -37,9 +38,9 @@ spring:
       max-file-size: 1024MB
       max-request-size: 1044MB
   datasource:
-    url: jdbc:mysql://localhost:3306/xueji?useUnicode=true&serverTimezone=Asia/Shanghai&characterEncoding=utf-8&zeroDateTimeBehavior=convertToNull&autoReconnect=true&allowMultiQueries=true&useSSL=true
-    username: root
-    password: 123456
+    url: ${DB_URL:jdbc:mysql://localhost:3306/xueji?useUnicode=true&serverTimezone=Asia/Shanghai&characterEncoding=utf-8&zeroDateTimeBehavior=convertToNull&autoReconnect=true&allowMultiQueries=true&useSSL=true}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:123456}
     type: com.alibaba.druid.pool.DruidDataSource
     driver-class-name: com.mysql.cj.jdbc.Driver
 
@@ -95,5 +96,12 @@ ytdlp:
   path: ${YTDLP_PATH:yt-dlp}
   cookies-from-browser: ${YTDLP_COOKIES_FROM_BROWSER:}
 
+# RAG 向量库（redis-stack，含 RediSearch）：容器部署指向 redis-stack 服务，本地默认 127.0.0.1:6380
+xj:
+  vector:
+    redis:
+      host: ${VECTOR_REDIS_HOST:127.0.0.1}
+      port: ${VECTOR_REDIS_PORT:6380}
+
 server:
-  port: 9090
+  port: ${SERVER_PORT:9090}
