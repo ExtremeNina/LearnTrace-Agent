@@ -26,6 +26,36 @@ AI 个人学习工作台：学习资产（视频 / 题目 / 笔记）+ 知识点
 | **视频 · 课后习题** | **题目 · 详情** |
 | ![课后习题](docs/images/demo-quiz.jpg) | ![题目详情](docs/images/demo-question-detail.jpg) |
 
+## 快速开始（Docker 一键部署）
+
+前置：Docker Desktop（含 Compose v2），建议 6GB 可用内存、20GB 磁盘，可访问外网（模型 / 存储服务）。
+
+```bash
+# 1. 准备环境变量（至少填 DEEPSEEK_API_KEY；其余按需）
+cp .env.example .env
+
+# 2. 构建并启动（首次构建约 5~15 分钟）
+docker compose up -d --build
+
+# 3. 打开 http://localhost:8080
+```
+
+- 仅前端暴露宿主端口（`WEB_PORT`，默认 8080）；MySQL / Redis / 向量库 / RabbitMQ 只在容器内网可达
+- 首次启动自动导入 `docker/mysql/init/01-schema.sql`（**仅表结构**，25 张表；改 schema 需 `docker compose down -v` 重新初始化）
+- 详细说明、数据备份与排错：[docs/docker-deploy.md](docs/docker-deploy.md)
+
+## 本地开发
+
+```bash
+# 后端（9090）
+cd springboot && mvn spring-boot:run
+
+# 前端（5173，已配置 /api 与 /ws 开发代理）
+cd web && npm install && npm run dev
+```
+
+本地私密配置放在 `springboot/application-local.properties`（git 忽略，填入各服务密钥）。
+
 ## 技术栈
 
 - **前端**：Vue 3 + TypeScript + Pinia + Tailwind CSS（Vite 构建，桌面 / 移动端响应式；WebSocket 流式对话）
