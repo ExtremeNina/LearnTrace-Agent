@@ -12,16 +12,18 @@ COPY src ./src
 RUN mvn -q -B -DskipTests package
 
 # ---------- 运行阶段 ----------
-FROM eclipse-temurin:21-jre-jammy
+# Ubuntu 24.04：Python 3.12 + ffmpeg 6（避免 yt-dlp 对 Python 3.10 的弃用告警）
+FROM eclipse-temurin:21-jre-noble
 
 ENV TZ=Asia/Shanghai \
     LANG=C.UTF-8 \
     JAVA_OPTS="-XX:MaxRAMPercentage=75 -Duser.timezone=Asia/Shanghai"
 
-# ffmpeg（抽音频/关键帧）、yt-dlp（B 站链接拉取）、curl（健康检查）
+# ffmpeg（抽音频/关键帧）、yt-dlp 自包含二进制（yt-dlp_linux，无需 Python；ARM64 机器请换成 yt-dlp_linux_aarch64）、curl（健康检查）
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg python3 python3-pip curl ca-certificates \
-    && pip3 install --no-cache-dir -U yt-dlp \
+    && apt-get install -y --no-install-recommends ffmpeg curl ca-certificates \
+    && curl -fsSL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux -o /usr/local/bin/yt-dlp \
+    && chmod +x /usr/local/bin/yt-dlp \
     && rm -rf /var/lib/apt/lists/* \
     && useradd -m -u 10001 app
 

@@ -69,6 +69,7 @@ docker compose exec mysql mysqldump -uroot -p"$DB_PASSWORD" xueji > backup.sql
 - 普通投稿视频：容器内 yt-dlp 以游客模式即可拉取
 - 课程/课堂类视频：需要登录态。容器内无法读取浏览器 cookies，请导出 `cookies.txt` 放到 `./secrets/bili-cookies.txt`（compose 已只读挂载 `./secrets`），后续可在后端配置 `--cookies` 参数启用
 - yt-dlp 会随镜像构建更新；B 站接口变化导致失败时，重新 `docker compose build backend` 即可升级
+- 镜像使用 yt-dlp 自包含二进制（`yt-dlp_linux`）；**ARM64 机器**（如 Apple Silicon / 树莓派）需把 `springboot/Dockerfile` 中的下载地址换成 `yt-dlp_linux_aarch64`
 
 ### 访问地址
 
