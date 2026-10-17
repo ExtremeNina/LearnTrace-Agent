@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { Camera, ChevronDown, ChevronUp, LoaderCircle, LogOut, Moon, Sun, Trash2, X } from 'lucide-vue-next'
+import { Camera, ChevronDown, ChevronUp, LoaderCircle, LogOut, Moon, Sun, Trash2 } from 'lucide-vue-next'
+import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import * as userApi from '../api/user'
 import { uploadImage } from '../api/upload'
 import { logout as logoutApi } from '../api/auth'
@@ -65,6 +69,13 @@ function close() {
   emit('update:open', false)
   pwdOpen.value = false
   deleteOpen.value = false
+}
+
+/** Dialog 打开态回写父组件（ESC / 点遮罩 / 关闭按钮统一走这里） */
+function onOpenChange(value: boolean) {
+  if (!value) {
+    close()
+  }
 }
 
 async function onAvatarChange(e: Event) {
@@ -201,20 +212,12 @@ const initial = computed(() => (form.nickname || auth.user?.username || '?').sli
 </script>
 
 <template>
-  <div v-if="open" class="fixed inset-0 z-[70] flex items-center justify-center bg-ink/25 px-4 backdrop-blur-sm" @click.self="close">
-    <!-- 弹窗尺寸与题目管理的题目详情弹窗一致（max-w-2xl / max-h-[85vh]） -->
-    <div class="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-line bg-surface p-6 shadow-xl">
-      <!-- 头 -->
-      <div class="flex items-center justify-between">
-        <h2 class="text-[16px] font-semibold text-ink">个人设置</h2>
-        <button
-          class="flex h-8 w-8 items-center justify-center rounded-lg text-ink-2 hover:bg-line/60 hover:text-ink"
-          title="关闭"
-          @click="close"
-        >
-          <X :size="16" />
-        </button>
-      </div>
+  <Dialog :open="open" @update:open="onOpenChange">
+    <DialogContent
+      class="z-[70] block max-h-[85vh] w-full max-w-2xl gap-0 overflow-y-auto rounded-3xl border-line bg-surface p-6 shadow-xl sm:max-w-2xl"
+    >
+      <DialogTitle class="text-[16px] font-semibold text-ink">个人设置</DialogTitle>
+      <DialogDescription class="sr-only">修改个人资料、偏好设置与账号安全选项</DialogDescription>
 
       <!-- 个人资料 -->
       <h3 class="mt-5 text-[13px] font-semibold text-ink-2">个人资料</h3>
@@ -251,40 +254,26 @@ const initial = computed(() => (form.nickname || auth.user?.username || '?').sli
       <div class="mt-4 flex flex-col gap-3">
         <label class="block">
           <span class="mb-1 block text-[12px] text-ink-2">昵称</span>
-          <input
-            v-model="form.nickname"
-            type="text"
-            class="w-full rounded-xl border border-line px-3 py-2 text-[14px] outline-none focus:border-primary"
-            placeholder="你的昵称"
-          />
+          <Input v-model="form.nickname" class="rounded-xl text-[14px]" placeholder="你的昵称" />
         </label>
         <label class="block">
           <span class="mb-1 block text-[12px] text-ink-2">邮箱（选填）</span>
-          <input
-            v-model="form.email"
-            type="email"
-            class="w-full rounded-xl border border-line px-3 py-2 text-[14px] outline-none focus:border-primary"
-            placeholder="you@example.com"
-          />
+          <Input v-model="form.email" type="email" class="rounded-xl text-[14px]" placeholder="you@example.com" />
         </label>
         <label class="block">
           <span class="mb-1 block text-[12px] text-ink-2">个人简介（选填）</span>
-          <textarea
+          <Textarea
             v-model="form.bio"
-            rows="3"
-            class="w-full resize-none rounded-xl border border-line px-3 py-2 text-[14px] outline-none focus:border-primary"
+            :rows="3"
+            class="resize-none rounded-xl text-[14px]"
             placeholder="介绍一下自己，比如正在学什么"
-          ></textarea>
+          />
         </label>
       </div>
       <p v-if="profileError" class="mt-2 text-[12px] text-red-600">{{ profileError }}</p>
-      <button
-        class="mt-3 rounded-xl bg-primary px-4 py-2 text-[14px] text-white hover:opacity-90 disabled:opacity-50"
-        :disabled="savingProfile"
-        @click="saveProfile"
-      >
+      <Button class="mt-3 rounded-xl text-[14px]" :disabled="savingProfile" @click="saveProfile">
         {{ savingProfile ? '保存中…' : '保存资料' }}
-      </button>
+      </Button>
 
       <!-- 偏好设置 -->
       <h3 class="mt-7 text-[13px] font-semibold text-ink-2">偏好设置</h3>
@@ -338,32 +327,23 @@ const initial = computed(() => (form.nickname || auth.user?.username || '?').sli
             <ChevronDown v-else :size="15" class="text-ink-2" />
           </button>
           <div v-if="pwdOpen" class="flex flex-col gap-2.5 pb-3">
-            <input
-              v-model="pwdForm.oldPassword"
-              type="password"
-              class="w-full rounded-xl border border-line px-3 py-2 text-[14px] outline-none focus:border-primary"
-              placeholder="原密码"
-            />
-            <input
+            <Input v-model="pwdForm.oldPassword" type="password" class="rounded-xl text-[14px]" placeholder="原密码" />
+            <Input
               v-model="pwdForm.newPassword"
               type="password"
-              class="w-full rounded-xl border border-line px-3 py-2 text-[14px] outline-none focus:border-primary"
+              class="rounded-xl text-[14px]"
               placeholder="新密码（至少 6 位）"
             />
-            <input
+            <Input
               v-model="pwdForm.confirmPassword"
               type="password"
-              class="w-full rounded-xl border border-line px-3 py-2 text-[14px] outline-none focus:border-primary"
+              class="rounded-xl text-[14px]"
               placeholder="确认新密码"
             />
             <p v-if="pwdError" class="text-[12px] text-red-600">{{ pwdError }}</p>
-            <button
-              class="self-start rounded-xl bg-primary px-4 py-2 text-[13px] text-white hover:opacity-90 disabled:opacity-50"
-              :disabled="pwdSaving"
-              @click="savePassword"
-            >
+            <Button size="sm" class="self-start rounded-xl text-[13px]" :disabled="pwdSaving" @click="savePassword">
               {{ pwdSaving ? '保存中…' : '确认修改' }}
-            </button>
+            </Button>
           </div>
         </div>
         <!-- 退出登录 -->
@@ -389,29 +369,30 @@ const initial = computed(() => (form.nickname || auth.user?.username || '?').sli
           </button>
           <div v-if="deleteOpen" class="flex flex-col gap-2.5 pb-3">
             <p class="text-[12px] leading-5 text-ink-2">注销后无法再登录本账号，学习资料仍保留在系统中。此操作不可恢复，请谨慎。</p>
-            <input
+            <Input
               v-model="deletePassword"
               type="password"
-              class="w-full rounded-xl border border-line px-3 py-2 text-[14px] outline-none focus:border-red-400"
+              class="rounded-xl text-[14px] focus-visible:ring-red-400"
               placeholder="输入登录密码确认"
             />
-            <input
+            <Input
               v-model="deleteConfirmText"
-              type="text"
-              class="w-full rounded-xl border border-line px-3 py-2 text-[14px] outline-none focus:border-red-400"
+              class="rounded-xl text-[14px] focus-visible:ring-red-400"
               placeholder="输入「注销」确认"
             />
             <p v-if="deleteError" class="text-[12px] text-red-600">{{ deleteError }}</p>
-            <button
-              class="self-start rounded-xl bg-red-500 px-4 py-2 text-[13px] text-white hover:opacity-90 disabled:opacity-50"
+            <Button
+              variant="destructive"
+              size="sm"
+              class="self-start rounded-xl text-[13px]"
               :disabled="deleteSubmitting"
               @click="doDeleteAccount"
             >
               {{ deleteSubmitting ? '注销中…' : '确认注销账号' }}
-            </button>
+            </Button>
           </div>
         </div>
       </div>
-    </div>
-  </div>
+    </DialogContent>
+  </Dialog>
 </template>

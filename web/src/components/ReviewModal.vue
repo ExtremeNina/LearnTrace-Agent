@@ -5,6 +5,9 @@ import { Check, GraduationCap, List, LoaderCircle, X } from 'lucide-vue-next'
 import * as reviewApi from '../api/review'
 import type { ReviewCardInfo, ReviewStatsInfo } from '../types/api'
 import type { ReviewGrade } from '../api/review'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { renderMarkdown } from '../utils/markdown'
 import { useReviewModalStore } from '../stores/reviewModal'
 
@@ -159,34 +162,39 @@ function onKeydown(e: KeyboardEvent) {
 
 window.addEventListener('keydown', onKeydown)
 onUnmounted(() => window.removeEventListener('keydown', onKeydown))
+
+/** Dialog 打开态回写 store（ESC / 点遮罩 / 关闭按钮统一走这里） */
+function onOpenChange(open: boolean) {
+  if (!open) {
+    modal.close()
+  }
+}
 </script>
 
 <template>
-  <Teleport to="body">
-    <Transition name="review-modal">
-      <div
-        v-if="modal.isOpen"
-        class="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
-        @click.self="modal.close()"
-      >
-        <div class="flex max-h-[85vh] w-full max-w-xl flex-col overflow-hidden rounded-3xl border border-line bg-white shadow-xl">
-          <!-- 头部 -->
-          <div class="flex shrink-0 items-center justify-between border-b border-line px-5 py-3.5">
-            <h2 class="flex items-center gap-2 text-[15px] font-semibold text-ink">
-              <GraduationCap :size="17" class="text-primary" />
-              今日复习
-            </h2>
-            <button
-              class="flex h-8 w-8 items-center justify-center rounded-full text-ink-2 transition-colors hover:bg-panel hover:text-ink"
-              title="关闭"
-              @click="modal.close()"
-            >
-              <X :size="17" />
-            </button>
-          </div>
+  <Dialog :open="modal.isOpen" @update:open="onOpenChange">
+    <DialogContent
+      :show-close-button="false"
+      class="z-[70] flex max-h-[85vh] w-full max-w-xl flex-col gap-0 overflow-hidden rounded-3xl border border-line bg-white p-0 shadow-xl sm:max-w-xl"
+    >
+      <!-- 头部 -->
+      <div class="flex shrink-0 items-center justify-between border-b border-line px-5 py-3.5">
+        <DialogTitle class="flex items-center gap-2 text-[15px] font-semibold text-ink">
+          <GraduationCap :size="17" class="text-primary" />
+          今日复习
+        </DialogTitle>
+        <DialogDescription class="sr-only">查看复习统计、开始刷卡复习和管理复习队列</DialogDescription>
+        <button
+          class="flex h-8 w-8 items-center justify-center rounded-full text-ink-2 transition-colors hover:bg-panel hover:text-ink"
+          title="关闭"
+          @click="modal.close()"
+        >
+          <X :size="17" />
+        </button>
+      </div>
 
-          <!-- 内容区 -->
-          <div class="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+      <!-- 内容区 -->
+      <div class="min-h-0 flex-1 overflow-y-auto px-5 py-4">
             <p v-if="loading" class="flex items-center gap-2 py-8 text-[14px] text-ink-2">
               <LoaderCircle :size="15" class="animate-spin" />
               加载中…
@@ -209,20 +217,21 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
                   <p class="mt-1 text-[12px] text-ink-2">队列总数</p>
                 </div>
               </div>
-              <button
-                class="mt-5 w-full rounded-2xl bg-primary py-3 text-[15px] text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+              <Button
+                class="mt-5 h-12 w-full rounded-2xl text-[15px]"
                 :disabled="stats.dueCount === 0"
                 @click="startSession"
               >
                 {{ stats.dueCount === 0 ? '今天没有到期的卡片' : `开始复习（${stats.dueCount} 张）` }}
-              </button>
-              <button
-                class="mt-3 flex w-full items-center justify-center gap-1.5 rounded-2xl border border-line py-2.5 text-[14px] text-ink transition-colors hover:bg-panel"
+              </Button>
+              <Button
+                variant="outline"
+                class="mt-3 h-11 w-full rounded-2xl text-[14px]"
                 @click="openQueue"
               >
                 <List :size="15" class="text-ink-2" />
                 查看复习队列
-              </button>
+              </Button>
               <p class="mt-3 text-center text-[12px] text-ink-2">
                 在题目 / 笔记 / 课后习题页点「加入复习」，卡片会按记忆曲线出现在这里
               </p>
@@ -245,7 +254,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
                 >
                   <div class="min-w-0 flex-1">
                     <div class="flex items-center gap-2">
-                      <span class="rounded-full bg-panel px-2 py-0.5 text-[11px] text-ink-2">{{ typeLabel(card) }}</span>
+                      <Badge variant="secondary" class="rounded-full px-2 py-0.5 text-[11px] text-ink-2">{{ typeLabel(card) }}</Badge>
                       <span class="text-[11px] text-ink-2">到期 {{ card.dueAt }}</span>
                     </div>
                     <p class="mt-1.5 line-clamp-2 text-[13px] leading-6 text-ink">
@@ -262,12 +271,9 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
                   </button>
                 </li>
               </ul>
-              <button
-                class="mt-4 w-full rounded-2xl border border-line py-2.5 text-[14px] text-ink transition-colors hover:bg-panel"
-                @click="phase = 'stats'"
-              >
+              <Button variant="outline" class="mt-4 h-11 w-full rounded-2xl text-[14px]" @click="phase = 'stats'">
                 返回统计
-              </button>
+              </Button>
             </template>
 
             <!-- 刷卡态 -->
@@ -278,7 +284,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
                   <GraduationCap :size="13" />
                   {{ typeLabel(current) }}
                 </span>
-                <button class="rounded-lg px-2 py-1 hover:bg-line/60 hover:text-ink" @click="load">结束</button>
+                <Button variant="ghost" size="sm" class="h-7 px-2 text-[12px]" @click="load">结束</Button>
               </div>
               <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-line">
                 <div class="h-full rounded-full bg-primary transition-all" :style="{ width: `${(index / queue.length) * 100}%` }"></div>
@@ -354,40 +360,14 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
                   <template v-if="stats"> · 队列里还有 {{ stats.total - stats.reviewedToday }} 张等待下次到期</template>
                 </p>
                 <div class="mt-1 flex gap-2">
-                  <button class="rounded-xl border border-line px-4 py-2 text-[14px] text-ink hover:bg-panel" @click="load">
-                    返回统计
-                  </button>
-                  <button
-                    class="rounded-xl border border-line px-4 py-2 text-[14px] text-ink hover:bg-panel"
-                    @click="router.push('/questions')"
-                  >
+                  <Button variant="outline" class="rounded-xl text-[14px]" @click="load">返回统计</Button>
+                  <Button variant="outline" class="rounded-xl text-[14px]" @click="router.push('/questions')">
                     去题目记录加新卡
-                  </button>
+                  </Button>
                 </div>
               </div>
             </template>
-          </div>
-        </div>
       </div>
-    </Transition>
-  </Teleport>
+    </DialogContent>
+  </Dialog>
 </template>
-
-<style scoped>
-.review-modal-enter-active,
-.review-modal-leave-active {
-  transition: opacity 0.18s ease;
-}
-.review-modal-enter-active > div,
-.review-modal-leave-active > div {
-  transition: transform 0.18s ease;
-}
-.review-modal-enter-from,
-.review-modal-leave-to {
-  opacity: 0;
-}
-.review-modal-enter-from > div,
-.review-modal-leave-to > div {
-  transform: scale(0.96);
-}
-</style>
