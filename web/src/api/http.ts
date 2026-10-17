@@ -3,11 +3,11 @@ import type { AxiosRequestConfig, InternalAxiosRequestConfig } from 'axios'
 import type { Result } from '../types/api'
 
 /**
- * HTTP 封装：直连后端 9090（后端 CORS 已放行 5173），
- * 请求头按 Sa-Token 的 token-name 携带令牌。
+ * HTTP 封装：同源相对路径 `/api`（由 Vite dev proxy / nginx 反代到后端 9090），
+ * 部署到任何域名/端口都无需改代码；请求头按 Sa-Token 的 token-name 携带令牌。
  */
 export const http = axios.create({
-  baseURL: 'http://localhost:9090',
+  baseURL: '/api',
   timeout: 10000,
 })
 
